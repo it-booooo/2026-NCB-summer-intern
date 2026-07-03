@@ -16,12 +16,15 @@ from PySide6.QtWidgets import (
 class VideoPlayer(QWidget):
     frame_changed = Signal(int, float)
 
+    FIXED_VIDEO_FPS = 30.0
+
     def __init__(self):
         super().__init__()
 
         self.cap = None
         self.video_path = ""
-        self.fps = 0.0
+        self.detected_fps = 0.0
+        self.fps = self.FIXED_VIDEO_FPS
         self.total_frames = 0
         self.current_frame = 0
         self.is_playing = False
@@ -31,9 +34,9 @@ class VideoPlayer(QWidget):
         self.video_label.setMinimumSize(640, 360)
         self.video_label.setStyleSheet("background: #111; color: #ddd;")
 
-        self.info_label = QLabel("Load an MP4 to begin.")
+        self.info_label = QLabel("Frame: -- | FPS: --")
+        self.time_label = QLabel("00:00.000 / 00:00.000")
 
-        self.load_button = QPushButton("Load MP4")
         self.play_button = QPushButton("Play")
         self.prev_frame_button = QPushButton("Prev Frame")
         self.next_frame_button = QPushButton("Next Frame")
@@ -45,14 +48,12 @@ class VideoPlayer(QWidget):
         self.slider = QSlider(Qt.Horizontal)
         self.slider.setEnabled(False)
 
-        self.load_button.clicked.connect(self.load_video)
         self.play_button.clicked.connect(self.toggle_play)
         self.prev_frame_button.clicked.connect(self.previous_frame)
         self.next_frame_button.clicked.connect(self.advance_one_frame)
         self.slider.sliderMoved.connect(self.seek_frame)
 
         controls_layout = QHBoxLayout()
-        controls_layout.addWidget(self.load_button)
         controls_layout.addWidget(self.play_button)
         controls_layout.addWidget(self.prev_frame_button)
         controls_layout.addWidget(self.next_frame_button)
@@ -60,6 +61,7 @@ class VideoPlayer(QWidget):
         layout = QVBoxLayout()
         layout.addWidget(self.video_label)
         layout.addWidget(self.info_label)
+        layout.addWidget(self.time_label)
         layout.addWidget(self.slider)
         layout.addLayout(controls_layout)
 
@@ -76,6 +78,16 @@ class VideoPlayer(QWidget):
             return 0.0
 
         return self.current_frame / self.fps
+
+    def format_time(self, seconds):
+        total_ms = int(round(seconds * 1000))
+
+        minutes = total_ms // 60000
+        remaining_ms = total_ms % 60000
+        sec = remaining_ms // 1000
+        ms = remaining_ms % 1000
+
+        return f"{minutes:02d}:{sec:02d}.{ms:03d}"
 
     def load_video(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -98,7 +110,12 @@ class VideoPlayer(QWidget):
             return
 
         self.video_path = path
-        self.fps = float(self.cap.get(cv2.CAP_PROP_FPS) or 0.0)
+        self.detected_fps = float(self.cap.get(cv2.CAP_PROP_FPS) or 0.0)
+
+        # Demo videos are around 29.97 FPS. For this project, video time is
+        # calculated with 30 FPS to keep frame-to-time conversion consistent.
+        self.fps = self.FIXED_VIDEO_FPS
+
         self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
         self.current_frame = 0
         self.is_playing = False
@@ -200,8 +217,12 @@ class VideoPlayer(QWidget):
 
         self.info_label.setText(
             f"Frame: {frame_index} / {max(self.total_frames - 1, 0)} | "
-            f"Time: {current_sec:.3f} / {total_sec:.3f} sec | "
-            f"FPS: {self.fps:.2f}"
+            f"Detected FPS: {self.detected_fps:.2f} | "
+            f"Using FPS: {self.fps:.2f}"
+        )
+
+        self.time_label.setText(
+            f"{self.format_time(current_sec)} / {self.format_time(total_sec)}"
         )
 
         self.frame_changed.emit(frame_index, current_sec)
