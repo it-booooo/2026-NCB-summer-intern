@@ -25,3 +25,5 @@ def read_csv_file(file_path: str) -> Optional[pd.DataFrame]:
     except pd.errors.ParserError:
         print("Error: There was a parsing error while reading the file.")
         return None
+df=read_csv_file(file_path)
+print(df)
