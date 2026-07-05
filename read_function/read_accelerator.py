@@ -1,6 +1,6 @@
 import pandas as pd
 
-def read_accelerator(file_path: str)-> pd.DataFrame:
+def accelerator(file_path: str)-> pd.DataFrame:
     """
     Reads an accelerator data file and returns a pandas DataFrame.
 

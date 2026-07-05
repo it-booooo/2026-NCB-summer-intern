@@ -1,3 +1,3 @@
-from .draw_accelerator import draw_accelerator
+from .draw_accelerator import accelerator
 
-__all__ = ["draw_accelerator"]
+__all__ = ["accelerator"]

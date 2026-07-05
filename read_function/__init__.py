@@ -1,3 +1,3 @@
-from .read_accelerator import read_accelerator
+from .read_accelerator import accelerator
 
-__all__ = ["read_accelerator"]
+__all__ = ["accelerator"]
