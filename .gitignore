@@ -3,3 +3,8 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+# VS Code
+.vscode/
+
+# Generated images
+*.png

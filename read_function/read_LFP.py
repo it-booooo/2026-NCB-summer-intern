@@ -1,12 +1,12 @@
 import pandas as pd
 
 
-def accelerator(file_path: str) -> pd.DataFrame:
+def LFP(file_path: str) -> pd.DataFrame:
     """
-    Reads an accelerator data file and returns a pandas DataFrame.
+    Reads an LFP data file and returns a pandas DataFrame.
 
     Parameters:
-    file_path (str): The path to the accelerator data file.
+    file_path (str): The path to the LFP data file.
 
     Returns:
     pd.DataFrame: A DataFrame containing the data from the CSV file.
@@ -16,16 +16,12 @@ def accelerator(file_path: str) -> pd.DataFrame:
             file_path,
             skiprows=5,
             header=None,
-            usecols=[0, 1, 2, 3, 4],
-            names=[
-                "time_us",
-                "channel_257",
-                "channel_258",
-                "channel_259",
-                "channel_260",
-            ],
+            usecols=range(17),
+            names=["time_us"] + [f"channel_{i}" for i in range(1, 17)],
         )
+
         return df
+
     except FileNotFoundError as error:
         raise FileNotFoundError(f"fail to read file：{file_path}") from error
 

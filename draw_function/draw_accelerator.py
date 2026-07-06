@@ -1,30 +1,30 @@
-# pyright: reportUnknownMemberType=false
-
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
 
 import read_function as read
 
 
-def accelerator(file_path: str | Path) -> None:
-    data = read.accelerator(str(file_path))
+def accelerator(file_path: str | Path) -> Figure:
+    data = read.accelerator(str(file_path) + "/accelerator.csv")
 
-    # 微秒轉換成分鐘
-    data["time_min"] = data["time_us"] / 1e6/60
+    fig, ax = plt.subplots(figsize=(16, 4))
 
-    plt.plot(
-        data["time_min"],
+    # 微秒轉換成秒
+    data["time_s"] = data["time_us"] / 1e6
+
+    ax.plot(
+        data["time_s"],
         data["channel_260"],
         label="acceleration",
-        linewidth=0.8,
+        linewidth=0.2,
     )
 
-    plt.title("Accelerator Signal Waveform")
-    plt.xlabel("Time (min)")
-    plt.ylabel("Signal Value")
+    ax.set_title("Accelerator Signal Waveform")
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Signal Value")
 
-    plt.grid(True)
-    plt.legend()
-    plt.tight_layout()
-    plt.show()
+    ax.grid()
+    ax.legend()
+    return fig

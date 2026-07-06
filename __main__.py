@@ -1,19 +1,28 @@
 from pathlib import Path
 
-import draw_function as draw
+import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
 
+import draw_function as draw
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 
-ACCELERATOR_CSV_PATH = (
-    PROJECT_ROOT
-    / "origin_data"
-    / "accelerator.csv"
-)
+ORIGIN_DATA_DIR = PROJECT_ROOT / "origin_data"
 
 
 def main() -> None:
-    draw.accelerator(ACCELERATOR_CSV_PATH)
+    acceleration_fig: Figure = draw.accelerator(ORIGIN_DATA_DIR)
+    lfp_fig: Figure = draw.LFP(ORIGIN_DATA_DIR)
+    acceleration_fig.savefig(
+        str(ORIGIN_DATA_DIR / "acceleration_output.png"),
+        dpi=300,
+    )
+
+    lfp_fig.savefig(
+        str(ORIGIN_DATA_DIR / "LFP_output.png"),
+        dpi=300,
+    )
+    plt.show()
 
 
 if __name__ == "__main__":
