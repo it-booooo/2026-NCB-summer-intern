@@ -11,7 +11,7 @@ import check_function as check
 import read_function as read
 
 
-def LFP(file_path: str | Path | None = None, step: int = 100) -> Figure:
+def LFP(step: int = 100, file_path: str | Path | None = None) -> Figure:
     """
     default step = 100
     """
