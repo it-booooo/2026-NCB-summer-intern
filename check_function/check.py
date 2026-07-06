@@ -79,11 +79,12 @@ def check(file_path: str | Path) -> None:
     # 找出非正常時間間隔
     discontinuous_mask = intervals.notna() & (intervals != expected_interval)
 
-    print(f"Sample rate：{sample_rate} Hz")
-    print(f"正常時間間隔：{expected_interval} us")
-    print(f"缺值數量：{missing_count}")
-    print(f"重複時間數量：{int(duplicate_mask.sum())}")
-    print(f"時間不連續數量：{int(discontinuous_mask.sum())}")
+    print(f"{file_path}")
+    print(f"Sample rate: {sample_rate} Hz")
+    print(f"Expected interval: {expected_interval} us")
+    print(f"Missing values: {missing_count}")
+    print(f"Duplicate timestamps: {int(duplicate_mask.sum())}")
+    print(f"Discontinuous timestamps: {int(discontinuous_mask.sum())}")
 
     # 使用 enumerate，確保 current_index 是 int
     for current_index, is_discontinuous in enumerate(discontinuous_mask.to_numpy()):
@@ -106,10 +107,10 @@ def check(file_path: str | Path) -> None:
         csv_line = header_row + 2 + current_index
 
         print(
-            f"CSV 第 {csv_line} 行："
-            f"時間不連續，"
+            f"line {csv_line}: "
+            f"Time discontinuity, "
             f"{previous_time} → "
-            f"{current_time} us，"
-            f"實際間隔 {actual_interval} us，"
-            f"預期間隔 {expected_interval} us"
+            f"{current_time} us, "
+            f"Actual interval {actual_interval} us, "
+            f"Expected interval {expected_interval} us"
         )
