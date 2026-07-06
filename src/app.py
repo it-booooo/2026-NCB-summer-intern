@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.analysis import AnalysisMenuController
+from src.csv_loader import parse_lfp_csv_info, parse_time_marker_csv_info
 from src.event_table import EventTable
 from src.export import export_events_csv, export_events_excel
 from src.lfp_panel import LfpPanel
@@ -22,11 +23,14 @@ from src.video_player import VideoPlayer
 
 
 class MainWindow(QMainWindow):
+    MARKER_PANEL_WIDTH = 300
+
     def __init__(self):
         super().__init__()
 
         self.setWindowTitle("Pig Behavior Video-LFP Synchronization Tool")
         self.resize(1280, 720)
+        self.setMinimumSize(1100, 640)
 
         self.video_player = VideoPlayer()
         self.event_table = EventTable()
@@ -52,18 +56,25 @@ class MainWindow(QMainWindow):
 
         import_video_action = QAction("Import Video (.mp4)", self)
         import_lfp_action = QAction("Import LFP (.csv)", self)
+        import_axis_action = QAction("Import 3-axis (.csv)", self)
+        import_time_marker_action = QAction("Import Time Marker (.csv)", self)
 
         export_csv_action = QAction("Export Markers as CSV", self)
         export_excel_action = QAction("Export Markers as Excel", self)
 
         import_video_action.triggered.connect(self.import_video)
         import_lfp_action.triggered.connect(self.import_lfp)
+        import_axis_action.triggered.connect(self.import_axis)
+        import_time_marker_action.triggered.connect(self.import_time_marker)
 
         export_csv_action.triggered.connect(self.export_markers_csv)
         export_excel_action.triggered.connect(self.export_markers_excel)
 
         import_menu.addAction(import_video_action)
+        import_menu.addSeparator()
         import_menu.addAction(import_lfp_action)
+        import_menu.addAction(import_axis_action)
+        import_menu.addAction(import_time_marker_action)
 
         export_menu.addAction(export_csv_action)
         export_menu.addAction(export_excel_action)
@@ -71,13 +82,15 @@ class MainWindow(QMainWindow):
         self.analysis_controller.populate_menu(analysis_menu)
 
     def create_layout(self):
-        lfp_group = QGroupBox("LFP Waveform Area")
+        lfp_group = QGroupBox("Waveform Area")
         lfp_layout = QVBoxLayout()
+        lfp_layout.setContentsMargins(6, 6, 6, 6)
         lfp_layout.addWidget(self.lfp_panel)
         lfp_group.setLayout(lfp_layout)
 
         sync_group = QGroupBox("Synchronization Area")
         sync_layout = QVBoxLayout()
+        sync_layout.setContentsMargins(6, 6, 6, 6)
         sync_layout.addWidget(self.sync_panel)
         sync_group.setLayout(sync_layout)
 
@@ -110,21 +123,24 @@ class MainWindow(QMainWindow):
         main_content.addWidget(lower_splitter)
         main_content.setSizes([260, 400])
 
-        self.marker_panel.setMinimumWidth(360)
-        self.marker_panel.setMaximumWidth(460)
+        self.marker_panel.setFixedWidth(self.MARKER_PANEL_WIDTH)
         self.marker_panel.hide()
-
-        root_splitter = QSplitter(Qt.Horizontal)
-        root_splitter.addWidget(main_content)
-        root_splitter.addWidget(self.marker_panel)
-        root_splitter.setSizes([1120, 0])
 
         container = QWidget()
         layout = QHBoxLayout()
-        layout.addWidget(root_splitter)
-        container.setLayout(layout)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(4)
+        layout.addWidget(self.marker_panel)
+        layout.addWidget(main_content, stretch=1)
 
+        container.setLayout(layout)
         self.setCentralWidget(container)
+
+    def show_marker_panel(self):
+        self.marker_panel.show()
+
+    def hide_marker_panel(self):
+        self.marker_panel.hide()
 
     def import_video(self):
         loaded = self.video_player.load_video()
@@ -143,14 +159,42 @@ class MainWindow(QMainWindow):
         if not path:
             return
 
-        self.lfp_panel.set_lfp_path(path)
-        self.sync_panel.set_lfp_status(f"LFP file: {path}")
+        info = parse_lfp_csv_info(path)
+        self.lfp_panel.set_lfp_info(info)
+        self.sync_panel.set_lfp_status(f"LFP file: {info['filename']}")
 
-    def show_marker_panel(self):
-        self.marker_panel.show()
+    def import_axis(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Import 3-axis (.csv)",
+            "",
+            "CSV Files (*.csv);;All Files (*)",
+        )
 
-    def hide_marker_panel(self):
-        self.marker_panel.hide()
+        if not path:
+            return
+
+        info = parse_lfp_csv_info(path)
+        self.lfp_panel.set_axis_info(info)
+
+    def import_time_marker(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Import Time Marker (.csv)",
+            "",
+            "CSV Files (*.csv);;All Files (*)",
+        )
+
+        if not path:
+            return
+
+        info = parse_time_marker_csv_info(path)
+        self.lfp_panel.set_time_marker_info(info)
+
+        first_marker_sec = info.get("first_marker_sec")
+
+        if first_marker_sec is not None:
+            self.sync_panel.set_ttl_marker(first_marker_sec)
 
     def add_event(self, event_type):
         if not self.video_player.has_video():
@@ -228,7 +272,7 @@ class MainWindow(QMainWindow):
             }
 
             QPushButton {
-                padding: 6px 10px;
+                padding: 4px 8px;
             }
 
             QLabel {
