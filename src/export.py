@@ -1,4 +1,5 @@
 import csv
+from openpyxl import Workbook
 
 
 def export_events_csv(path, events):
@@ -17,3 +18,24 @@ def export_events_csv(path, events):
                     "note": event.get("note", ""),
                 }
             )
+
+
+def export_events_excel(path, events):
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Markers"
+
+    headers = ["event_type", "video_time_sec", "frame_index", "note"]
+    sheet.append(headers)
+
+    for event in events:
+        sheet.append(
+            [
+                event.get("event_type", ""),
+                float(event.get("video_time_sec", 0)),
+                int(event.get("frame_index", 0)),
+                event.get("note", ""),
+            ]
+        )
+
+    workbook.save(path)

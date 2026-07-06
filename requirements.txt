@@ -5,4 +5,4 @@ numpy
 scipy
 pandas
 mne
-numpy
+openpyxl

@@ -1,65 +1,24 @@
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QFileDialog,
-    QFrame,
-    QGridLayout,
     QGroupBox,
     QHBoxLayout,
-    QLabel,
     QMainWindow,
     QMessageBox,
     QPushButton,
     QSplitter,
-    QToolBar,
     QVBoxLayout,
     QWidget,
 )
 
+from src.analysis import AnalysisMenuController
 from src.event_table import EventTable
-from src.export import export_events_csv
+from src.export import export_events_csv, export_events_excel
+from src.lfp_panel import LfpPanel
+from src.marker_panel import MarkerPanel
+from src.sync_panel import SyncPanel
 from src.video_player import VideoPlayer
-
-
-class SignalPlaceholder(QWidget):
-    def __init__(self):
-        super().__init__()
-
-        title = QLabel("Signal Viewer")
-        title.setStyleSheet("font-weight: bold;")
-
-        hint = QLabel(
-            "LFP / TTL signal area\n"
-            "This area can be connected to your teammate's CSV/LFP module later."
-        )
-        hint.setAlignment(Qt.AlignCenter)
-        hint.setStyleSheet("color: #666;")
-
-        channel_grid = QGridLayout()
-
-        for row in range(6):
-            channel_name = QLabel(f"Ch {row + 1}")
-            channel_name.setFixedWidth(48)
-
-            trace = QFrame()
-            trace.setMinimumHeight(48)
-            trace.setStyleSheet(
-                """
-                QFrame {
-                    background-color: #fbfbfb;
-                    border: 1px solid #d0d0d0;
-                }
-                """
-            )
-
-            channel_grid.addWidget(channel_name, row, 0)
-            channel_grid.addWidget(trace, row, 1)
-
-        layout = QVBoxLayout()
-        layout.addWidget(title)
-        layout.addLayout(channel_grid)
-        layout.addWidget(hint)
-
-        self.setLayout(layout)
 
 
 class MainWindow(QMainWindow):
@@ -67,101 +26,135 @@ class MainWindow(QMainWindow):
         super().__init__()
 
         self.setWindowTitle("Pig Behavior Video-LFP Synchronization Tool")
-        self.resize(1400, 850)
+        self.resize(1280, 720)
 
         self.video_player = VideoPlayer()
         self.event_table = EventTable()
-        self.signal_placeholder = SignalPlaceholder()
+        self.lfp_panel = LfpPanel()
+        self.sync_panel = SyncPanel()
+        self.marker_panel = MarkerPanel(self.event_table, self.add_event)
+        self.analysis_controller = AnalysisMenuController(self)
 
-        self.create_toolbar()
-        self.create_main_layout()
+        self.marker_panel.close_requested.connect(self.hide_marker_panel)
+
+        self.create_menu()
+        self.create_layout()
         self.apply_style()
 
-    def create_toolbar(self):
-        toolbar = QToolBar("Main Toolbar")
-        toolbar.setMovable(False)
+    def create_menu(self):
+        menu_bar = self.menuBar()
 
-        self.load_video_button = QPushButton("Load MP4")
-        self.mark_led_button = QPushButton("Mark LED")
-        self.mark_behavior_button = QPushButton("Mark Behavior")
-        self.delete_event_button = QPushButton("Delete Event")
-        self.export_button = QPushButton("Export CSV")
+        file_menu = menu_bar.addMenu("File")
+        analysis_menu = menu_bar.addMenu("Analysis")
 
-        self.load_video_button.clicked.connect(self.video_player.load_video)
-        self.mark_led_button.clicked.connect(lambda: self.add_event("LED_on"))
-        self.mark_behavior_button.clicked.connect(lambda: self.add_event("behavior"))
-        self.delete_event_button.clicked.connect(self.event_table.delete_selected_rows)
-        self.export_button.clicked.connect(self.export_events)
+        import_menu = file_menu.addMenu("Import")
+        export_menu = file_menu.addMenu("Export")
 
-        toolbar.addWidget(self.load_video_button)
-        toolbar.addSeparator()
-        toolbar.addWidget(self.mark_led_button)
-        toolbar.addWidget(self.mark_behavior_button)
-        toolbar.addWidget(self.delete_event_button)
-        toolbar.addSeparator()
-        toolbar.addWidget(self.export_button)
+        import_video_action = QAction("Import Video (.mp4)", self)
+        import_lfp_action = QAction("Import LFP (.csv)", self)
 
-        self.addToolBar(Qt.TopToolBarArea, toolbar)
+        export_csv_action = QAction("Export Markers as CSV", self)
+        export_excel_action = QAction("Export Markers as Excel", self)
 
-    def create_main_layout(self):
-        signal_group = QGroupBox("LFP / TTL Preview")
-        signal_layout = QVBoxLayout()
-        signal_layout.addWidget(self.signal_placeholder)
-        signal_group.setLayout(signal_layout)
+        import_video_action.triggered.connect(self.import_video)
+        import_lfp_action.triggered.connect(self.import_lfp)
+
+        export_csv_action.triggered.connect(self.export_markers_csv)
+        export_excel_action.triggered.connect(self.export_markers_excel)
+
+        import_menu.addAction(import_video_action)
+        import_menu.addAction(import_lfp_action)
+
+        export_menu.addAction(export_csv_action)
+        export_menu.addAction(export_excel_action)
+
+        self.analysis_controller.populate_menu(analysis_menu)
+
+    def create_layout(self):
+        lfp_group = QGroupBox("LFP Waveform Area")
+        lfp_layout = QVBoxLayout()
+        lfp_layout.addWidget(self.lfp_panel)
+        lfp_group.setLayout(lfp_layout)
+
+        sync_group = QGroupBox("Synchronization Area")
+        sync_layout = QVBoxLayout()
+        sync_layout.addWidget(self.sync_panel)
+        sync_group.setLayout(sync_layout)
 
         video_group = QGroupBox("Behavior Video")
         video_layout = QVBoxLayout()
-        video_layout.addWidget(self.video_player)
+        video_layout.setContentsMargins(4, 4, 4, 4)
+        video_layout.setSpacing(2)
+        video_layout.addWidget(self.video_player, stretch=1)
+
+        self.open_marker_button = QPushButton("Open Event Marker")
+        self.open_marker_button.setFixedSize(150, 26)
+        self.open_marker_button.clicked.connect(self.show_marker_panel)
+
+        marker_button_layout = QHBoxLayout()
+        marker_button_layout.setContentsMargins(0, 0, 0, 0)
+        marker_button_layout.setSpacing(0)
+        marker_button_layout.addStretch()
+        marker_button_layout.addWidget(self.open_marker_button)
+
+        video_layout.addLayout(marker_button_layout)
         video_group.setLayout(video_layout)
 
-        top_splitter = QSplitter(Qt.Horizontal)
-        top_splitter.addWidget(signal_group)
-        top_splitter.addWidget(video_group)
-        top_splitter.setSizes([900, 500])
+        lower_splitter = QSplitter(Qt.Horizontal)
+        lower_splitter.addWidget(sync_group)
+        lower_splitter.addWidget(video_group)
+        lower_splitter.setSizes([820, 420])
 
-        event_group = QGroupBox("Event Marker Table")
-        event_layout = QVBoxLayout()
+        main_content = QSplitter(Qt.Vertical)
+        main_content.addWidget(lfp_group)
+        main_content.addWidget(lower_splitter)
+        main_content.setSizes([260, 400])
 
-        quick_mark_layout = QHBoxLayout()
+        self.marker_panel.setMinimumWidth(360)
+        self.marker_panel.setMaximumWidth(460)
+        self.marker_panel.hide()
 
-        led_on_button = QPushButton("LED On")
-        led_off_button = QPushButton("LED Off")
-        behavior_start_button = QPushButton("Behavior Start")
-        behavior_end_button = QPushButton("Behavior End")
-        seizure_button = QPushButton("Seizure-like Event")
-
-        led_on_button.clicked.connect(lambda: self.add_event("LED_on"))
-        led_off_button.clicked.connect(lambda: self.add_event("LED_off"))
-        behavior_start_button.clicked.connect(lambda: self.add_event("behavior_start"))
-        behavior_end_button.clicked.connect(lambda: self.add_event("behavior_end"))
-        seizure_button.clicked.connect(lambda: self.add_event("seizure_like_event"))
-
-        quick_mark_layout.addWidget(led_on_button)
-        quick_mark_layout.addWidget(led_off_button)
-        quick_mark_layout.addWidget(behavior_start_button)
-        quick_mark_layout.addWidget(behavior_end_button)
-        quick_mark_layout.addWidget(seizure_button)
-        quick_mark_layout.addStretch()
-
-        event_layout.addLayout(quick_mark_layout)
-        event_layout.addWidget(self.event_table)
-        event_group.setLayout(event_layout)
-
-        main_splitter = QSplitter(Qt.Vertical)
-        main_splitter.addWidget(top_splitter)
-        main_splitter.addWidget(event_group)
-        main_splitter.setSizes([610, 240])
+        root_splitter = QSplitter(Qt.Horizontal)
+        root_splitter.addWidget(main_content)
+        root_splitter.addWidget(self.marker_panel)
+        root_splitter.setSizes([1120, 0])
 
         container = QWidget()
-        layout = QVBoxLayout()
-        layout.addWidget(main_splitter)
+        layout = QHBoxLayout()
+        layout.addWidget(root_splitter)
         container.setLayout(layout)
 
         self.setCentralWidget(container)
 
+    def import_video(self):
+        loaded = self.video_player.load_video()
+
+        if loaded:
+            self.sync_panel.set_video_path(self.video_player.video_path)
+
+    def import_lfp(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Import LFP (.csv)",
+            "",
+            "CSV Files (*.csv);;All Files (*)",
+        )
+
+        if not path:
+            return
+
+        self.lfp_panel.set_lfp_path(path)
+        self.sync_panel.set_lfp_status(f"LFP file: {path}")
+
+    def show_marker_panel(self):
+        self.marker_panel.show()
+
+    def hide_marker_panel(self):
+        self.marker_panel.hide()
+
     def add_event(self, event_type):
         if not self.video_player.has_video():
-            QMessageBox.warning(self, "No video", "Please load an MP4 first.")
+            QMessageBox.warning(self, "No video", "Please import a video first.")
             return
 
         self.event_table.add_event(
@@ -171,30 +164,39 @@ class MainWindow(QMainWindow):
             note="",
         )
 
-    def export_events(self):
+    def export_markers_csv(self):
         events = self.event_table.events()
 
         if not events:
-            QMessageBox.information(self, "No events", "There are no events to export.")
+            QMessageBox.information(self, "No markers", "There are no markers to export.")
             return
 
         path, _ = QFileDialog.getSaveFileName(
             self,
-            "Export events",
-            "video_events.csv",
+            "Export Markers as CSV",
+            "video_markers.csv",
             "CSV Files (*.csv)",
         )
 
-        if not path:
+        if path:
+            export_events_csv(path, events)
+
+    def export_markers_excel(self):
+        events = self.event_table.events()
+
+        if not events:
+            QMessageBox.information(self, "No markers", "There are no markers to export.")
             return
 
-        export_events_csv(path, events)
-
-        QMessageBox.information(
+        path, _ = QFileDialog.getSaveFileName(
             self,
-            "Export complete",
-            f"Saved events to:\n{path}",
+            "Export Markers as Excel",
+            "video_markers.xlsx",
+            "Excel Files (*.xlsx)",
         )
+
+        if path:
+            export_events_excel(path, events)
 
     def apply_style(self):
         self.setStyleSheet(
@@ -203,11 +205,13 @@ class MainWindow(QMainWindow):
                 background-color: #f0f0f0;
             }
 
-            QToolBar {
-                background-color: #e6e6e6;
-                border-bottom: 1px solid #bdbdbd;
-                spacing: 6px;
-                padding: 4px;
+            QMenuBar {
+                background-color: #e8e8e8;
+                border-bottom: 1px solid #c4c4c4;
+            }
+
+            QMenuBar::item {
+                padding: 5px 12px;
             }
 
             QGroupBox {
