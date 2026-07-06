@@ -6,6 +6,12 @@ import pandas as pd
 
 def check(file_path: str | Path) -> None:
     file_path = Path(file_path)
+    
+    # Prepare output file
+    output_dir = file_path.parent.parent / "output_data"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_file = output_dir / f"{file_path.stem}_check_report.csv"
+    results = []
 
     sample_rate: float | None = None
     header_row: int | None = None
@@ -79,12 +85,13 @@ def check(file_path: str | Path) -> None:
     # 找出非正常時間間隔
     discontinuous_mask = intervals.notna() & (intervals != expected_interval)
 
-    print(f"{file_path}")
-    print(f"Sample rate: {sample_rate} Hz")
-    print(f"Expected interval: {expected_interval} us")
-    print(f"Missing values: {missing_count}")
-    print(f"Duplicate timestamps: {int(duplicate_mask.sum())}")
-    print(f"Discontinuous timestamps: {int(discontinuous_mask.sum())}")
+    # Add summary results
+    results.append({"Type": "Summary", "File": str(file_path), "Value": ""})
+    results.append({"Type": "Sample rate", "File": "", "Value": f"{sample_rate} Hz"})
+    results.append({"Type": "Expected interval", "File": "", "Value": f"{expected_interval} us"})
+    results.append({"Type": "Missing values", "File": "", "Value": str(missing_count)})
+    results.append({"Type": "Duplicate timestamps", "File": "", "Value": str(int(duplicate_mask.sum()))})
+    results.append({"Type": "Discontinuous timestamps", "File": "", "Value": str(int(discontinuous_mask.sum()))})
 
     # 使用 enumerate，確保 current_index 是 int
     for current_index, is_discontinuous in enumerate(discontinuous_mask.to_numpy()):
@@ -106,11 +113,16 @@ def check(file_path: str | Path) -> None:
         # Time[us] 下一列，也就是實際 CSV 資料列
         csv_line = header_row + 2 + current_index
 
-        print(
-            f"line {csv_line}: "
-            f"Time discontinuity, "
-            f"{previous_time} → "
-            f"{current_time} us, "
-            f"Actual interval {actual_interval} us, "
-            f"Expected interval {expected_interval} us"
-        )
+        results.append({
+            "Type": "Time discontinuity",
+            "File": f"line {csv_line}",
+            "Value": f"{previous_time} → {current_time} us (actual: {actual_interval} us, expected: {expected_interval} us)"
+        })
+
+    # Write results to CSV file
+    with output_file.open("w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=["Type", "File", "Value"])
+        writer.writeheader()
+        writer.writerows(results)
+    
+    print(f"Report saved to: {output_file}")

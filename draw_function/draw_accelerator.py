@@ -1,14 +1,27 @@
+import sys
 from pathlib import Path
+from pathlib import Path as PathlibPath
 
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
+
+sys.path.insert(0, str(PathlibPath(__file__).parent.parent))
 
 import check_function as check
 import read_function as read
 
 
-def accelerator(file_path: str | Path) -> Figure:
-    file_path = Path(file_path)
+def accelerator(file_path: str | Path | None = None) -> Figure:
+    if file_path is None:
+        # Default to origin_data directory
+        file_path = Path(__file__).parent.parent / "origin_data"
+    else:
+        file_path = Path(file_path)
+
+    # Prepare output directory
+    output_dir = Path(__file__).parent.parent / "output_data"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
     data = read.accelerator(str(file_path / "accelerator.csv"))
     check.check(str(file_path / "accelerator.csv"))
 
@@ -31,7 +44,7 @@ def accelerator(file_path: str | Path) -> Figure:
     ax.grid()
     ax.legend()
     fig.savefig(
-        str(file_path / "acceleration_output.png"),
+        str(output_dir / "acceleration_output.png"),
         dpi=300,
     )
     return fig
