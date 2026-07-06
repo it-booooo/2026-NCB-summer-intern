@@ -27,7 +27,7 @@ class NoteEditor(QPlainTextEdit):
 
 
 class EventTable(QTableWidget):
-    DISPLAY_HEADERS = ["event type", "video time", "frame index", "note"]
+    DISPLAY_HEADERS = ["event type", "video time", "frame", "note"]
     DATA_KEYS = ["event_type", "video_time_sec", "frame_index", "note"]
 
     NOTE_COLUMN = 3
