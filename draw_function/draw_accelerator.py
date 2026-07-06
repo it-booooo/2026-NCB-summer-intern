@@ -15,27 +15,26 @@ def accelerator(file_path: str | Path | None = None) -> Figure:
     """Read/check accelerator data, draw waveform, and save the output image.
 
     Args:
-        file_path: Base directory containing input CSV files. Defaults to origin_data.
+        file_path: Base directory containing input CSV files. Defaults to input_data.
 
     Returns:
         Generated Matplotlib figure object.
     """
     if file_path is None:
-        # Default to origin_data directory
-        file_path = Path(__file__).parent.parent / "origin_data"
+        file_path = Path(__file__).parent.parent / "input_data"
     else:
         file_path = Path(file_path)
 
-    # Prepare output directory
     output_dir = Path(__file__).parent.parent / "output_data"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    data = read.accelerator(str(file_path / "accelerator.csv"))
-    check.check(str(file_path / "accelerator.csv"))
+    input_file = file_path / "accelerator.csv"
+    data = read.accelerator(str(input_file))
+    check.check(str(input_file))
 
     fig, ax = plt.subplots(figsize=(16, 4))
 
-    # 微秒轉換成秒
+    # Convert microseconds to seconds for plotting.
     data["time_s"] = data["time_us"] / 1e6
 
     ax.plot(
