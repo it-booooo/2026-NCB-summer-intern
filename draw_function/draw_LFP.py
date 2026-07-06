@@ -41,4 +41,8 @@ def LFP(file_path: str | Path, step: int = 100) -> Figure:
 
     ax.grid()
     ax.legend()
+    fig.savefig(
+        str(file_path / "LFP_output.png"),
+        dpi=300,
+    )
     return fig

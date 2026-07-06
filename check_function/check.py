@@ -1,72 +1,115 @@
+import csv
+from pathlib import Path
+
 import pandas as pd
 
-sample_rate = None
-start_index = None
 
+def check(file_path: str | Path) -> None:
+    file_path = Path(file_path)
 
-def check(file_path: str):
+    sample_rate: float | None = None
+    header_row: int | None = None
+    data_column_count: int | None = None
 
-    # 直接讀取文件來找到 Sample Rate（避免 pandas 解析元數據行時出錯）
-    sample_rate = None
-    with open(file_path, "r") as f:
-        for line_num, line in enumerate(f, 1):
-            if "Sample Rate (per channel)" in line:
-                # 從這一行提取 sample rate 值
-                parts = line.strip().split(",")
-                for i, part in enumerate(parts):
-                    if part.strip() == "Sample Rate (per channel)" and i + 1 < len(
-                        parts
-                    ):
-                        try:
-                            sample_rate = float(parts[i + 1])
-                        except ValueError:
-                            sample_rate = float(parts[i + 2])
+    # 先用 csv.reader 讀取前面的儀器資訊
+    with file_path.open(
+        "r",
+        encoding="utf-8-sig",
+        newline="",
+    ) as file:
+        reader = csv.reader(file)
+
+        for row_num, row in enumerate(reader):
+            # 去除每一格前後空白
+            row_values = [value.strip() for value in row]
+
+            if not row_values:
+                continue
+
+            # 找 Sample Rate
+            if row_values[0] == "Sample Rate (per channel)":
+                if len(row_values) < 2:
+                    raise ValueError("Sample Rate 後面沒有數值")
+
+                sample_rate = float(row_values[1])
+
+            # 找真正的資料標題列
+            if row_values[0] == "Time[us]":
+                header_row = row_num
+
+                # 排除最後因逗號產生的空欄位
+                data_column_count = sum(bool(value) for value in row_values)
                 break
 
-    # 現在讀取實際資料（跳過前 5 行元數據）
-    df = pd.read_csv(file_path, skiprows=5, header=None)
-    start_index = 0
-
     if sample_rate is None:
-        raise ValueError("Sample Rate not found in the file.")
-    expected_interval = 1_000_000 / sample_rate
+        raise ValueError("找不到 Sample Rate")
 
-    print(f"Sample rate: {sample_rate} Hz")
-    print(f"Expected time interval: {expected_interval} us")
-    print(f"file path: {file_path}")
+    if header_row is None:
+        raise ValueError("找不到 Time[us]")
 
-    previous_time: int | None = None
-    seen_times: set[int] = set()
+    if data_column_count is None:
+        raise ValueError("無法判斷資料欄位數量")
 
-    for row_num in range(start_index, len(df)):
-        current_time_value = pd.to_numeric(
-            df.iloc[row_num, 0],
-            errors="coerce",
-        )
+    # 現在才交給 Pandas 讀取真正的資料表
+    df = pd.read_csv(
+        file_path,
+        skiprows=header_row,
+        header=0,
+        usecols=range(data_column_count),
+        low_memory=False,
+    )
 
-        # 檢查時間缺值或不是數字
-        if pd.isna(current_time_value):
-            print(f"Row {row_num}: Missing or invalid time format")
+    expected_interval = round(1_000_000 / sample_rate)
+
+    # 第一欄是時間
+    times = pd.to_numeric(
+        df.iloc[:, 0],
+        errors="coerce",
+    )
+
+    # 檢查所有資料欄位的缺值
+    missing_count = int(df.isna().sum().sum())
+
+    # 檢查重複時間
+    duplicate_mask = times.duplicated(keep=False)
+
+    # 計算相鄰時間差
+    intervals = times.diff()
+
+    # 找出非正常時間間隔
+    discontinuous_mask = intervals.notna() & (intervals != expected_interval)
+
+    print(f"Sample rate：{sample_rate} Hz")
+    print(f"正常時間間隔：{expected_interval} us")
+    print(f"缺值數量：{missing_count}")
+    print(f"重複時間數量：{int(duplicate_mask.sum())}")
+    print(f"時間不連續數量：{int(discontinuous_mask.sum())}")
+
+    # 使用 enumerate，確保 current_index 是 int
+    for current_index, is_discontinuous in enumerate(discontinuous_mask.to_numpy()):
+        if not is_discontinuous:
             continue
 
-        current_time = int(current_time_value)
+        previous_value = times.iloc[current_index - 1]
+        current_value = times.iloc[current_index]
 
-        # 檢查重複時間
-        if current_time in seen_times:
-            print(f"Row {row_num}: Duplicate time {current_time} us")
+        if pd.isna(previous_value) or pd.isna(current_value):
+            continue
 
-        seen_times.add(current_time)
+        previous_time = int(previous_value)
+        current_time = int(current_value)
 
-        # 檢查時間連續性
-        if previous_time is not None:
-            interval = current_time - previous_time
+        actual_interval = current_time - previous_time
 
-            if interval != expected_interval:
-                print(
-                    f"Row {row_num}: Time discontinuity detected, "
-                    f"{previous_time} → {current_time} us, "
-                    f"actual interval {interval} us, "
-                    f"expected interval {expected_interval} us"
-                )
+        # DataFrame 第 0 列對應
+        # Time[us] 下一列，也就是實際 CSV 資料列
+        csv_line = header_row + 2 + current_index
 
-        previous_time = current_time
+        print(
+            f"CSV 第 {csv_line} 行："
+            f"時間不連續，"
+            f"{previous_time} → "
+            f"{current_time} us，"
+            f"實際間隔 {actual_interval} us，"
+            f"預期間隔 {expected_interval} us"
+        )

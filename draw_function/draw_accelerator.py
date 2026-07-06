@@ -30,4 +30,8 @@ def accelerator(file_path: str | Path) -> Figure:
 
     ax.grid()
     ax.legend()
+    fig.savefig(
+        str(file_path / "acceleration_output.png"),
+        dpi=300,
+    )
     return fig
