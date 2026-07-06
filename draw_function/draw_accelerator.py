@@ -12,6 +12,14 @@ import read_function as read
 
 
 def accelerator(file_path: str | Path | None = None) -> Figure:
+    """Read/check accelerator data, draw waveform, and save the output image.
+
+    Args:
+        file_path: Base directory containing input CSV files. Defaults to origin_data.
+
+    Returns:
+        Generated Matplotlib figure object.
+    """
     if file_path is None:
         # Default to origin_data directory
         file_path = Path(__file__).parent.parent / "origin_data"

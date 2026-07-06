@@ -2,15 +2,7 @@ import pandas as pd
 
 
 def accelerator(file_path: str) -> pd.DataFrame:
-    """
-    Reads an accelerator data file and returns a pandas DataFrame.
-
-    Parameters:
-    file_path (str): The path to the accelerator data file.
-
-    Returns:
-    pd.DataFrame: A DataFrame containing the data from the CSV file.
-    """
+    """Read accelerator CSV data and return a normalized DataFrame."""
     try:
         df = pd.read_csv(
             file_path,

@@ -12,8 +12,14 @@ import read_function as read
 
 
 def LFP(step: int = 100, file_path: str | Path | None = None) -> Figure:
-    """
-    default step = 100
+    """Read/check LFP data, draw waveform, and save the output image.
+
+    Args:
+        step: Downsampling interval for plotting. Use 0 to plot all points. Default is 100.
+        file_path: Base directory containing input CSV files. Defaults to origin_data.
+
+    Returns:
+        Generated Matplotlib figure object.
     """
 
     if file_path is None:
