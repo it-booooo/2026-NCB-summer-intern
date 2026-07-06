@@ -2,28 +2,22 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHeaderView,
-    QPlainTextEdit,
+    QLineEdit,
     QTableWidget,
     QTableWidgetItem,
 )
 
 
-class NoteEditor(QPlainTextEdit):
+class NoteEditor(QLineEdit):
     def __init__(self, text=""):
-        super().__init__()
+        super().__init__(text)
 
-        self.setPlainText(text)
-        self.setFixedHeight(30)
-        self.setFrameShape(QPlainTextEdit.NoFrame)
-
-        self.setLineWrapMode(QPlainTextEdit.NoWrap)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-
+        self.setFrame(False)
         self.setPlaceholderText("Add note...")
+        self.setClearButtonEnabled(True)
 
     def text(self):
-        return self.toPlainText()
+        return super().text()
 
 
 class EventTable(QTableWidget):
@@ -46,7 +40,7 @@ class EventTable(QTableWidget):
         self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
 
         self.verticalHeader().setVisible(False)
-        self.verticalHeader().setDefaultSectionSize(40)
+        self.verticalHeader().setDefaultSectionSize(32)
 
         header = self.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.Fixed)
@@ -56,7 +50,7 @@ class EventTable(QTableWidget):
 
         self.setColumnWidth(0, 78)
         self.setColumnWidth(1, 78)
-        self.setColumnWidth(2, 76)
+        self.setColumnWidth(2, 58)
 
         self.setStyleSheet(
             """
