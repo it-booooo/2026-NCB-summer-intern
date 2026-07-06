@@ -5,6 +5,8 @@ __pycache__/
 *.pyd
 # VS Code
 .vscode/
+.venv/
+*.py[cod]
 
 # Generated images
 *.png
