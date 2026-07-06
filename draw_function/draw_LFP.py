@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 
 import read_function as read
+import check_function as check
 
 
 def LFP(file_path: str | Path, step: int = 100) -> Figure:
@@ -11,7 +12,9 @@ def LFP(file_path: str | Path, step: int = 100) -> Figure:
     default step = 100
     """
 
-    data = read.LFP(str(file_path) + "/LFP.csv")
+    file_path = Path(file_path)
+    data = read.LFP(str(file_path / "LFP.csv"))
+    check.check(str(file_path / "LFP.csv"))
 
     fig, ax = plt.subplots(figsize=(16, 4))
 

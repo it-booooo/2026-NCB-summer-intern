@@ -3,11 +3,14 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 
+import check_function as check
 import read_function as read
 
 
 def accelerator(file_path: str | Path) -> Figure:
-    data = read.accelerator(str(file_path) + "/accelerator.csv")
+    file_path = Path(file_path)
+    data = read.accelerator(str(file_path / "accelerator.csv"))
+    check.check(str(file_path / "accelerator.csv"))
 
     fig, ax = plt.subplots(figsize=(16, 4))
 
