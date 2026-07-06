@@ -1,3 +1,16 @@
-*.mp4
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+# VS Code
 .vscode/
+
+# Generated images
+*.png
+
+*.csv
+
+*.mp4
+
 .venv/

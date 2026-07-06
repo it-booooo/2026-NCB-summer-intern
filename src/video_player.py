@@ -26,6 +26,13 @@ class VideoPlayer(QWidget):
     frame_changed = Signal(int, float)
 
     FIXED_VIDEO_FPS = 30.0
+    BUTTON_WIDTHS = {
+        "Play": 64,
+        "Stop": 64,
+        "Prev Frame": 88,
+        "Next Frame": 88,
+        "Rotate 180°": 100,
+    }
 
     def __init__(self):
         super().__init__()
@@ -56,18 +63,18 @@ class VideoPlayer(QWidget):
         self.prev_frame_button = QPushButton("Prev Frame")
         self.next_frame_button = QPushButton("Next Frame")
         self.rotate_button = QPushButton("Rotate 180°")
+        self.control_buttons = [
+            self.play_button,
+            self.stop_button,
+            self.prev_frame_button,
+            self.next_frame_button,
+            self.rotate_button,
+        ]
 
-        button_sizes = {
-            self.play_button: 64,
-            self.stop_button: 64,
-            self.prev_frame_button: 88,
-            self.next_frame_button: 88,
-            self.rotate_button: 100,
-        }
+        for button in self.control_buttons:
+            button.setFixedSize(self.BUTTON_WIDTHS[button.text()], 26)
 
-        for button, width in button_sizes.items():
-            button.setEnabled(False)
-            button.setFixedSize(width, 26)
+        self.set_controls_enabled(False)
 
         self.slider = QSlider(Qt.Horizontal)
         self.slider.setEnabled(False)
@@ -84,26 +91,25 @@ class VideoPlayer(QWidget):
         controls_layout.setContentsMargins(0, 0, 0, 0)
         controls_layout.setSpacing(4)
         controls_layout.addStretch()
-        controls_layout.addWidget(self.play_button)
-        controls_layout.addWidget(self.stop_button)
-        controls_layout.addWidget(self.prev_frame_button)
-        controls_layout.addWidget(self.next_frame_button)
-        controls_layout.addWidget(self.rotate_button)
+        for button in self.control_buttons:
+            controls_layout.addWidget(button)
         controls_layout.addStretch()
 
         main_layout = QVBoxLayout()
         main_layout.setContentsMargins(4, 4, 4, 4)
         main_layout.setSpacing(2)
-        main_layout.addWidget(self.video_label, stretch=1)
-        main_layout.addWidget(self.info_label)
-        main_layout.addWidget(self.time_label)
-        main_layout.addWidget(self.slider)
+        for widget in [self.video_label, self.info_label, self.time_label, self.slider]:
+            main_layout.addWidget(widget)
+        main_layout.setStretch(0, 1)
         main_layout.addLayout(controls_layout)
-
         self.setLayout(main_layout)
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.play_next_frame)
+
+    def set_controls_enabled(self, enabled):
+        for button in self.control_buttons:
+            button.setEnabled(enabled)
 
     def has_video(self):
         return self.cap is not None and self.cap.isOpened()
@@ -147,16 +153,10 @@ class VideoPlayer(QWidget):
 
         self.slider.setRange(0, max(self.total_frames - 1, 0))
         self.slider.setEnabled(self.total_frames > 0)
-
-        self.play_button.setEnabled(True)
-        self.stop_button.setEnabled(True)
-        self.prev_frame_button.setEnabled(True)
-        self.next_frame_button.setEnabled(True)
-        self.rotate_button.setEnabled(True)
+        self.set_controls_enabled(True)
 
         self.play_button.setText("Play")
         self.rotate_button.setText("Rotate 180°")
-
         return self.show_frame(0)
 
     def toggle_play(self):
@@ -169,7 +169,6 @@ class VideoPlayer(QWidget):
 
         self.is_playing = True
         self.play_button.setText("Pause")
-
         interval_ms = int(1000 / self.fps) if self.fps else 33
         self.timer.start(max(interval_ms, 1))
 
@@ -179,28 +178,21 @@ class VideoPlayer(QWidget):
         self.play_button.setText("Play")
 
     def stop(self):
-        if not self.has_video():
-            return
-
-        self.pause()
-        self.seek_frame(0)
+        if self.has_video():
+            self.pause()
+            self.seek_frame(0)
 
     def play_next_frame(self):
-        if not self.has_video():
-            self.pause()
-            return
-
-        if self.current_frame >= self.total_frames - 1:
+        if not self.has_video() or self.current_frame >= self.total_frames - 1:
             self.pause()
             return
 
         success, frame = self.cap.read()
 
-        if not success:
+        if success:
+            self.display_frame(frame, self.current_frame + 1)
+        else:
             self.pause()
-            return
-
-        self.display_frame(frame, self.current_frame + 1)
 
     def advance_one_frame(self):
         self.pause()
@@ -218,20 +210,14 @@ class VideoPlayer(QWidget):
         self.show_frame(frame_index)
 
     def seek_time_sec(self, time_sec):
-        frame_index = self.time_sec_to_frame(time_sec)
-        self.seek_frame(frame_index)
+        self.seek_frame(self.time_sec_to_frame(time_sec))
 
     def toggle_rotate_180(self):
         if not self.has_video():
             return
 
         self.rotate_180_enabled = not self.rotate_180_enabled
-
-        if self.rotate_180_enabled:
-            self.rotate_button.setText("Rotation: 180°")
-        else:
-            self.rotate_button.setText("Rotate 180°")
-
+        self.rotate_button.setText("Rotation: 180°" if self.rotate_180_enabled else "Rotate 180°")
         self.show_frame(self.current_frame)
 
     def show_frame(self, frame_index):
@@ -240,31 +226,27 @@ class VideoPlayer(QWidget):
 
         success, frame = read_frame(self.cap, frame_index)
 
-        if not success:
-            return False
+        if success:
+            self.display_frame(frame, frame_index)
 
-        self.display_frame(frame, frame_index)
-        return True
+        return success
 
     def display_frame(self, frame, frame_index):
         if self.rotate_180_enabled:
             frame = cv2.rotate(frame, cv2.ROTATE_180)
 
         self.current_frame = frame_index
-
         self.slider.blockSignals(True)
         self.slider.setValue(frame_index)
         self.slider.blockSignals(False)
 
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         height, width, channels = frame_rgb.shape
-        bytes_per_line = channels * width
-
         image = QImage(
             frame_rgb.data,
             width,
             height,
-            bytes_per_line,
+            channels * width,
             QImage.Format_RGB888,
         )
 
@@ -277,27 +259,22 @@ class VideoPlayer(QWidget):
 
         self.info_label.setText(
             f"Frame: {frame_index} / {max(self.total_frames - 1, 0)} | "
-            f"Detected FPS: {detected_fps:.2f} | "
-            f"Using FPS: {self.fps:.2f}"
+            f"Detected FPS: {detected_fps:.2f} | Using FPS: {self.fps:.2f}"
         )
-
-        self.time_label.setText(
-            f"{format_time(current_sec)} / {format_time(total_sec)}"
-        )
-
+        self.time_label.setText(f"{format_time(current_sec)} / {format_time(total_sec)}")
         self.frame_changed.emit(frame_index, current_sec)
 
     def update_video_display(self):
         if self.current_pixmap is None:
             return
 
-        scaled_pixmap = self.current_pixmap.scaled(
-            self.video_label.size(),
-            Qt.KeepAspectRatio,
-            Qt.SmoothTransformation,
+        self.video_label.setPixmap(
+            self.current_pixmap.scaled(
+                self.video_label.size(),
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation,
+            )
         )
-
-        self.video_label.setPixmap(scaled_pixmap)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
