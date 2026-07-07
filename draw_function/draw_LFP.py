@@ -62,7 +62,7 @@ def LFP(
         raise ValueError(f"LFP channels must be between 1 and 16: {invalid_channels}")
 
     if compact:
-        fig, ax = plt.subplots(figsize=(8, 2.6), constrained_layout=True)
+        fig, ax = plt.subplots(figsize=(8, 2.2), constrained_layout=True)
         for channel in channel_numbers:
             if channel in initial_channels:
                 ax.plot(

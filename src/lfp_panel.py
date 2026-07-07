@@ -16,28 +16,26 @@ from PySide6.QtWidgets import (
 class LfpPanel(QWidget):
     def __init__(self):
         super().__init__()
-        self.setMinimumHeight(400)
+        self.setMinimumHeight(300)
 
         self.lfp_path = None
         self.axis_path = None
-        self.time_marker_path = None
         self.lfp_canvas = None
         self.axis_canvas = None
 
         self.lfp_file_label = QLabel("LFP CSV: Not imported")
         self.axis_file_label = QLabel("3-axis CSV: Not imported")
-        self.time_marker_file_label = QLabel("Time marker CSV: Not imported")
 
         self.lfp_channel_selector = QComboBox()
         self.lfp_channel_selector.addItem("No LFP channel")
         self.lfp_channel_selector.setEnabled(False)
         self.lfp_channel_selector.currentIndexChanged.connect(self.plot_lfp)
 
-        self.time_marker_label = QLabel("First TTL marker: --")
-
         waveform_grid = QGridLayout()
-        waveform_grid.setVerticalSpacing(8)
+        waveform_grid.setVerticalSpacing(4)
         waveform_grid.setColumnStretch(1, 1)
+        waveform_grid.setRowStretch(0, 1)
+        waveform_grid.setRowStretch(1, 1)
 
         self.lfp_waveform_area = self.create_waveform_area("Import LFP CSV to show waveform")
         self.axis_waveform_area = self.create_waveform_area("Import 3-axis CSV to show waveform")
@@ -56,17 +54,12 @@ class LfpPanel(QWidget):
         layout.addWidget(self.lfp_channel_selector)
 
         layout.addWidget(self.axis_file_label)
-
-        layout.addWidget(self.time_marker_file_label)
-        layout.addWidget(self.time_marker_label)
-
-        layout.addLayout(waveform_grid)
+        layout.addLayout(waveform_grid, stretch=1)
 
         self.setLayout(layout)
 
     def create_waveform_area(self, text):
         frame = QFrame()
-        frame.setMinimumHeight(145)
         frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         frame.setStyleSheet(
             """
@@ -101,7 +94,6 @@ class LfpPanel(QWidget):
                 widget.setParent(None)
 
         canvas = FigureCanvas(fig)
-        canvas.setMinimumHeight(135)
         canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         layout.addWidget(canvas)
         setattr(self, canvas_attr, canvas)
@@ -167,16 +159,3 @@ class LfpPanel(QWidget):
         self.axis_path = info["path"]
         self.axis_file_label.setText(f"3-axis CSV: {info['filename']} (channel 260)")
         self.plot_axis()
-
-    def set_time_marker_info(self, info):
-        self.time_marker_path = info["path"]
-        self.time_marker_file_label.setText(f"Time marker CSV: {info['filename']}")
-
-        first_marker_sec = info.get("first_marker_sec")
-
-        if first_marker_sec is None:
-            self.time_marker_label.setText("First TTL marker: --")
-        else:
-            self.time_marker_label.setText(
-                f"First TTL marker: {first_marker_sec:.6f} sec"
-            )

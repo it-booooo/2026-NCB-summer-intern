@@ -36,19 +36,21 @@ def parse_lfp_csv_info(path):
 
 
 def parse_time_marker_csv_info(path):
-    rows = read_csv_preview(path, max_rows=5)
+    rows = []
+    with open(path, "r", encoding="utf-8-sig", newline="") as csv_file:
+        rows = list(csv.reader(csv_file))
 
     if len(rows) < 2:
         return {
             "path": path,
             "filename": Path(path).name,
             "marker_count": 0,
+            "markers": [],
             "first_marker_us": None,
             "first_marker_sec": None,
         }
 
     header = rows[0]
-    first_data = rows[1]
 
     time_column_name = None
 
@@ -57,20 +59,31 @@ def parse_time_marker_csv_info(path):
             time_column_name = column
             break
 
-    first_marker_us = None
+    markers = []
 
     if time_column_name is not None:
         column_index = header.index(time_column_name)
 
-        if column_index < len(first_data):
-            first_marker_us = float(first_data[column_index])
+        for row in rows[1:]:
+            if column_index >= len(row) or not row[column_index]:
+                continue
 
+            marker_us = float(row[column_index])
+            markers.append(
+                {
+                    "time_us": marker_us,
+                    "time_sec": marker_us / 1_000_000,
+                }
+            )
+
+    first_marker_us = markers[0]["time_us"] if markers else None
     first_marker_sec = first_marker_us / 1_000_000 if first_marker_us is not None else None
 
     return {
         "path": path,
         "filename": Path(path).name,
-        "marker_count": max(len(rows) - 1, 0),
+        "marker_count": len(markers),
+        "markers": markers,
         "time_column_name": time_column_name,
         "first_marker_us": first_marker_us,
         "first_marker_sec": first_marker_sec,

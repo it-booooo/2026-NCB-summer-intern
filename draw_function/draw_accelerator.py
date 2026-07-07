@@ -39,7 +39,7 @@ def accelerator(
         raise ValueError("3-axis CSV must include channel 260")
 
     fig, ax = plt.subplots(
-        figsize=(8, 2.6) if compact else (16, 4),
+        figsize=(8, 2.2) if compact else (16, 4),
         constrained_layout=compact,
     )
 
