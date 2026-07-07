@@ -1,5 +1,5 @@
-from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QImage, QPixmap
+from PySide6.QtCore import QPoint, QRect, Qt, QTimer, Signal
+from PySide6.QtGui import QImage, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
@@ -20,8 +20,166 @@ from src.video_utils import (
 )
 
 
+class RoiVideoLabel(QLabel):
+    roi_selected = Signal(tuple)
+
+    def __init__(self, text):
+        super().__init__(text)
+        self.selecting_roi = False
+        self.drag_start = None
+        self.drag_end = None
+        self.hover_pos = None
+        self.display_rect = QRect()
+        self.frame_size = None
+
+        # 儲存已完成選取的 LED ROI，座標格式是影片原始 frame 座標：
+        # (x, y, width, height)
+        self.saved_roi = None
+
+    def set_roi_selection_enabled(self, enabled):
+        self.selecting_roi = enabled
+        self.setMouseTracking(enabled)
+        self.setCursor(Qt.CrossCursor if enabled else Qt.ArrowCursor)
+        self.drag_start = None
+        self.drag_end = None
+        self.hover_pos = None
+        self.update()
+
+    def set_saved_roi(self, roi):
+        """儲存 LED ROI，讓方框在影片上持續顯示。"""
+        self.saved_roi = roi
+        self.update()
+
+    def clear_saved_roi(self):
+        """清除已儲存的 LED ROI。之後若需要重新框選可以用到。"""
+        self.saved_roi = None
+        self.update()
+
+    def set_display_geometry(self, display_rect, frame_size):
+        self.display_rect = display_rect
+        self.frame_size = frame_size
+        self.update()
+
+    def mousePressEvent(self, event):
+        if self.selecting_roi and self.display_rect.contains(event.position().toPoint()):
+            self.drag_start = event.position().toPoint()
+            self.drag_end = self.drag_start
+            self.update()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self.selecting_roi and self.drag_start is None:
+            self.hover_pos = event.position().toPoint()
+            self.update()
+            return
+
+        if self.selecting_roi and self.drag_start is not None:
+            self.drag_end = event.position().toPoint()
+            self.update()
+            return
+
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if self.selecting_roi and self.drag_start is not None:
+            self.drag_end = event.position().toPoint()
+            roi = self.current_roi()
+            self.set_roi_selection_enabled(False)
+
+            if roi is not None:
+                self.set_saved_roi(roi)
+                self.roi_selected.emit(roi)
+
+            return
+
+        super().mouseReleaseEvent(event)
+
+    def current_roi(self):
+        if not self.frame_size or self.drag_start is None or self.drag_end is None:
+            return None
+
+        rect = QRect(self.drag_start, self.drag_end).normalized()
+        rect = rect.intersected(self.display_rect)
+
+        if rect.width() < 3 or rect.height() < 3:
+            return None
+
+        frame_width, frame_height = self.frame_size
+        scale_x = frame_width / self.display_rect.width()
+        scale_y = frame_height / self.display_rect.height()
+
+        x = int((rect.x() - self.display_rect.x()) * scale_x)
+        y = int((rect.y() - self.display_rect.y()) * scale_y)
+        width = int(rect.width() * scale_x)
+        height = int(rect.height() * scale_y)
+
+        return (x, y, width, height)
+
+    def roi_to_display_rect(self, roi):
+        """把影片原始 frame 座標的 ROI 轉成 QLabel 顯示座標。"""
+        if roi is None or not self.frame_size or self.display_rect.isNull():
+            return None
+
+        frame_width, frame_height = self.frame_size
+        if frame_width <= 0 or frame_height <= 0:
+            return None
+
+        x, y, width, height = roi
+
+        scale_x = self.display_rect.width() / frame_width
+        scale_y = self.display_rect.height() / frame_height
+
+        display_x = self.display_rect.x() + int(x * scale_x)
+        display_y = self.display_rect.y() + int(y * scale_y)
+        display_w = int(width * scale_x)
+        display_h = int(height * scale_y)
+
+        return QRect(display_x, display_y, display_w, display_h)
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+
+        painter = QPainter(self)
+
+        # 1. 永久顯示已儲存的 LED ROI
+        if self.saved_roi is not None:
+            saved_rect = self.roi_to_display_rect(self.saved_roi)
+            if saved_rect is not None:
+                painter.setPen(QPen(Qt.green, 2, Qt.SolidLine))
+                painter.drawRect(saved_rect)
+
+        # 2. 沒有進入 ROI 選取模式時，只顯示永久 ROI，不畫暫時框
+        if not self.selecting_roi:
+            return
+
+        # 3. ROI 選取模式：顯示紅色游標小方框或拖曳框
+        painter.setPen(QPen(Qt.red, 2, Qt.SolidLine))
+
+        if self.drag_start is None and self.hover_pos is not None:
+            painter.drawRect(
+                QRect(
+                    self.hover_pos.x() - 8,
+                    self.hover_pos.y() - 8,
+                    16,
+                    16,
+                )
+            )
+            return
+
+        if self.drag_start is None or self.drag_end is None:
+            return
+
+        drag_rect = QRect(self.drag_start, self.drag_end).normalized()
+        drag_rect = drag_rect.intersected(self.display_rect)
+
+        if not drag_rect.isNull():
+            painter.drawRect(drag_rect)
+
+
 class VideoPlayer(QWidget):
     frame_changed = Signal(int, float)
+    roi_selected = Signal(tuple)
 
     FIXED_VIDEO_FPS = 30.0
     BUTTON_WIDTHS = {
@@ -45,11 +203,16 @@ class VideoPlayer(QWidget):
         self.rotate_180_enabled = False
         self.current_pixmap = None
 
-        self.video_label = QLabel("No video loaded")
+        # 儲存目前 LED ROI，座標格式是影片原始 frame 座標：
+        # (x, y, width, height)
+        self.led_roi = None
+
+        self.video_label = RoiVideoLabel("No video loaded")
         self.video_label.setAlignment(Qt.AlignCenter)
         self.video_label.setMinimumSize(360, 203)
-        self.video_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.video_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
         self.video_label.setStyleSheet("background: #111; color: #ddd;")
+        self.video_label.roi_selected.connect(self.set_led_roi_from_label)
 
         self.info_label = QLabel("Frame: -- | FPS: --")
         self.time_label = QLabel("00:00.000 / 00:00.000")
@@ -89,21 +252,47 @@ class VideoPlayer(QWidget):
         controls_layout.setContentsMargins(0, 0, 0, 0)
         controls_layout.setSpacing(4)
         controls_layout.addStretch()
+
         for button in self.control_buttons:
             controls_layout.addWidget(button)
+
         controls_layout.addStretch()
 
         main_layout = QVBoxLayout()
         main_layout.setContentsMargins(4, 4, 4, 4)
         main_layout.setSpacing(2)
+
         for widget in [self.video_label, self.info_label, self.time_label, self.slider]:
             main_layout.addWidget(widget)
+
         main_layout.setStretch(0, 1)
         main_layout.addLayout(controls_layout)
         self.setLayout(main_layout)
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.play_next_frame)
+
+    def start_roi_selection(self):
+        if self.has_video() and self.current_pixmap is not None:
+            self.pause()
+            self.video_label.set_roi_selection_enabled(True)
+
+    def set_led_roi_from_label(self, roi):
+        """接收 RoiVideoLabel 框選完成後送出的 ROI。"""
+        self.set_led_roi(roi)
+        self.roi_selected.emit(roi)
+
+    def set_led_roi(self, roi):
+        """讓外部也可以設定 LED ROI，並確保影片上會持續顯示。"""
+        self.led_roi = roi
+        self.video_label.set_saved_roi(roi)
+        self.update_video_display()
+
+    def clear_led_roi(self):
+        """清除 LED ROI。之後如果要做 Clear ROI 按鈕，可以直接呼叫這個。"""
+        self.led_roi = None
+        self.video_label.clear_saved_roi()
+        self.update_video_display()
 
     def set_controls_enabled(self, enabled):
         for button in self.control_buttons:
@@ -151,12 +340,16 @@ class VideoPlayer(QWidget):
         self.is_playing = False
         self.rotate_180_enabled = False
 
+        # 換影片時清掉舊影片的 LED ROI，避免座標套到新影片。
+        self.clear_led_roi()
+
         self.slider.setRange(0, max(self.total_frames - 1, 0))
         self.slider.setEnabled(self.total_frames > 0)
         self.set_controls_enabled(True)
 
         self.play_button.setText("Play")
         self.rotate_button.setText("Rotate 180°")
+
         return self.show_frame(0)
 
     def toggle_play(self):
@@ -169,6 +362,7 @@ class VideoPlayer(QWidget):
 
         self.is_playing = True
         self.play_button.setText("Pause")
+
         interval_ms = int(1000 / self.fps) if self.fps else 33
         self.timer.start(max(interval_ms, 1))
 
@@ -217,7 +411,9 @@ class VideoPlayer(QWidget):
             return
 
         self.rotate_180_enabled = not self.rotate_180_enabled
-        self.rotate_button.setText("Rotation: 180°" if self.rotate_180_enabled else "Rotate 180°")
+        self.rotate_button.setText(
+            "Rotation: 180°" if self.rotate_180_enabled else "Rotate 180°"
+        )
         self.show_frame(self.current_frame)
 
     def show_frame(self, frame_index):
@@ -238,12 +434,14 @@ class VideoPlayer(QWidget):
             frame = cv2.rotate(frame, cv2.ROTATE_180)
 
         self.current_frame = frame_index
+
         self.slider.blockSignals(True)
         self.slider.setValue(frame_index)
         self.slider.blockSignals(False)
 
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         height, width, channels = frame_rgb.shape
+
         image = QImage(
             frame_rgb.data,
             width,
@@ -263,20 +461,36 @@ class VideoPlayer(QWidget):
             f"Frame: {frame_index} / {max(self.total_frames - 1, 0)} | "
             f"Detected FPS: {detected_fps:.2f} | Using FPS: {self.fps:.2f}"
         )
-        self.time_label.setText(f"{format_time(current_sec)} / {format_time(total_sec)}")
+
+        self.time_label.setText(
+            f"{format_time(current_sec)} / {format_time(total_sec)}"
+        )
+
         self.frame_changed.emit(frame_index, current_sec)
 
     def update_video_display(self):
         if self.current_pixmap is None:
             return
 
-        self.video_label.setPixmap(
-            self.current_pixmap.scaled(
-                self.video_label.size(),
-                Qt.KeepAspectRatio,
-                Qt.SmoothTransformation,
-            )
+        scaled_pixmap = self.current_pixmap.scaled(
+            self.video_label.size(),
+            Qt.KeepAspectRatio,
+            Qt.SmoothTransformation,
         )
+
+        x = (self.video_label.width() - scaled_pixmap.width()) // 2
+        y = (self.video_label.height() - scaled_pixmap.height()) // 2
+
+        self.video_label.set_display_geometry(
+            QRect(QPoint(x, y), scaled_pixmap.size()),
+            (self.current_pixmap.width(), self.current_pixmap.height()),
+        )
+
+        self.video_label.setPixmap(scaled_pixmap)
+
+        # setPixmap 後主畫面會重繪，所以這裡補 update，
+        # 讓 QLabel 的 paintEvent 重新把 LED ROI 畫上去。
+        self.video_label.update()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)

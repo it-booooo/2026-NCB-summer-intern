@@ -31,9 +31,8 @@ class EventTable(QTableWidget):
 
         self.setHorizontalHeaderLabels(self.DISPLAY_HEADERS)
 
-        self.setSelectionBehavior(QAbstractItemView.SelectItems)
-        self.setSelectionMode(QAbstractItemView.NoSelection)
-        self.setFocusPolicy(Qt.NoFocus)
+        self.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.setSelectionMode(QAbstractItemView.SingleSelection)
 
         self.setShowGrid(True)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)

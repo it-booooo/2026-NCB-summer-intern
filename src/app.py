@@ -16,6 +16,7 @@ from .analysis import AnalysisMenuController
 from .event_table import EventTable
 from .export import export_events_csv, export_events_excel
 from .lfp_panel import LfpPanel
+from .led_worker import LedDetectionWorker
 from .marker_panel import MarkerPanel
 from .sync_panel import SyncPanel
 from src.ttl_panel import TtlPanel
@@ -37,11 +38,18 @@ class MainWindow(QMainWindow):
         self.lfp_panel = LfpPanel()
         self.sync_panel = SyncPanel()
         self.ttl_panel = TtlPanel()
-        self.marker_panel = MarkerPanel(self.event_table, self.add_event)
+        self.marker_panel = MarkerPanel(
+            self.event_table,
+            self.add_event,
+            self.select_led_roi,
+        )
         self.analysis_controller = AnalysisMenuController(self)
         self.lfp_info = None
         self.axis_info = None
         self.timeMarker_info = None
+        self.led_roi = None
+        self.led_worker = None
+        self.video_player.roi_selected.connect(self.set_led_roi)
 
         self.create_menu()
         self.create_layout()
@@ -116,7 +124,10 @@ class MainWindow(QMainWindow):
         lower_splitter = QSplitter(Qt.Orientation.Horizontal)
         lower_splitter.addWidget(sync_group)
         lower_splitter.addWidget(video_group)
-        lower_splitter.setSizes([820, 420])
+        lower_splitter.setChildrenCollapsible(False)
+        lower_splitter.setStretchFactor(0, 1)
+        lower_splitter.setStretchFactor(1, 1)
+        lower_splitter.setSizes([640, 640])
 
         main_content = QWidget()
         main_layout = QVBoxLayout()
@@ -167,9 +178,107 @@ class MainWindow(QMainWindow):
     def hide_marker_panel(self):
         self.side_panel.hide()
 
+    def select_led_roi(self):
+        self.analysis_controller.select_led_roi()
+
+    def set_led_roi(self, roi):
+        self.led_roi = roi
+        self.sync_panel.set_led_roi(roi)
+        self.start_led_detection()
+
+    def start_led_detection(self):
+        if not self.video_player.has_video() or self.led_roi is None:
+            return
+
+        if self.led_worker is not None and self.led_worker.isRunning():
+            if not self.stop_led_detection(wait=True):
+                QMessageBox.information(
+                    self,
+                    "LED detection",
+                    "LED detection is still stopping. Please try again in a moment.",
+                )
+                return
+
+        self.sync_panel.set_led_detection_status("LED detection: analyzing...")
+        self.led_worker = LedDetectionWorker(
+            video_path=self.video_player.video_path,
+            roi=self.led_roi,
+            rotate_180=self.video_player.rotate_180_enabled,
+            fps=self.video_player.fps,
+            baseline_frame=self.video_player.current_frame,
+        )
+        self.led_worker.result_ready.connect(self.finish_led_detection)
+        self.led_worker.failed.connect(self.fail_led_detection)
+        self.led_worker.finished.connect(self.cleanup_led_worker)
+        self.led_worker.start()
+
+    def stop_led_detection(self, wait=False):
+        if self.led_worker is None:
+            return True
+
+        if self.led_worker.isRunning():
+            self.led_worker.requestInterruption()
+            if wait:
+                self.led_worker.wait(3000)
+
+        return not self.led_worker.isRunning()
+
+    def finish_led_detection(self, points, threshold, events, baseline, stats):
+        if self.sender() is not self.led_worker:
+            return
+
+        self.sync_panel.set_led_analysis(
+            points,
+            threshold,
+            events,
+            baseline=baseline,
+            stats=stats,
+        )
+        self.add_led_events(events)
+        self.sync_panel.set_led_detection_status(
+            f"LED detection: {len(events) // 2} intervals | "
+            f"baseline={baseline:.4f} | threshold={threshold:.4f} | "
+            f"max={stats['max']:.4f} at {stats['peak_time_sec']:.3f}s"
+        )
+
+    def fail_led_detection(self, message):
+        if self.sender() is not self.led_worker:
+            return
+
+        self.sync_panel.set_led_detection_status("LED detection: failed")
+        QMessageBox.warning(self, "LED detection failed", message)
+
+    def cleanup_led_worker(self):
+        worker = self.sender()
+        if worker is not None:
+            worker.deleteLater()
+
+        if worker is self.led_worker:
+            self.led_worker = None
+
     def import_video(self):
+        if not self.stop_led_detection(wait=True):
+            QMessageBox.information(
+                self,
+                "LED detection",
+                "LED detection is still stopping. Please try again in a moment.",
+            )
+            return
+
         if self.video_player.load_video():
             self.sync_panel.set_video_path(self.video_player.video_path)
+
+    def closeEvent(self, event):
+        if self.stop_led_detection(wait=True):
+            event.accept()
+            return
+
+        QMessageBox.information(
+            self,
+            "LED detection",
+            "LED detection is still stopping. Please close the window again in a moment.",
+        )
+        event.ignore()
 
     def import_lfp(self):
         path = self.open_csv_file("Import LFP (.csv)")
@@ -208,6 +317,18 @@ class MainWindow(QMainWindow):
             frame_index=self.video_player.current_frame,
             note="",
         )
+
+    def add_led_events(self, led_events):
+        for event in led_events:
+            self.event_table.add_event(
+                event_type=event.event_type,
+                video_time_sec=event.video_time_sec,
+                frame_index=event.frame_index,
+                note=f"brightness={event.brightness:.4f}",
+            )
+
+        if led_events:
+            self.show_marker_panel()
 
     def export_markers_csv(self):
         self.export_markers("csv")
