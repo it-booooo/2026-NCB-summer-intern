@@ -98,7 +98,7 @@ class MainWindow(QMainWindow):
         lfp_group = self.create_group("Waveform Area", self.lfp_panel)
         lfp_group.setFixedHeight(self.WAVEFORM_AREA_HEIGHT)
         sync_group = self.create_group("Synchronization Area", self.sync_panel)
-        ttl_group = self.create_group("TTL", self.ttl_panel)
+        ttl_group = self.create_group("TTL", self.ttl_panel, margins=(6, 10, 6, 6))
         marker_group = self.create_group("Video Marker", self.marker_panel)
 
         video_group = QGroupBox("Behavior Video")
@@ -130,20 +130,24 @@ class MainWindow(QMainWindow):
         self.side_panel.setFixedWidth(self.MARKER_PANEL_WIDTH)
 
         close_button = QPushButton("X")
-        close_button.setFixedWidth(36)
+        close_button.setObjectName("sidebarCloseButton")
+        close_button.setFlat(True)
+        close_button.setFixedSize(16, 16)
         close_button.clicked.connect(self.hide_marker_panel)
 
         close_layout = QHBoxLayout()
-        close_layout.setContentsMargins(0, 0, 0, 0)
+        close_layout.setContentsMargins(0, 0, 2, 0)
+        close_layout.setSpacing(0)
         close_layout.addStretch()
         close_layout.addWidget(close_button)
 
         side_layout = QVBoxLayout()
         side_layout.setContentsMargins(0, 0, 0, 0)
-        side_layout.setSpacing(4)
+        side_layout.setSpacing(0)
         side_layout.addLayout(close_layout)
-        side_layout.addWidget(ttl_group, stretch=1)
-        side_layout.addWidget(marker_group, stretch=2)
+        side_layout.addWidget(ttl_group, stretch=2)
+        side_layout.addSpacing(6)
+        side_layout.addWidget(marker_group, stretch=3)
         self.side_panel.setLayout(side_layout)
         self.side_panel.hide()
 

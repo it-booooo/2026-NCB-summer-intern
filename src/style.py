@@ -47,7 +47,7 @@ QGroupBox {
     font-weight: bold;
     color: #111111;
     border: 1px solid #111111;
-    margin-top: 10px;
+    margin-top: 12px;
     background-color: #ffffff;
 }
 
@@ -55,7 +55,7 @@ QGroupBox::title {
     subcontrol-origin: margin;
     subcontrol-position: top left;
     left: 8px;
-    padding: 0 6px;
+    padding: 1px 6px;
     border: 1px solid #111111;
     color: #111111;
     background-color: #ffffff;
@@ -86,6 +86,24 @@ QPushButton:pressed {
 QPushButton:disabled {
     background-color: #eeeeee;
     color: #888888;
+}
+
+QPushButton#sidebarCloseButton {
+    background-color: transparent;
+    color: #111111;
+    border: none;
+    padding: 0;
+    font-weight: bold;
+}
+
+QPushButton#sidebarCloseButton:hover {
+    background-color: #e6e6e6;
+    border: none;
+}
+
+QPushButton#sidebarCloseButton:pressed {
+    background-color: #d8d8d8;
+    border: none;
 }
 
 QComboBox {
