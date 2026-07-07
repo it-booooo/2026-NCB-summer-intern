@@ -12,3 +12,7 @@ __pycache__/
 *.png
 
 *.csv
+
+*.mp4
+
+.venv/

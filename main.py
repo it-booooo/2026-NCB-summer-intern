@@ -1,10 +1,20 @@
 import sys
+
 from PySide6.QtWidgets import QApplication
+
 from src.app import MainWindow
+from src.style import APP_STYLE
 
-app = QApplication(sys.argv)
 
-window = MainWindow()
-window.show()
+def main():
+    app = QApplication(sys.argv)
+    app.setStyleSheet(APP_STYLE)
 
-sys.exit(app.exec())
+    window = MainWindow()
+    window.show()
+
+    sys.exit(app.exec())
+
+
+if __name__ == "__main__":
+    main()
