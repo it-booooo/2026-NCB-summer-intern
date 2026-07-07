@@ -3,6 +3,12 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+
+build/
+dist/
+*.exe
+*.spec
+
 # VS Code
 .vscode/
 .venv/
