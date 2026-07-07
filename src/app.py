@@ -24,6 +24,7 @@ from src.video_player import VideoPlayer
 
 class MainWindow(QMainWindow):
     MARKER_PANEL_WIDTH = 300
+    WAVEFORM_AREA_HEIGHT = 450
 
     def __init__(self):
         super().__init__()
@@ -92,6 +93,7 @@ class MainWindow(QMainWindow):
 
     def create_layout(self):
         lfp_group = self.create_group("Waveform Area", self.lfp_panel)
+        lfp_group.setFixedHeight(self.WAVEFORM_AREA_HEIGHT)
         sync_group = self.create_group("Synchronization Area", self.sync_panel)
 
         video_group = QGroupBox("Behavior Video")
@@ -116,10 +118,13 @@ class MainWindow(QMainWindow):
         lower_splitter.addWidget(video_group)
         lower_splitter.setSizes([820, 420])
 
-        main_content = QSplitter(Qt.Vertical)
-        main_content.addWidget(lfp_group)
-        main_content.addWidget(lower_splitter)
-        main_content.setSizes([260, 400])
+        main_content = QWidget()
+        main_layout = QVBoxLayout()
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(4)
+        main_layout.addWidget(lfp_group)
+        main_layout.addWidget(lower_splitter, stretch=1)
+        main_content.setLayout(main_layout)
 
         self.marker_panel.setFixedWidth(self.MARKER_PANEL_WIDTH)
         self.marker_panel.hide()

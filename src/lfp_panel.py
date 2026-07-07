@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QLabel,
     QMessageBox,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -15,13 +16,13 @@ from PySide6.QtWidgets import (
 class LfpPanel(QWidget):
     def __init__(self):
         super().__init__()
+        self.setMinimumHeight(400)
 
         self.lfp_path = None
         self.axis_path = None
         self.time_marker_path = None
         self.lfp_canvas = None
         self.axis_canvas = None
-        self.marker_canvas = None
 
         self.lfp_file_label = QLabel("LFP CSV: Not imported")
         self.axis_file_label = QLabel("3-axis CSV: Not imported")
@@ -32,19 +33,14 @@ class LfpPanel(QWidget):
         self.lfp_channel_selector.setEnabled(False)
         self.lfp_channel_selector.currentIndexChanged.connect(self.plot_lfp)
 
-        self.axis_channel_selector = QComboBox()
-        self.axis_channel_selector.addItem("No 3-axis channel")
-        self.axis_channel_selector.setEnabled(False)
-        self.axis_channel_selector.currentIndexChanged.connect(self.plot_axis)
-
         self.time_marker_label = QLabel("First TTL marker: --")
 
         waveform_grid = QGridLayout()
-        waveform_grid.setVerticalSpacing(6)
+        waveform_grid.setVerticalSpacing(8)
+        waveform_grid.setColumnStretch(1, 1)
 
-        self.lfp_waveform_area = self.create_waveform_area("Selected LFP channel")
-        self.axis_waveform_area = self.create_waveform_area("Selected 3-axis channel")
-        self.marker_waveform_area = self.create_waveform_area("Time marker / TTL events")
+        self.lfp_waveform_area = self.create_waveform_area("Import LFP CSV to show waveform")
+        self.axis_waveform_area = self.create_waveform_area("Import 3-axis CSV to show waveform")
 
         waveform_grid.addWidget(QLabel("LFP"), 0, 0)
         waveform_grid.addWidget(self.lfp_waveform_area, 0, 1)
@@ -52,18 +48,14 @@ class LfpPanel(QWidget):
         waveform_grid.addWidget(QLabel("3-axis"), 1, 0)
         waveform_grid.addWidget(self.axis_waveform_area, 1, 1)
 
-        waveform_grid.addWidget(QLabel("TTL"), 2, 0)
-        waveform_grid.addWidget(self.marker_waveform_area, 2, 1)
-
         layout = QVBoxLayout()
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(6)
+        layout.setContentsMargins(8, 4, 8, 6)
+        layout.setSpacing(4)
 
         layout.addWidget(self.lfp_file_label)
         layout.addWidget(self.lfp_channel_selector)
 
         layout.addWidget(self.axis_file_label)
-        layout.addWidget(self.axis_channel_selector)
 
         layout.addWidget(self.time_marker_file_label)
         layout.addWidget(self.time_marker_label)
@@ -74,7 +66,8 @@ class LfpPanel(QWidget):
 
     def create_waveform_area(self, text):
         frame = QFrame()
-        frame.setMinimumHeight(150)
+        frame.setMinimumHeight(145)
+        frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         frame.setStyleSheet(
             """
             QFrame {
@@ -86,7 +79,7 @@ class LfpPanel(QWidget):
 
         frame.setToolTip(text)
         layout = QVBoxLayout()
-        layout.setContentsMargins(2, 2, 2, 2)
+        layout.setContentsMargins(4, 4, 4, 4)
         placeholder = QLabel(text)
         placeholder.setAlignment(Qt.AlignCenter)
         placeholder.setStyleSheet("color: #777; border: none;")
@@ -108,6 +101,8 @@ class LfpPanel(QWidget):
                 widget.setParent(None)
 
         canvas = FigureCanvas(fig)
+        canvas.setMinimumHeight(135)
+        canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         layout.addWidget(canvas)
         setattr(self, canvas_attr, canvas)
         canvas.draw_idle()
@@ -128,7 +123,7 @@ class LfpPanel(QWidget):
 
         channel = self.selected_channel(self.lfp_channel_selector)
         try:
-            fig = draw.LFP(file_path=self.lfp_path, channels=channel)
+            fig = draw.LFP(file_path=self.lfp_path, channels=channel, compact=True)
         except Exception as error:
             QMessageBox.warning(self, "LFP plot failed", str(error))
             return
@@ -139,9 +134,8 @@ class LfpPanel(QWidget):
         if not self.axis_path:
             return
 
-        channel = self.selected_channel(self.axis_channel_selector)
         try:
-            fig = draw.accelerator(file_path=self.axis_path, channel=channel or 260)
+            fig = draw.accelerator(file_path=self.axis_path, compact=True)
         except Exception as error:
             QMessageBox.warning(self, "3-axis plot failed", str(error))
             return
@@ -171,23 +165,7 @@ class LfpPanel(QWidget):
 
     def set_axis_info(self, info):
         self.axis_path = info["path"]
-        self.axis_file_label.setText(f"3-axis CSV: {info['filename']}")
-
-        self.axis_channel_selector.blockSignals(True)
-        self.axis_channel_selector.clear()
-
-        channels = info.get("channels", [])
-
-        if channels:
-            for channel in channels:
-                self.axis_channel_selector.addItem(f"Channel {channel}", channel)
-
-            self.axis_channel_selector.setEnabled(True)
-        else:
-            self.axis_channel_selector.addItem("No 3-axis channel")
-            self.axis_channel_selector.setEnabled(False)
-
-        self.axis_channel_selector.blockSignals(False)
+        self.axis_file_label.setText(f"3-axis CSV: {info['filename']} (channel 260)")
         self.plot_axis()
 
     def set_time_marker_info(self, info):

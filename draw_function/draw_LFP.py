@@ -17,34 +17,28 @@ def LFP(
     channels: int | list[int] | tuple[int, ...] | None = 1,
     step: int = 100,
     file_path: str | Path | None = None,
+    compact: bool = False,
 ) -> Figure:
     """Read/check LFP data, draw waveform, and save the output image.
 
     Args:
         channels: Initial visible channel or channels. Default is 1. Use None to show all 16 channels.
         step: Downsampling interval for plotting. Use 0 to plot all points. Default is 100.
-        file_path: Base directory containing input CSV files. Defaults to input_data.
+        file_path: CSV file selected from the GUI import action.
+        compact: Draw only the axes and waveform for embedding in the main GUI.
 
     Returns:
         Generated Matplotlib figure object.
     """
     if file_path is None:
-        input_file = Path(__file__).parent.parent / "input_data" / "LFP.csv"
-    else:
-        file_path = Path(file_path)
-        input_file = file_path if file_path.is_file() else file_path / "LFP.csv"
+        raise ValueError("Please import an LFP CSV file first.")
 
-    output_dir = Path(__file__).parent.parent / "output_data"
-    output_dir.mkdir(parents=True, exist_ok=True)
+    input_file = Path(file_path)
+    if not input_file.is_file():
+        raise FileNotFoundError(f"LFP CSV file not found: {input_file}")
 
     data = read.LFP(str(input_file))
     check.check(str(input_file))
-
-    fig = plt.figure(figsize=(16, 5),constrained_layout=True)
-    grid = fig.add_gridspec(1, 3, width_ratios=(7, 1, 1.35))
-    ax = fig.add_subplot(grid[0, 0])
-    check_ax = fig.add_subplot(grid[0, 1])
-    legend_ax = fig.add_subplot(grid[0, 2])
 
     # Convert microseconds to seconds for plotting.
     data["time_s"] = data["time_us"] / 1e6
@@ -66,6 +60,30 @@ def LFP(
     invalid_channels = sorted(initial_channels - set(channel_numbers))
     if invalid_channels:
         raise ValueError(f"LFP channels must be between 1 and 16: {invalid_channels}")
+
+    if compact:
+        fig, ax = plt.subplots(figsize=(8, 2.6), constrained_layout=True)
+        for channel in channel_numbers:
+            if channel in initial_channels:
+                ax.plot(
+                    x,
+                    plot_data[f"channel_{channel}"],
+                    linewidth=0.5,
+                )
+
+        ax.set_xlabel("Time (s)")
+        ax.set_ylabel("Signal")
+        ax.grid(True, linewidth=0.4, alpha=0.35)
+        return fig
+
+    output_dir = Path(__file__).parent.parent / "output_data"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    fig = plt.figure(figsize=(16, 5), constrained_layout=True)
+    grid = fig.add_gridspec(1, 3, width_ratios=(7, 1, 1.35))
+    ax = fig.add_subplot(grid[0, 0])
+    check_ax = fig.add_subplot(grid[0, 1])
+    legend_ax = fig.add_subplot(grid[0, 2])
 
     lines = {}
     for channel in channel_numbers:

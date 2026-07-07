@@ -8,12 +8,9 @@ def accelerator(file_path: str) -> pd.DataFrame:
             file_path,
             skiprows=5,
             header=None,
-            usecols=[0, 1, 2, 3, 4],
+            usecols=[0, 4],
             names=[
                 "time_us",
-                "channel_257",
-                "channel_258",
-                "channel_259",
                 "channel_260",
             ],
         )

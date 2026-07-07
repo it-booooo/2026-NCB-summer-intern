@@ -46,15 +46,17 @@ QMenu::item:selected {
 QGroupBox {
     font-weight: bold;
     color: #111111;
-    border: 1px solid #b8b8b8;
-    margin-top: 8px;
+    border: 1px solid #111111;
+    margin-top: 10px;
     background-color: #ffffff;
 }
 
 QGroupBox::title {
     subcontrol-origin: margin;
+    subcontrol-position: top left;
     left: 8px;
-    padding: 0 4px;
+    padding: 0 6px;
+    border: 1px solid #111111;
     color: #111111;
     background-color: #ffffff;
 }
