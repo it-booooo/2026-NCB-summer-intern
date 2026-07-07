@@ -11,15 +11,14 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-
-from src.analysis import AnalysisMenuController
-from src.csv_loader import parse_lfp_csv_info, parse_time_marker_csv_info
-from src.event_table import EventTable
-from src.export import export_events_csv, export_events_excel
-from src.lfp_panel import LfpPanel
-from src.marker_panel import MarkerPanel
-from src.sync_panel import SyncPanel
-from src.video_player import VideoPlayer
+import csv_function as csv_func
+from .analysis import AnalysisMenuController
+from .event_table import EventTable
+from .export import export_events_csv, export_events_excel
+from .lfp_panel import LfpPanel
+from .marker_panel import MarkerPanel
+from .sync_panel import SyncPanel
+from .video_player import VideoPlayer
 
 
 class MainWindow(QMainWindow):
@@ -38,6 +37,9 @@ class MainWindow(QMainWindow):
         self.marker_panel = MarkerPanel(self.event_table, self.add_event)
         self.analysis_controller = AnalysisMenuController(self)
         self.marker_panel.close_requested.connect(self.hide_marker_panel)
+        self.lfp_info = None
+        self.axis_info = None
+        self.timeMarker_info = None
 
         self.create_menu()
         self.create_layout()
@@ -111,12 +113,12 @@ class MainWindow(QMainWindow):
         video_layout.addLayout(marker_button_layout)
         video_group.setLayout(video_layout)
 
-        lower_splitter = QSplitter(Qt.Horizontal)
+        lower_splitter = QSplitter(Qt.Orientation.Horizontal)
         lower_splitter.addWidget(sync_group)
         lower_splitter.addWidget(video_group)
         lower_splitter.setSizes([820, 420])
 
-        main_content = QSplitter(Qt.Vertical)
+        main_content = QSplitter(Qt.Orientation.Vertical)
         main_content.addWidget(lfp_group)
         main_content.addWidget(lower_splitter)
         main_content.setSizes([260, 400])
@@ -146,27 +148,26 @@ class MainWindow(QMainWindow):
 
     def import_lfp(self):
         path = self.open_csv_file("Import LFP (.csv)")
-        if not path:
-            return
-
-        info = parse_lfp_csv_info(path)
-        self.lfp_panel.set_lfp_info(info)
-        self.sync_panel.set_lfp_status(f"LFP file: {info['filename']}")
+        if path:
+            self.lfp_info = csv_func.parse_lfp_csv_info(path)
+            self.lfp_panel.set_lfp_info(self.lfp_info)
+            self.sync_panel.set_lfp_status(f"LFP file: {self.lfp_info['filename']}")
 
     def import_axis(self):
         path = self.open_csv_file("Import 3-axis (.csv)")
         if path:
-            self.lfp_panel.set_axis_info(parse_lfp_csv_info(path))
+            self.axis_info = csv_func.parse_lfp_csv_info(path)
+            self.lfp_panel.set_axis_info(self.axis_info)
 
     def import_time_marker(self):
         path = self.open_csv_file("Import Time Marker (.csv)")
         if not path:
             return
 
-        info = parse_time_marker_csv_info(path)
-        self.lfp_panel.set_time_marker_info(info)
+        self.timeMarker_info = csv_func.parse_time_marker_csv_info(path)
+        self.lfp_panel.set_time_marker_info(self.timeMarker_info)
 
-        first_marker_sec = info.get("first_marker_sec")
+        first_marker_sec = self.timeMarker_info.get("first_marker_sec")
         if first_marker_sec is not None:
             self.sync_panel.set_ttl_marker(first_marker_sec)
 
@@ -191,7 +192,9 @@ class MainWindow(QMainWindow):
     def export_markers(self, file_type):
         events = self.event_table.events()
         if not events:
-            QMessageBox.information(self, "No markers", "There are no markers to export.")
+            QMessageBox.information(
+                self, "No markers", "There are no markers to export."
+            )
             return
 
         if file_type == "csv":

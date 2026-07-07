@@ -88,7 +88,7 @@ class LfpPanel(QWidget):
         layout = QVBoxLayout()
         layout.setContentsMargins(2, 2, 2, 2)
         placeholder = QLabel(text)
-        placeholder.setAlignment(Qt.AlignCenter)
+        placeholder.setAlignment(Qt.AlignCenter) # type: ignore
         placeholder.setStyleSheet("color: #777; border: none;")
         layout.addWidget(placeholder)
         frame.setLayout(layout)
