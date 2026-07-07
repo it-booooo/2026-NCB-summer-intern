@@ -1,8 +1,6 @@
-from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QFrame,
-    QHBoxLayout,
-    QLabel,
+    QGridLayout,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -10,25 +8,11 @@ from PySide6.QtWidgets import (
 
 
 class MarkerPanel(QWidget):
-    close_requested = Signal()
-
     def __init__(self, event_table, add_event_callback):
         super().__init__()
 
         self.event_table = event_table
         self.add_event_callback = add_event_callback
-
-        title = QLabel("Event Marker")
-        title.setStyleSheet("font-weight: bold;")
-
-        close_button = QPushButton("X")
-        close_button.setFixedWidth(36)
-        close_button.clicked.connect(self.close_requested.emit)
-
-        header_layout = QHBoxLayout()
-        header_layout.addWidget(title)
-        header_layout.addStretch()
-        header_layout.addWidget(close_button)
 
         divider = QFrame()
         divider.setFrameShape(QFrame.HLine)
@@ -48,18 +32,21 @@ class MarkerPanel(QWidget):
         seizure_button.clicked.connect(lambda: self.add_event_callback("seizure_like_event"))
         delete_button.clicked.connect(self.event_table.delete_selected_rows)
 
-        button_layout = QVBoxLayout()
-        button_layout.addWidget(led_on_button)
-        button_layout.addWidget(led_off_button)
-        button_layout.addWidget(behavior_start_button)
-        button_layout.addWidget(behavior_end_button)
-        button_layout.addWidget(seizure_button)
-        button_layout.addWidget(delete_button)
+        button_layout = QGridLayout()
+        button_layout.setHorizontalSpacing(4)
+        button_layout.setVerticalSpacing(4)
+        button_layout.addWidget(led_on_button, 0, 0)
+        button_layout.addWidget(led_off_button, 0, 1)
+        button_layout.addWidget(behavior_start_button, 1, 0)
+        button_layout.addWidget(behavior_end_button, 1, 1)
+        button_layout.addWidget(seizure_button, 2, 0)
+        button_layout.addWidget(delete_button, 2, 1)
 
         layout = QVBoxLayout()
-        layout.addLayout(header_layout)
-        layout.addWidget(divider)
+        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(6)
         layout.addLayout(button_layout)
+        layout.addWidget(divider)
         layout.addWidget(self.event_table)
 
         self.setLayout(layout)

@@ -1,5 +1,6 @@
 from PySide6.QtWidgets import (
     QGridLayout,
+    QHBoxLayout,
     QLabel,
     QVBoxLayout,
     QWidget,
@@ -28,11 +29,19 @@ class SyncPanel(QWidget):
         info_grid.addWidget(self.ttl_label, 1, 1)
         info_grid.addWidget(self.offset_label, 2, 0, 1, 2)
 
+        self.action_layout = QHBoxLayout()
+        self.action_layout.setContentsMargins(0, 0, 0, 0)
+        self.action_layout.addStretch()
+
         layout = QVBoxLayout()
+        layout.addLayout(self.action_layout)
         layout.addLayout(info_grid)
         layout.addWidget(self.note_label)
 
         self.setLayout(layout)
+
+    def add_top_left_widget(self, widget):
+        self.action_layout.insertWidget(0, widget)
 
     def set_video_path(self, path):
         self.video_file_label.setText(f"Video file: {path}")

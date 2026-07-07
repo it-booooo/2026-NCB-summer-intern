@@ -18,11 +18,13 @@ from .export import export_events_csv, export_events_excel
 from .lfp_panel import LfpPanel
 from .marker_panel import MarkerPanel
 from .sync_panel import SyncPanel
+from src.ttl_panel import TtlPanel
 from .video_player import VideoPlayer
 
 
 class MainWindow(QMainWindow):
     MARKER_PANEL_WIDTH = 300
+    WAVEFORM_AREA_HEIGHT = 340
 
     def __init__(self):
         super().__init__()
@@ -34,9 +36,9 @@ class MainWindow(QMainWindow):
         self.event_table = EventTable()
         self.lfp_panel = LfpPanel()
         self.sync_panel = SyncPanel()
+        self.ttl_panel = TtlPanel()
         self.marker_panel = MarkerPanel(self.event_table, self.add_event)
         self.analysis_controller = AnalysisMenuController(self)
-        self.marker_panel.close_requested.connect(self.hide_marker_panel)
         self.lfp_info = None
         self.axis_info = None
         self.timeMarker_info = None
@@ -94,42 +96,61 @@ class MainWindow(QMainWindow):
 
     def create_layout(self):
         lfp_group = self.create_group("Waveform Area", self.lfp_panel)
+        lfp_group.setFixedHeight(self.WAVEFORM_AREA_HEIGHT)
         sync_group = self.create_group("Synchronization Area", self.sync_panel)
+        ttl_group = self.create_group("TTL", self.ttl_panel)
+        marker_group = self.create_group("Video Marker", self.marker_panel)
 
         video_group = QGroupBox("Behavior Video")
         video_layout = QVBoxLayout()
         video_layout.setContentsMargins(4, 4, 4, 4)
         video_layout.setSpacing(2)
         video_layout.addWidget(self.video_player, stretch=1)
+        video_group.setLayout(video_layout)
 
-        self.open_marker_button = QPushButton("Open Event Marker")
+        self.open_marker_button = QPushButton("Open Video Marker")
         self.open_marker_button.setFixedSize(150, 26)
         self.open_marker_button.clicked.connect(self.show_marker_panel)
-
-        marker_button_layout = QHBoxLayout()
-        marker_button_layout.setContentsMargins(0, 0, 0, 0)
-        marker_button_layout.addStretch()
-        marker_button_layout.addWidget(self.open_marker_button)
-        video_layout.addLayout(marker_button_layout)
-        video_group.setLayout(video_layout)
+        self.sync_panel.add_top_left_widget(self.open_marker_button)
 
         lower_splitter = QSplitter(Qt.Orientation.Horizontal)
         lower_splitter.addWidget(sync_group)
         lower_splitter.addWidget(video_group)
         lower_splitter.setSizes([820, 420])
 
-        main_content = QSplitter(Qt.Orientation.Vertical)
-        main_content.addWidget(lfp_group)
-        main_content.addWidget(lower_splitter)
-        main_content.setSizes([260, 400])
+        main_content = QWidget()
+        main_layout = QVBoxLayout()
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(4)
+        main_layout.addWidget(lfp_group)
+        main_layout.addWidget(lower_splitter, stretch=1)
+        main_content.setLayout(main_layout)
 
-        self.marker_panel.setFixedWidth(self.MARKER_PANEL_WIDTH)
-        self.marker_panel.hide()
+        self.side_panel = QWidget()
+        self.side_panel.setFixedWidth(self.MARKER_PANEL_WIDTH)
+
+        close_button = QPushButton("X")
+        close_button.setFixedWidth(36)
+        close_button.clicked.connect(self.hide_marker_panel)
+
+        close_layout = QHBoxLayout()
+        close_layout.setContentsMargins(0, 0, 0, 0)
+        close_layout.addStretch()
+        close_layout.addWidget(close_button)
+
+        side_layout = QVBoxLayout()
+        side_layout.setContentsMargins(0, 0, 0, 0)
+        side_layout.setSpacing(4)
+        side_layout.addLayout(close_layout)
+        side_layout.addWidget(ttl_group, stretch=1)
+        side_layout.addWidget(marker_group, stretch=2)
+        self.side_panel.setLayout(side_layout)
+        self.side_panel.hide()
 
         root_layout = QHBoxLayout()
         root_layout.setContentsMargins(4, 4, 4, 4)
         root_layout.setSpacing(4)
-        root_layout.addWidget(self.marker_panel)
+        root_layout.addWidget(self.side_panel)
         root_layout.addWidget(main_content, stretch=1)
 
         container = QWidget()
@@ -137,10 +158,10 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(container)
 
     def show_marker_panel(self):
-        self.marker_panel.show()
+        self.side_panel.show()
 
     def hide_marker_panel(self):
-        self.marker_panel.hide()
+        self.side_panel.hide()
 
     def import_video(self):
         if self.video_player.load_video():
@@ -165,7 +186,8 @@ class MainWindow(QMainWindow):
             return
 
         self.timeMarker_info = csv_func.parse_time_marker_csv_info(path)
-        self.lfp_panel.set_time_marker_info(self.timeMarker_info)
+        self.ttl_panel.set_markers(self.timeMarker_info.get("markers", []))
+        self.show_marker_panel()
 
         first_marker_sec = self.timeMarker_info.get("first_marker_sec")
         if first_marker_sec is not None:
