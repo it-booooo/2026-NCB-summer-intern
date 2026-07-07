@@ -3,9 +3,18 @@ from PySide6.QtCore import QThread, Signal
 
 class LedDetectionWorker(QThread):
     result_ready = Signal(object, float, object, float, object)
+    progress_changed = Signal(int, int)
     failed = Signal(str)
 
-    def __init__(self, video_path, roi, rotate_180, fps, baseline_frame, parent=None):
+    def __init__(
+        self,
+        video_path,
+        roi,
+        rotate_180,
+        fps,
+        baseline_frame,
+        parent=None,
+    ):
         super().__init__(parent)
         self.video_path = video_path
         self.roi = roi
@@ -16,9 +25,8 @@ class LedDetectionWorker(QThread):
     def run(self):
         try:
             from src.led_detector import (
-                auto_threshold,
                 compute_led_brightness_curve,
-                detect_led_events_from_curve,
+                detect_led_events_from_frame_deltas,
                 score_at_frame,
                 summarize_brightness,
             )
@@ -28,22 +36,22 @@ class LedDetectionWorker(QThread):
                 roi=self.roi,
                 rotate_180=self.rotate_180,
                 using_fps=self.fps,
+                detection_mode="max_brightness",
                 should_stop=self.isInterruptionRequested,
+                progress_callback=self.progress_changed.emit,
             )
 
             if self.isInterruptionRequested():
                 return
 
             baseline = score_at_frame(points, self.baseline_frame)
-            threshold = auto_threshold(points, baseline_score=baseline)
-            stats = summarize_brightness(points)
-            events = detect_led_events_from_curve(
+            threshold, stats = 0.0, summarize_brightness(points, detection_mode="frame_delta")
+            events, threshold, delta_stats = detect_led_events_from_frame_deltas(
                 points,
-                threshold=threshold,
-                min_duration_sec=0.1,
-                min_gap_sec=0.2,
                 fps=self.fps,
+                min_duration_sec=0.1,
             )
+            stats.update(delta_stats)
 
             if self.isInterruptionRequested():
                 return

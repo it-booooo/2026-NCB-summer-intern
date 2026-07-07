@@ -199,7 +199,10 @@ class MainWindow(QMainWindow):
                 )
                 return
 
-        self.sync_panel.set_led_detection_status("LED detection: analyzing...")
+        self.sync_panel.set_led_detection_status(
+            "LED detection: analyzing ROI frame changes. You can wait here; video playback is not required."
+        )
+        self.sync_panel.begin_led_detection_progress()
         self.led_worker = LedDetectionWorker(
             video_path=self.video_player.video_path,
             roi=self.led_roi,
@@ -208,6 +211,7 @@ class MainWindow(QMainWindow):
             baseline_frame=self.video_player.current_frame,
         )
         self.led_worker.result_ready.connect(self.finish_led_detection)
+        self.led_worker.progress_changed.connect(self.update_led_detection_progress)
         self.led_worker.failed.connect(self.fail_led_detection)
         self.led_worker.finished.connect(self.cleanup_led_worker)
         self.led_worker.start()
@@ -227,6 +231,7 @@ class MainWindow(QMainWindow):
         if self.sender() is not self.led_worker:
             return
 
+        self.sync_panel.finish_led_detection_progress()
         self.sync_panel.set_led_analysis(
             points,
             threshold,
@@ -236,15 +241,24 @@ class MainWindow(QMainWindow):
         )
         self.add_led_events(events)
         self.sync_panel.set_led_detection_status(
-            f"LED detection: {len(events) // 2} intervals | "
-            f"baseline={baseline:.4f} | threshold={threshold:.4f} | "
-            f"max={stats['max']:.4f} at {stats['peak_time_sec']:.3f}s"
+            f"LED detection: frame delta | {len(events) // 2} intervals | "
+            f"on delta={stats.get('selected_on_delta', 0.0):.4f} "
+            f"at {stats.get('selected_on_time_sec', 0.0):.3f}s | "
+            f"off delta={stats.get('selected_off_delta', 0.0):.4f} "
+            f"at {stats.get('selected_off_time_sec', 0.0):.3f}s"
         )
+
+    def update_led_detection_progress(self, current_frame, total_frames):
+        if self.sender() is not self.led_worker:
+            return
+
+        self.sync_panel.update_led_detection_progress(current_frame, total_frames)
 
     def fail_led_detection(self, message):
         if self.sender() is not self.led_worker:
             return
 
+        self.sync_panel.fail_led_detection_progress()
         self.sync_panel.set_led_detection_status("LED detection: failed")
         QMessageBox.warning(self, "LED detection failed", message)
 

@@ -19,6 +19,22 @@ class LedBrightnessPoint:
     brightness: float
 
 
+@dataclass
+class LedChangePoint:
+    frame_index: int
+    video_time_sec: float
+    delta: float
+
+
+DETECTION_MODE_LABELS = {
+    "frame_delta": "Frame delta",
+    "max_brightness": "Max brightness",
+    "brightness": "Brightness",
+    "red_score": "Red score",
+    "saturation": "Saturation",
+}
+
+
 def apply_roi(frame_bgr, roi=None):
     if roi is None:
         return frame_bgr
@@ -58,12 +74,57 @@ def mean_brightness(frame_bgr, roi=None):
     return float(np.mean(gray)) / 255.0
 
 
+def top_percent_mean(values, top_percent=5.0):
+    flat_values = values.reshape(-1)
+    if flat_values.size == 0:
+        return 0.0
+
+    count = max(int(flat_values.size * float(top_percent) / 100.0), 1)
+    top_values = np.partition(flat_values, -count)[-count:]
+    return float(np.mean(top_values)) / 255.0
+
+
+def max_brightness(frame_bgr, roi=None, top_percent=5.0):
+    frame_bgr = apply_roi(frame_bgr, roi)
+
+    if frame_bgr.size == 0:
+        return 0.0
+
+    gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+    return top_percent_mean(gray, top_percent=top_percent)
+
+
+def saturation_score(frame_bgr, roi=None):
+    frame_bgr = apply_roi(frame_bgr, roi)
+
+    if frame_bgr.size == 0:
+        return 0.0
+
+    hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
+    return top_percent_mean(hsv[:, :, 1], top_percent=5.0)
+
+
+def led_feature_score(frame_bgr, roi=None, detection_mode="max_brightness"):
+    if detection_mode == "brightness":
+        return mean_brightness(frame_bgr, roi=roi)
+
+    if detection_mode == "red_score":
+        return red_score(frame_bgr, roi=roi)
+
+    if detection_mode == "saturation":
+        return saturation_score(frame_bgr, roi=roi)
+
+    return max_brightness(frame_bgr, roi=roi)
+
+
 def compute_led_brightness_curve(
     video_path,
     roi=None,
     rotate_180=False,
     using_fps=30.0,
+    detection_mode="max_brightness",
     should_stop=None,
+    progress_callback=None,
 ):
     cap = cv2.VideoCapture(video_path)
 
@@ -71,8 +132,12 @@ def compute_led_brightness_curve(
         raise ValueError(f"Could not open video: {video_path}")
 
     fps = float(using_fps or cap.get(cv2.CAP_PROP_FPS) or 30.0)
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
     points = []
     frame_index = 0
+
+    if progress_callback is not None:
+        progress_callback(0, total_frames)
 
     while True:
         if should_stop is not None and should_stop():
@@ -89,13 +154,23 @@ def compute_led_brightness_curve(
             LedBrightnessPoint(
                 frame_index=frame_index,
                 video_time_sec=frame_index / fps,
-                brightness=mean_brightness(frame, roi=roi),
+                brightness=led_feature_score(
+                    frame,
+                    roi=roi,
+                    detection_mode=detection_mode,
+                ),
             )
         )
 
         frame_index += 1
+        if progress_callback is not None and frame_index % 100 == 0:
+            progress_callback(frame_index, total_frames)
 
     cap.release()
+
+    if progress_callback is not None:
+        progress_callback(frame_index, total_frames)
+
     return points
 
 
@@ -133,9 +208,11 @@ def auto_threshold(points, baseline_score=None, margin=0.02):
     return min(max(threshold, 0.0), 1.0)
 
 
-def summarize_brightness(points):
+def summarize_brightness(points, detection_mode="max_brightness"):
     if not points:
         return {
+            "mode": detection_mode,
+            "mode_label": DETECTION_MODE_LABELS.get(detection_mode, detection_mode),
             "min": 0.0,
             "median": 0.0,
             "max": 0.0,
@@ -151,6 +228,8 @@ def summarize_brightness(points):
     maximum = float(values[peak_index])
 
     return {
+        "mode": detection_mode,
+        "mode_label": DETECTION_MODE_LABELS.get(detection_mode, detection_mode),
         "min": float(np.min(values)),
         "median": median,
         "max": maximum,
@@ -158,6 +237,121 @@ def summarize_brightness(points):
         "peak_frame": peak_point.frame_index,
         "peak_time_sec": peak_point.video_time_sec,
     }
+
+
+def compute_frame_deltas(points):
+    if len(points) < 2:
+        return []
+
+    return [
+        LedChangePoint(
+            frame_index=points[index].frame_index,
+            video_time_sec=points[index].video_time_sec,
+            delta=points[index].brightness - points[index - 1].brightness,
+        )
+        for index in range(1, len(points))
+    ]
+
+
+def summarize_frame_deltas(deltas):
+    if not deltas:
+        return {
+            "max_positive_delta": 0.0,
+            "max_positive_frame": 0,
+            "max_positive_time_sec": 0.0,
+            "max_negative_delta": 0.0,
+            "max_negative_frame": 0,
+            "max_negative_time_sec": 0.0,
+            "reference_delta": 0.0,
+        }
+
+    positive = max(deltas, key=lambda point: point.delta)
+    negative = min(deltas, key=lambda point: point.delta)
+    abs_values = np.array([abs(point.delta) for point in deltas], dtype=float)
+
+    return {
+        "max_positive_delta": positive.delta,
+        "max_positive_frame": positive.frame_index,
+        "max_positive_time_sec": positive.video_time_sec,
+        "max_negative_delta": negative.delta,
+        "max_negative_frame": negative.frame_index,
+        "max_negative_time_sec": negative.video_time_sec,
+        "reference_delta": float(np.percentile(abs_values, 99)),
+    }
+
+
+def point_for_frame(points, frame_index):
+    if not points:
+        return None
+
+    frame_index = max(0, min(int(frame_index), points[-1].frame_index))
+    return points[frame_index]
+
+
+def detect_led_events_from_frame_deltas(points, fps=30.0, min_duration_sec=0.1):
+    if len(points) < 2:
+        return [], 0.0, summarize_frame_deltas([])
+
+    deltas = compute_frame_deltas(points)
+    positive_candidates = sorted(
+        [point for point in deltas if point.delta > 0],
+        key=lambda point: point.delta,
+        reverse=True,
+    )[:30]
+    negative_candidates = sorted(
+        [point for point in deltas if point.delta < 0],
+        key=lambda point: point.delta,
+    )[:30]
+    min_duration_frames = max(int(min_duration_sec * fps), 1)
+    best_pair = None
+    best_score = 0.0
+
+    for on_delta in positive_candidates:
+        for off_delta in negative_candidates:
+            duration_frames = off_delta.frame_index - on_delta.frame_index
+            if duration_frames < min_duration_frames:
+                continue
+
+            pair_score = abs(on_delta.delta) + abs(off_delta.delta)
+            if pair_score > best_score:
+                best_pair = (on_delta, off_delta)
+                best_score = pair_score
+
+    stats = summarize_frame_deltas(deltas)
+    if best_pair is None:
+        return [], stats["reference_delta"], stats
+
+    on_delta, off_delta = best_pair
+    start_point = point_for_frame(points, on_delta.frame_index)
+    off_frame_index = max(off_delta.frame_index - 1, start_point.frame_index)
+    off_point = point_for_frame(points, off_frame_index)
+
+    if start_point is None or off_point is None:
+        return [], stats["reference_delta"], stats
+
+    stats["selected_on_delta"] = on_delta.delta
+    stats["selected_on_frame"] = on_delta.frame_index
+    stats["selected_on_time_sec"] = on_delta.video_time_sec
+    stats["selected_off_delta"] = off_delta.delta
+    stats["selected_off_frame"] = off_delta.frame_index
+    stats["selected_off_time_sec"] = off_delta.video_time_sec
+
+    events = [
+        LedEvent(
+            event_type="LED_on",
+            video_time_sec=start_point.video_time_sec,
+            frame_index=start_point.frame_index,
+            brightness=start_point.brightness,
+        ),
+        LedEvent(
+            event_type="LED_off",
+            video_time_sec=off_point.video_time_sec,
+            frame_index=off_point.frame_index,
+            brightness=off_point.brightness,
+        ),
+    ]
+
+    return events, stats["reference_delta"], stats
 
 
 def detect_led_events_from_curve(
