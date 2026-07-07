@@ -24,6 +24,7 @@ class LfpPanel(QWidget):
         self.axis_canvas = None
         self.lfp_info = None
         self.axis_info = None
+        self.lfp_fig = None
 
         self.lfp_file_label = QLabel("LFP CSV: Not imported")
         self.axis_file_label = QLabel("3-axis CSV: Not imported")
@@ -66,7 +67,7 @@ class LfpPanel(QWidget):
 
     def create_waveform_area(self, text):
         frame = QFrame()
-        frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        frame.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         frame.setStyleSheet(
             """
             QFrame {
@@ -100,7 +101,7 @@ class LfpPanel(QWidget):
                 widget.setParent(None)
 
         canvas = FigureCanvas(fig)
-        canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         layout.addWidget(canvas)
         setattr(self, canvas_attr, canvas)
         canvas.draw_idle()
@@ -121,12 +122,15 @@ class LfpPanel(QWidget):
 
         channel = self.selected_channel(self.lfp_channel_selector)
         try:
-            fig = draw.LFP(info=self.lfp_info, channels=channel, compact=True)
+            if self.lfp_fig is None:
+                self.lfp_fig = draw.LFP(info=self.lfp_info, channels=channel)
+            elif self.lfp_fig is not None and channel is not None:
+                self.lfp_fig.set_lfp_channel(channel)
         except Exception as error:
             QMessageBox.warning(self, "LFP plot failed", str(error))
             return
 
-        self.set_figure(self.lfp_waveform_area, "lfp_canvas", fig)
+        self.set_figure(self.lfp_waveform_area, "lfp_canvas", self.lfp_fig)
 
     def plot_axis(self):
         if not self.axis_path:
