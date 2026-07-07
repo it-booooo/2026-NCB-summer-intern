@@ -8,6 +8,7 @@ from matplotlib.figure import Figure
 sys.path.insert(0, str(PathlibPath(__file__).parent.parent))
 
 import check_function as check
+import csv_function as csv_func
 import read_function as read
 
 
@@ -33,6 +34,7 @@ def accelerator(
 
     data = read.accelerator(str(input_file))
     check.check(str(input_file))
+    units = csv_func.parse_signal_csv_units(input_file)
 
     channel_name = "channel_260"
     if channel_name not in data:
@@ -49,8 +51,11 @@ def accelerator(
     label = None if compact else "Channel 260"
     ax.plot(data["time_s"], data[channel_name], label=label, linewidth=0.2)
 
-    ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Signal")
+    y_label = format_signal_label(units["value_unit"])
+    ax.set_xlabel(f"Time ({units['time_unit']})", fontsize=8, labelpad=2)
+    ax.set_ylabel(y_label, fontsize=8, rotation=0, labelpad=18)
+    ax.yaxis.set_label_coords(-0.04, 1.02)
+    ax.tick_params(axis="both", labelsize=8, pad=1)
 
     ax.grid(True, linewidth=0.4, alpha=0.35)
     if compact:
@@ -66,3 +71,7 @@ def accelerator(
         dpi=300,
     )
     return fig
+
+
+def format_signal_label(unit):
+    return f"Signal ({unit})" if unit else "Signal"

@@ -1,4 +1,5 @@
 import csv
+import re
 from pathlib import Path
 
 
@@ -33,6 +34,41 @@ def parse_lfp_csv_info(path):
         "sample_rates": sample_rates,
         "channel_count": len(channels),
     }
+
+
+def parse_signal_csv_units(path):
+    rows = read_csv_preview(path, max_rows=8)
+    value_unit = ""
+
+    for row in rows:
+        if not row:
+            continue
+
+        row_name = row[0].strip().lower()
+        if row_name in {"unit", "units"}:
+            units = [value.strip() for value in row[1:] if value.strip()]
+            if units:
+                value_unit = units[0]
+                break
+
+    return {
+        "time_unit": "s",
+        "value_unit": normalize_unit(value_unit),
+    }
+
+
+def normalize_unit(unit):
+    unit = unit.strip()
+    if not unit:
+        return ""
+
+    replacements = {
+        "uV": "uV",
+        "uv": "uV",
+        "μV": "uV",
+        "µV": "uV",
+    }
+    return replacements.get(unit, re.sub(r"\s+", " ", unit))
 
 
 def parse_time_marker_csv_info(path):

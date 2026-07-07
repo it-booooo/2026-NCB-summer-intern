@@ -1,5 +1,3 @@
-import cv2
-
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
@@ -124,6 +122,8 @@ class VideoPlayer(QWidget):
         return time_sec_to_frame(time_sec, self.fps, self.total_frames)
 
     def load_video(self):
+        import cv2
+
         path, _ = QFileDialog.getOpenFileName(
             self,
             "Open MP4",
@@ -232,6 +232,8 @@ class VideoPlayer(QWidget):
         return success
 
     def display_frame(self, frame, frame_index):
+        import cv2
+
         if self.rotate_180_enabled:
             frame = cv2.rotate(frame, cv2.ROTATE_180)
 

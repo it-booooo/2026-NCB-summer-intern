@@ -1,8 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-import cv2
-
 
 @dataclass
 class VideoMetadata:
@@ -20,6 +18,8 @@ class VideoMetadata:
 
 
 def open_video(path):
+    import cv2
+
     cap = cv2.VideoCapture(path)
 
     if not cap.isOpened():
@@ -29,6 +29,8 @@ def open_video(path):
 
 
 def parse_video_metadata(path, using_fps=30.0):
+    import cv2
+
     cap = open_video(path)
 
     if cap is None:
@@ -88,6 +90,8 @@ def fourcc_to_string(fourcc_value):
 
 
 def read_frame(cap, frame_index):
+    import cv2
+
     if cap is None or not cap.isOpened():
         return False, None
 

@@ -10,6 +10,7 @@ from matplotlib.widgets import CheckButtons
 sys.path.insert(0, str(PathlibPath(__file__).parent.parent))
 
 import check_function as check
+import csv_function as csv_func
 import read_function as read
 
 
@@ -39,6 +40,7 @@ def LFP(
 
     data = read.LFP(str(input_file))
     check.check(str(input_file))
+    units = csv_func.parse_signal_csv_units(input_file)
 
     # Convert microseconds to seconds for plotting.
     data["time_s"] = data["time_us"] / 1e6
@@ -71,8 +73,11 @@ def LFP(
                     linewidth=0.5,
                 )
 
-        ax.set_xlabel("Time (s)")
-        ax.set_ylabel("Signal")
+        y_label = format_signal_label(units["value_unit"])
+        ax.set_xlabel(f"Time ({units['time_unit']})", fontsize=8, labelpad=2)
+        ax.set_ylabel(y_label, fontsize=8, rotation=0, labelpad=18)
+        ax.yaxis.set_label_coords(-0.04, 1.02)
+        ax.tick_params(axis="both", labelsize=8, pad=1)
         ax.grid(True, linewidth=0.4, alpha=0.35)
         return fig
 
@@ -183,3 +188,7 @@ def LFP(
     )
     plt.close(output_fig)
     return fig
+
+
+def format_signal_label(unit):
+    return f"Signal ({unit})" if unit else "Signal"

@@ -1,5 +1,3 @@
-import draw_function as draw
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
@@ -81,6 +79,8 @@ class LfpPanel(QWidget):
         return frame
 
     def set_figure(self, frame, canvas_attr, fig):
+        from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+
         old_canvas = getattr(self, canvas_attr)
         if old_canvas is not None:
             old_canvas.setParent(None)
@@ -115,7 +115,9 @@ class LfpPanel(QWidget):
 
         channel = self.selected_channel(self.lfp_channel_selector)
         try:
-            fig = draw.LFP(file_path=self.lfp_path, channels=channel, compact=True)
+            from draw_function import LFP
+
+            fig = LFP(file_path=self.lfp_path, channels=channel, compact=True)
         except Exception as error:
             QMessageBox.warning(self, "LFP plot failed", str(error))
             return
@@ -127,7 +129,9 @@ class LfpPanel(QWidget):
             return
 
         try:
-            fig = draw.accelerator(file_path=self.axis_path, compact=True)
+            from draw_function import accelerator
+
+            fig = accelerator(file_path=self.axis_path, compact=True)
         except Exception as error:
             QMessageBox.warning(self, "3-axis plot failed", str(error))
             return

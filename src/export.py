@@ -1,5 +1,4 @@
 import csv
-from openpyxl import Workbook
 
 
 def export_events_csv(path, events):
@@ -21,6 +20,8 @@ def export_events_csv(path, events):
 
 
 def export_events_excel(path, events):
+    from openpyxl import Workbook
+
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = "Markers"
