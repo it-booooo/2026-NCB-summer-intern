@@ -23,8 +23,16 @@ def parse_lfp_csv_info(path):
     channel_row = rows[2] if len(rows) > 2 else []
     sample_rate_row = rows[3] if len(rows) > 3 else []
 
-    channels = channel_row[1:] if channel_row and channel_row[0] == "Channels" else []
-    sample_rates = sample_rate_row[1:] if sample_rate_row and sample_rate_row[0].startswith("Sample Rate") else []
+    channels = (
+        [int(channel) for channel in channel_row[1:] if channel]
+        if channel_row and channel_row[0] == "Channels"
+        else []
+    )
+    sample_rates = (
+        [float(sample_rate) for sample_rate in sample_rate_row[1:] if sample_rate]
+        if sample_rate_row and sample_rate_row[0].startswith("Sample Rate")
+        else []
+    )
 
     return {
         "path": path,

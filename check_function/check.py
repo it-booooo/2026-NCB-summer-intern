@@ -4,9 +4,12 @@ from pathlib import Path
 import pandas as pd
 
 
-def check(file_path: str | Path) -> None:
+def check(info: dict) -> None:
     """Validate CSV timestamps/data integrity and output a check report CSV."""
-    file_path = Path(file_path)
+    path = info.get("path")
+    if not path:
+        raise ValueError("Path not provided in info dict")
+    file_path = Path(path)
 
     # Prepare output file
     output_dir = file_path.parent.parent / "output_data"
@@ -33,13 +36,6 @@ def check(file_path: str | Path) -> None:
             if not row_values:
                 continue
 
-            # 找 Sample Rate
-            if row_values[0] == "Sample Rate (per channel)":
-                if len(row_values) < 2:
-                    raise ValueError("Sample Rate 後面沒有數值")
-
-                sample_rate = float(row_values[1])
-
             # 找真正的資料標題列
             if row_values[0] == "Time[us]":
                 header_row = row_num
@@ -47,9 +43,10 @@ def check(file_path: str | Path) -> None:
                 # 排除最後因逗號產生的空欄位
                 data_column_count = sum(bool(value) for value in row_values)
                 break
-
+    sample_rate = info.get("sample_rates", [None])[0]
     if sample_rate is None:
         raise ValueError("找不到 Sample Rate")
+    sample_rate = float(sample_rate)
 
     if header_row is None:
         raise ValueError("找不到 Time[us]")

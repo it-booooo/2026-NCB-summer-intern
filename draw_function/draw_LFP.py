@@ -16,7 +16,7 @@ import read_function as read
 def LFP(
     channels: int | list[int] | tuple[int, ...] | None = 1,
     step: int = 100,
-    file_path: str | Path | None = None,
+    info: dict | None = None,
     compact: bool = False,
 ) -> Figure:
     """Read/check LFP data, draw waveform, and save the output image.
@@ -24,21 +24,29 @@ def LFP(
     Args:
         channels: Initial visible channel or channels. Default is 1. Use None to show all 16 channels.
         step: Downsampling interval for plotting. Use 0 to plot all points. Default is 100.
-        file_path: CSV file selected from the GUI import action.
+        info: Dictionary containing LFP data with keys: path, filename, channels, sample_rates, channel_count.
         compact: Draw only the axes and waveform for embedding in the main GUI.
 
     Returns:
         Generated Matplotlib figure object.
     """
+    if info is None:
+        raise ValueError("Please provide LFP data information.")
+
+    file_path = info.get("path")
     if file_path is None:
-        raise ValueError("Please import an LFP CSV file first.")
+        raise ValueError("LFP path not found in info dictionary.")
 
     input_file = Path(file_path)
     if not input_file.is_file():
         raise FileNotFoundError(f"LFP CSV file not found: {input_file}")
+    
+    # Use channels from parameter, fallback to info
+    if channels is None:
+        channels = info.get("channels", 1)
 
     data = read.LFP(str(input_file))
-    check.check(str(input_file))
+    check.check(info=info)
 
     # Convert microseconds to seconds for plotting.
     data["time_s"] = data["time_us"] / 1e6
@@ -49,7 +57,7 @@ def LFP(
         x = data["time_s"][::step]
         plot_data = data.iloc[::step]
 
-    channel_numbers = list(range(1, 17))
+    channel_numbers = info.get("channels", list(range(1, 17)))
     if channels is None:
         initial_channels = set(channel_numbers)
     elif isinstance(channels, int):

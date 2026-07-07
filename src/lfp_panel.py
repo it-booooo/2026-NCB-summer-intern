@@ -22,6 +22,8 @@ class LfpPanel(QWidget):
         self.axis_path = None
         self.lfp_canvas = None
         self.axis_canvas = None
+        self.lfp_info = None
+        self.axis_info = None
 
         self.lfp_file_label = QLabel("LFP CSV: Not imported")
         self.axis_file_label = QLabel("3-axis CSV: Not imported")
@@ -37,8 +39,12 @@ class LfpPanel(QWidget):
         waveform_grid.setRowStretch(0, 1)
         waveform_grid.setRowStretch(1, 1)
 
-        self.lfp_waveform_area = self.create_waveform_area("Import LFP CSV to show waveform")
-        self.axis_waveform_area = self.create_waveform_area("Import 3-axis CSV to show waveform")
+        self.lfp_waveform_area = self.create_waveform_area(
+            "Import LFP CSV to show waveform"
+        )
+        self.axis_waveform_area = self.create_waveform_area(
+            "Import 3-axis CSV to show waveform"
+        )
 
         waveform_grid.addWidget(QLabel("LFP"), 0, 0)
         waveform_grid.addWidget(self.lfp_waveform_area, 0, 1)
@@ -74,7 +80,7 @@ class LfpPanel(QWidget):
         layout = QVBoxLayout()
         layout.setContentsMargins(4, 4, 4, 4)
         placeholder = QLabel(text)
-        placeholder.setAlignment(Qt.AlignCenter) # type: ignore
+        placeholder.setAlignment(Qt.AlignCenter)  # type: ignore
         placeholder.setStyleSheet("color: #777; border: none;")
         layout.addWidget(placeholder)
         frame.setLayout(layout)
@@ -115,7 +121,7 @@ class LfpPanel(QWidget):
 
         channel = self.selected_channel(self.lfp_channel_selector)
         try:
-            fig = draw.LFP(file_path=self.lfp_path, channels=channel, compact=True)
+            fig = draw.LFP(info=self.lfp_info, channels=channel, compact=True)
         except Exception as error:
             QMessageBox.warning(self, "LFP plot failed", str(error))
             return
@@ -127,7 +133,7 @@ class LfpPanel(QWidget):
             return
 
         try:
-            fig = draw.accelerator(file_path=self.axis_path, compact=True)
+            fig = draw.accelerator(info=self.axis_info, compact=True)
         except Exception as error:
             QMessageBox.warning(self, "3-axis plot failed", str(error))
             return
@@ -135,6 +141,7 @@ class LfpPanel(QWidget):
         self.set_figure(self.axis_waveform_area, "axis_canvas", fig)
 
     def set_lfp_info(self, info):
+        self.lfp_info = info
         self.lfp_path = info["path"]
         self.lfp_file_label.setText(f"LFP CSV: {info['filename']}")
 
@@ -156,6 +163,7 @@ class LfpPanel(QWidget):
         self.plot_lfp()
 
     def set_axis_info(self, info):
+        self.axis_info = info
         self.axis_path = info["path"]
         self.axis_file_label.setText(f"3-axis CSV: {info['filename']} (channel 260)")
         self.plot_axis()

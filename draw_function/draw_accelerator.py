@@ -12,27 +12,39 @@ import read_function as read
 
 
 def accelerator(
-    file_path: str | Path | None = None,
+    info: dict | None = None,
     compact: bool = False,
 ) -> Figure:
     """Read/check accelerator data, draw waveform, and save the output image.
 
     Args:
-        file_path: CSV file selected from the GUI import action.
+        info: CSV metadata returned by csv_function.parse_lfp_csv_info().
+            Required keys:
+            - path: CSV file path selected from the GUI import action.
+            - sample_rates: Sample rate values used by check.check().
+            Optional keys such as filename, channels, and channel_count are
+            kept with the same structure as LFP imports.
         compact: Draw only the axes and waveform for embedding in the main GUI.
 
     Returns:
         Generated Matplotlib figure object.
     """
-    if file_path is None:
+    if info is None:
         raise ValueError("Please import a 3-axis CSV file first.")
+
+    file_path = info.get("path")
+    if file_path is None:
+        raise ValueError("3-axis path not found in info dictionary.")
 
     input_file = Path(file_path)
     if not input_file.is_file():
         raise FileNotFoundError(f"3-axis CSV file not found: {input_file}")
 
     data = read.accelerator(str(input_file))
-    check.check(str(input_file))
+
+    # Reuse the import metadata so check.check() does not need to parse the
+    # file header again to find the path and sample rate.
+    check.check(info=info)
 
     channel_name = "channel_260"
     if channel_name not in data:
