@@ -29,14 +29,14 @@ def LFP(
         Generated Matplotlib figure object.
     """
     if file_path is None:
-        file_path = Path(__file__).parent.parent / "input_data"
+        input_file = Path(__file__).parent.parent / "input_data" / "LFP.csv"
     else:
         file_path = Path(file_path)
+        input_file = file_path if file_path.is_file() else file_path / "LFP.csv"
 
     output_dir = Path(__file__).parent.parent / "output_data"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    input_file = file_path / "LFP.csv"
     data = read.LFP(str(input_file))
     check.check(str(input_file))
 

@@ -1,9 +1,12 @@
+import draw_function as draw
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
     QGridLayout,
     QLabel,
+    QMessageBox,
     QVBoxLayout,
     QWidget,
 )
@@ -16,6 +19,9 @@ class LfpPanel(QWidget):
         self.lfp_path = None
         self.axis_path = None
         self.time_marker_path = None
+        self.lfp_canvas = None
+        self.axis_canvas = None
+        self.marker_canvas = None
 
         self.lfp_file_label = QLabel("LFP CSV: Not imported")
         self.axis_file_label = QLabel("3-axis CSV: Not imported")
@@ -24,10 +30,12 @@ class LfpPanel(QWidget):
         self.lfp_channel_selector = QComboBox()
         self.lfp_channel_selector.addItem("No LFP channel")
         self.lfp_channel_selector.setEnabled(False)
+        self.lfp_channel_selector.currentIndexChanged.connect(self.plot_lfp)
 
         self.axis_channel_selector = QComboBox()
         self.axis_channel_selector.addItem("No 3-axis channel")
         self.axis_channel_selector.setEnabled(False)
+        self.axis_channel_selector.currentIndexChanged.connect(self.plot_axis)
 
         self.time_marker_label = QLabel("First TTL marker: --")
 
@@ -66,7 +74,7 @@ class LfpPanel(QWidget):
 
     def create_waveform_area(self, text):
         frame = QFrame()
-        frame.setMinimumHeight(42)
+        frame.setMinimumHeight(150)
         frame.setStyleSheet(
             """
             QFrame {
@@ -77,12 +85,74 @@ class LfpPanel(QWidget):
         )
 
         frame.setToolTip(text)
+        layout = QVBoxLayout()
+        layout.setContentsMargins(2, 2, 2, 2)
+        placeholder = QLabel(text)
+        placeholder.setAlignment(Qt.AlignCenter)
+        placeholder.setStyleSheet("color: #777; border: none;")
+        layout.addWidget(placeholder)
+        frame.setLayout(layout)
         return frame
+
+    def set_figure(self, frame, canvas_attr, fig):
+        old_canvas = getattr(self, canvas_attr)
+        if old_canvas is not None:
+            old_canvas.setParent(None)
+            old_canvas.deleteLater()
+
+        layout = frame.layout()
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(None)
+
+        canvas = FigureCanvas(fig)
+        layout.addWidget(canvas)
+        setattr(self, canvas_attr, canvas)
+        canvas.draw_idle()
+
+    def selected_channel(self, selector):
+        channel = selector.currentData()
+        if channel is None:
+            return None
+
+        try:
+            return int(channel)
+        except (TypeError, ValueError):
+            return None
+
+    def plot_lfp(self):
+        if not self.lfp_path:
+            return
+
+        channel = self.selected_channel(self.lfp_channel_selector)
+        try:
+            fig = draw.LFP(file_path=self.lfp_path, channels=channel)
+        except Exception as error:
+            QMessageBox.warning(self, "LFP plot failed", str(error))
+            return
+
+        self.set_figure(self.lfp_waveform_area, "lfp_canvas", fig)
+
+    def plot_axis(self):
+        if not self.axis_path:
+            return
+
+        channel = self.selected_channel(self.axis_channel_selector)
+        try:
+            fig = draw.accelerator(file_path=self.axis_path, channel=channel or 260)
+        except Exception as error:
+            QMessageBox.warning(self, "3-axis plot failed", str(error))
+            return
+
+        self.set_figure(self.axis_waveform_area, "axis_canvas", fig)
 
     def set_lfp_info(self, info):
         self.lfp_path = info["path"]
         self.lfp_file_label.setText(f"LFP CSV: {info['filename']}")
 
+        self.lfp_channel_selector.blockSignals(True)
         self.lfp_channel_selector.clear()
 
         channels = info.get("channels", [])
@@ -96,10 +166,14 @@ class LfpPanel(QWidget):
             self.lfp_channel_selector.addItem("No LFP channel")
             self.lfp_channel_selector.setEnabled(False)
 
+        self.lfp_channel_selector.blockSignals(False)
+        self.plot_lfp()
+
     def set_axis_info(self, info):
         self.axis_path = info["path"]
         self.axis_file_label.setText(f"3-axis CSV: {info['filename']}")
 
+        self.axis_channel_selector.blockSignals(True)
         self.axis_channel_selector.clear()
 
         channels = info.get("channels", [])
@@ -112,6 +186,9 @@ class LfpPanel(QWidget):
         else:
             self.axis_channel_selector.addItem("No 3-axis channel")
             self.axis_channel_selector.setEnabled(False)
+
+        self.axis_channel_selector.blockSignals(False)
+        self.plot_axis()
 
     def set_time_marker_info(self, info):
         self.time_marker_path = info["path"]

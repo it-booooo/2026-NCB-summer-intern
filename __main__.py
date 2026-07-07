@@ -1,7 +1,5 @@
 import sys
-import matplotlib.pyplot as plt
 
-import draw_function as draw
 from PySide6.QtWidgets import QApplication
 
 from src.app import MainWindow
@@ -15,9 +13,6 @@ def main():
 
     window = MainWindow()
     window.show()
-    draw.accelerator()
-    draw.LFP()
-    plt.show()
     sys.exit(app.exec())
     
 
