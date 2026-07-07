@@ -1,5 +1,4 @@
 import draw_function as draw
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
@@ -88,6 +87,8 @@ class LfpPanel(QWidget):
         return frame
 
     def set_figure(self, frame, canvas_attr, fig):
+        from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+
         old_canvas = getattr(self, canvas_attr)
         if old_canvas is not None:
             old_canvas.setParent(None)

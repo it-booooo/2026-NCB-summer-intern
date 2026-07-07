@@ -111,3 +111,7 @@ def LFP(
     fig.lfp_channel_numbers = channel_numbers
 
     return fig
+
+
+def format_signal_label(unit):
+    return f"Signal ({unit})" if unit else "Signal"
