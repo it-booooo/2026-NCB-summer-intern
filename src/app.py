@@ -24,7 +24,7 @@ from .video_player import VideoPlayer
 
 class MainWindow(QMainWindow):
     MARKER_PANEL_WIDTH = 300
-    WAVEFORM_AREA_HEIGHT = 340
+    WAVEFORM_AREA_HEIGHT = 420
 
     def __init__(self):
         super().__init__()
