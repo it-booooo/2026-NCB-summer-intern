@@ -100,6 +100,8 @@ class SyncPanel(QWidget):
         if stats is not None and stats.get("mode") == "frame_delta":
             status = (
                 f"LED detection: frame delta | {interval_count} intervals | "
+                f"step={stats.get('coarse_step', 1)} | "
+                f"{'refined' if stats.get('refined') else 'coarse only'} | "
                 f"on delta={stats.get('selected_on_delta', 0.0):.4f}"
                 f" at {stats.get('selected_on_time_sec', 0.0):.3f}s | "
                 f"off delta={stats.get('selected_off_delta', 0.0):.4f}"

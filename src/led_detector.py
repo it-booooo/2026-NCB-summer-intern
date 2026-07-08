@@ -123,6 +123,9 @@ def compute_led_brightness_curve(
     rotate_180=False,
     using_fps=30.0,
     detection_mode="max_brightness",
+    frame_step=1,
+    start_frame=0,
+    end_frame=None,
     should_stop=None,
     progress_callback=None,
 ):
@@ -133,13 +136,22 @@ def compute_led_brightness_curve(
 
     fps = float(using_fps or cap.get(cv2.CAP_PROP_FPS) or 30.0)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+    frame_step = max(int(frame_step), 1)
+    start_frame = max(int(start_frame), 0)
+    if end_frame is None:
+        end_frame = max(total_frames - 1, 0)
+    end_frame = min(max(int(end_frame), start_frame), max(total_frames - 1, 0))
+
+    if start_frame > 0:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+
     points = []
-    frame_index = 0
+    frame_index = start_frame
 
     if progress_callback is not None:
-        progress_callback(0, total_frames)
+        progress_callback(start_frame, total_frames)
 
-    while True:
+    while frame_index <= end_frame:
         if should_stop is not None and should_stop():
             break
 
@@ -163,8 +175,21 @@ def compute_led_brightness_curve(
         )
 
         frame_index += 1
-        if progress_callback is not None and frame_index % 100 == 0:
-            progress_callback(frame_index, total_frames)
+
+        skipped = 0
+        while skipped < frame_step - 1 and frame_index <= end_frame:
+            if should_stop is not None and should_stop():
+                break
+            if not cap.grab():
+                frame_index = end_frame + 1
+                break
+            frame_index += 1
+            skipped += 1
+
+        if progress_callback is not None and (
+            len(points) == 1 or len(points) % 20 == 0 or frame_index > end_frame
+        ):
+            progress_callback(min(frame_index, total_frames), total_frames)
 
     cap.release()
 
@@ -178,8 +203,8 @@ def score_at_frame(points, frame_index):
     if not points:
         return 0.0
 
-    frame_index = max(0, min(int(frame_index), len(points) - 1))
-    return points[frame_index].brightness
+    point = point_for_frame(points, frame_index)
+    return point.brightness if point is not None else 0.0
 
 
 def auto_threshold(points, baseline_score=None, margin=0.02):
@@ -284,8 +309,8 @@ def point_for_frame(points, frame_index):
     if not points:
         return None
 
-    frame_index = max(0, min(int(frame_index), points[-1].frame_index))
-    return points[frame_index]
+    frame_index = int(frame_index)
+    return min(points, key=lambda point: abs(point.frame_index - frame_index))
 
 
 def detect_led_events_from_frame_deltas(points, fps=30.0, min_duration_sec=0.1):
@@ -352,6 +377,42 @@ def detect_led_events_from_frame_deltas(points, fps=30.0, min_duration_sec=0.1):
     ]
 
     return events, stats["reference_delta"], stats
+
+
+def refine_led_events_from_frame_deltas(
+    video_path,
+    roi,
+    coarse_events,
+    rotate_180=False,
+    using_fps=30.0,
+    window_sec=1.0,
+    should_stop=None,
+):
+    if len(coarse_events) < 2:
+        return [], 0.0, summarize_frame_deltas([])
+
+    fps = float(using_fps or 30.0)
+    window_frames = max(int(window_sec * fps), 1)
+    start_frame = max(coarse_events[0].frame_index - window_frames, 0)
+    end_frame = coarse_events[1].frame_index + window_frames
+
+    points = compute_led_brightness_curve(
+        video_path,
+        roi=roi,
+        rotate_180=rotate_180,
+        using_fps=fps,
+        detection_mode="max_brightness",
+        frame_step=1,
+        start_frame=start_frame,
+        end_frame=end_frame,
+        should_stop=should_stop,
+    )
+
+    return detect_led_events_from_frame_deltas(
+        points,
+        fps=fps,
+        min_duration_sec=0.1,
+    )
 
 
 def detect_led_events_from_curve(
