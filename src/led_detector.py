@@ -28,6 +28,7 @@ class LedChangePoint:
 
 DETECTION_MODE_LABELS = {
     "frame_delta": "Frame delta",
+    "frame_delta_mean_brightness": "Frame delta (ROI mean brightness)",
     "max_brightness": "Max brightness",
     "brightness": "Brightness",
     "red_score": "Red score",
@@ -401,7 +402,7 @@ def refine_led_events_from_frame_deltas(
         roi=roi,
         rotate_180=rotate_180,
         using_fps=fps,
-        detection_mode="max_brightness",
+        detection_mode="brightness",
         frame_step=1,
         start_frame=start_frame,
         end_frame=end_frame,

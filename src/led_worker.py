@@ -38,7 +38,7 @@ class LedDetectionWorker(QThread):
                 roi=self.roi,
                 rotate_180=self.rotate_180,
                 using_fps=self.fps,
-                detection_mode="max_brightness",
+                detection_mode="brightness",
                 frame_step=coarse_step,
                 should_stop=self.isInterruptionRequested,
                 progress_callback=self.progress_changed.emit,
@@ -48,7 +48,10 @@ class LedDetectionWorker(QThread):
                 return
 
             baseline = score_at_frame(points, self.baseline_frame)
-            threshold, stats = 0.0, summarize_brightness(points, detection_mode="frame_delta")
+            threshold, stats = 0.0, summarize_brightness(
+                points,
+                detection_mode="frame_delta_mean_brightness",
+            )
             events, threshold, delta_stats = detect_led_events_from_frame_deltas(
                 points,
                 fps=self.fps,

@@ -97,15 +97,21 @@ class SyncPanel(QWidget):
 
         interval_count = len(events) // 2
         mode_label = stats["mode_label"] if stats is not None else "LED score"
-        if stats is not None and stats.get("mode") == "frame_delta":
-            status = (
-                f"LED detection: frame delta | {interval_count} intervals | "
-                f"step={stats.get('coarse_step', 1)} | "
-                f"{'refined' if stats.get('refined') else 'coarse only'} | "
+        is_frame_delta = stats is not None and stats.get("mode", "").startswith("frame_delta")
+        if is_frame_delta:
+            event_status = (
                 f"on delta={stats.get('selected_on_delta', 0.0):.4f}"
                 f" at {stats.get('selected_on_time_sec', 0.0):.3f}s | "
                 f"off delta={stats.get('selected_off_delta', 0.0):.4f}"
                 f" at {stats.get('selected_off_time_sec', 0.0):.3f}s"
+                if interval_count
+                else "no LED event selected"
+            )
+            status = (
+                f"LED detection: {mode_label} | {interval_count} intervals | "
+                f"step={stats.get('coarse_step', 1)} | "
+                f"{'refined' if stats.get('refined') else 'coarse only'} | "
+                f"{event_status}"
             )
         else:
             status = (
@@ -115,7 +121,7 @@ class SyncPanel(QWidget):
             if baseline is not None:
                 status += f" | baseline={baseline:.4f}"
 
-        if stats is not None and stats.get("mode") != "frame_delta":
+        if stats is not None and not is_frame_delta:
             status += (
                 f" | max={stats['max']:.4f}"
                 f" at {stats['peak_time_sec']:.3f}s"
@@ -141,10 +147,10 @@ class SyncPanel(QWidget):
         for event in events:
             color = "green" if event.event_type == "LED_on" else "red"
             ax.axvline(event.video_time_sec, color=color, linestyle="--", linewidth=0.8)
-        if baseline is not None and (stats is None or stats.get("mode") != "frame_delta"):
+        if baseline is not None and not is_frame_delta:
             ax.axhline(baseline, color="gray", linestyle=":", linewidth=0.8)
         ax.set_xlabel("Time (s)", fontsize=8)
-        ax.set_ylabel(mode_label, fontsize=8)
+        ax.set_ylabel("Grayscale mean brightness", fontsize=8)
         ax.tick_params(axis="both", labelsize=8, pad=1)
         ax.grid(True, linewidth=0.4, alpha=0.35)
 
