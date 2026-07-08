@@ -7,3 +7,4 @@ pandas
 mne
 matplotlib
 openpyxl
+pyinstaller

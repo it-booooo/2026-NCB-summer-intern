@@ -12,6 +12,7 @@ dist/
 # VS Code
 .vscode/
 .venv/
+.build_deps/
 *.py[cod]
 
 # Generated images
