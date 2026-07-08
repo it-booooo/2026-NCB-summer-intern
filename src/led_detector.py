@@ -71,8 +71,24 @@ def mean_brightness(frame_bgr, roi=None):
     if frame_bgr.size == 0:
         return 0.0
 
+    frame_bgr = resize_roi_by_scale(frame_bgr, scale=0.5)
     gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
     return float(np.mean(gray)) / 255.0
+
+
+def resize_roi_by_scale(frame_bgr, scale=0.5):
+    if scale >= 1.0:
+        return frame_bgr
+
+    height, width = frame_bgr.shape[:2]
+    resized_width = max(int(width * scale), 1)
+    resized_height = max(int(height * scale), 1)
+
+    return cv2.resize(
+        frame_bgr,
+        (resized_width, resized_height),
+        interpolation=cv2.INTER_AREA,
+    )
 
 
 def top_percent_mean(values, top_percent=5.0):
