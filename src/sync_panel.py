@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QProgressBar,
     QSizePolicy,
     QVBoxLayout,
@@ -20,6 +21,14 @@ class SyncPanel(QWidget):
         self.video_led_label = QLabel("Video LED marker: Not selected")
         self.ttl_label = QLabel("TTL marker: Not loaded")
         self.led_roi_label = QLabel("LED ROI: Not selected")
+        self.led_scan_start_input = QLineEdit()
+        self.led_scan_start_input.setPlaceholderText("00:00.000")
+        self.led_scan_start_input.setToolTip("LED scan start time. Blank = beginning.")
+        self.led_scan_start_input.setFixedWidth(88)
+        self.led_scan_end_input = QLineEdit()
+        self.led_scan_end_input.setPlaceholderText("00:30.000")
+        self.led_scan_end_input.setToolTip("LED scan end time. Blank = full video end.")
+        self.led_scan_end_input.setFixedWidth(88)
         self.led_detection_label = QLabel("LED detection: Not analyzed")
         self.led_progress_bar = QProgressBar()
         self.led_progress_bar.setRange(0, 100)
@@ -52,9 +61,18 @@ class SyncPanel(QWidget):
         info_grid.addWidget(self.video_led_label, 1, 0)
         info_grid.addWidget(self.ttl_label, 1, 1)
         info_grid.addWidget(self.led_roi_label, 2, 0, 1, 2)
-        info_grid.addWidget(self.led_detection_label, 3, 0, 1, 2)
-        info_grid.addWidget(self.led_progress_bar, 4, 0, 1, 2)
-        info_grid.addWidget(self.offset_label, 5, 0, 1, 2)
+        scan_range_layout = QHBoxLayout()
+        scan_range_layout.setContentsMargins(0, 0, 0, 0)
+        scan_range_layout.setSpacing(4)
+        scan_range_layout.addWidget(QLabel("LED scan range"))
+        scan_range_layout.addWidget(self.led_scan_start_input)
+        scan_range_layout.addWidget(QLabel("to"))
+        scan_range_layout.addWidget(self.led_scan_end_input)
+        scan_range_layout.addStretch()
+        info_grid.addLayout(scan_range_layout, 3, 0, 1, 2)
+        info_grid.addWidget(self.led_detection_label, 4, 0, 1, 2)
+        info_grid.addWidget(self.led_progress_bar, 5, 0, 1, 2)
+        info_grid.addWidget(self.offset_label, 6, 0, 1, 2)
 
         self.action_layout = QHBoxLayout()
         self.action_layout.setContentsMargins(0, 0, 0, 0)
@@ -90,6 +108,58 @@ class SyncPanel(QWidget):
             f"LED ROI: x={x}, y={y}, width={width}, height={height}"
         )
 
+    def parse_time_input(self, text):
+        text = text.strip()
+        if not text:
+            return None
+
+        try:
+            if ":" not in text:
+                return float(text)
+
+            parts = [float(part) for part in text.split(":")]
+            if len(parts) == 2:
+                minutes, seconds = parts
+                return minutes * 60 + seconds
+
+            if len(parts) == 3:
+                hours, minutes, seconds = parts
+                return hours * 3600 + minutes * 60 + seconds
+        except ValueError:
+            return None
+
+        return None
+
+    def mark_scan_range_valid(self, is_valid):
+        style = "" if is_valid else "border: 1px solid #c0392b;"
+        self.led_scan_start_input.setStyleSheet(style)
+        self.led_scan_end_input.setStyleSheet(style)
+
+    def led_scan_range_sec(self):
+        start_text = self.led_scan_start_input.text().strip()
+        end_text = self.led_scan_end_input.text().strip()
+
+        start_sec = self.parse_time_input(start_text)
+        end_sec = self.parse_time_input(end_text)
+
+        if start_text and start_sec is None:
+            raise ValueError("Invalid LED scan start time.")
+
+        if end_text and end_sec is None:
+            raise ValueError("Invalid LED scan end time.")
+
+        if start_sec is not None and start_sec < 0:
+            raise ValueError("LED scan start time cannot be negative.")
+
+        if end_sec is not None and end_sec < 0:
+            raise ValueError("LED scan end time cannot be negative.")
+
+        if start_sec is not None and end_sec is not None and start_sec >= end_sec:
+            raise ValueError("LED scan start time must be earlier than end time.")
+
+        self.mark_scan_range_valid(True)
+        return start_sec, end_sec
+
     def set_led_analysis(self, points, threshold, events, baseline=None, stats=None):
         if not points:
             self.led_detection_label.setText("LED detection: No brightness data")
@@ -109,6 +179,7 @@ class SyncPanel(QWidget):
             )
             status = (
                 f"LED detection: {mode_label} | {interval_count} intervals | "
+                f"scan frames={stats.get('scan_start_frame', 0)}-{stats.get('scan_end_frame', 0)} | "
                 f"step={stats.get('coarse_step', 1)} | "
                 f"{'refined' if stats.get('refined') else 'coarse only'} | "
                 f"{event_status}"

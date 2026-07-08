@@ -13,6 +13,8 @@ class LedDetectionWorker(QThread):
         rotate_180,
         fps,
         baseline_frame,
+        scan_start_frame,
+        scan_end_frame,
         parent=None,
     ):
         super().__init__(parent)
@@ -21,6 +23,8 @@ class LedDetectionWorker(QThread):
         self.rotate_180 = rotate_180
         self.fps = fps
         self.baseline_frame = baseline_frame
+        self.scan_start_frame = scan_start_frame
+        self.scan_end_frame = scan_end_frame
 
     def run(self):
         try:
@@ -32,7 +36,7 @@ class LedDetectionWorker(QThread):
                 summarize_brightness,
             )
 
-            coarse_step = max(int(self.fps / 5), 1)
+            coarse_step = 20
             points = compute_led_brightness_curve(
                 self.video_path,
                 roi=self.roi,
@@ -40,6 +44,8 @@ class LedDetectionWorker(QThread):
                 using_fps=self.fps,
                 detection_mode="brightness",
                 frame_step=coarse_step,
+                start_frame=self.scan_start_frame,
+                end_frame=self.scan_end_frame,
                 should_stop=self.isInterruptionRequested,
                 progress_callback=self.progress_changed.emit,
             )
@@ -60,6 +66,8 @@ class LedDetectionWorker(QThread):
             stats.update(delta_stats)
             stats["coarse_step"] = coarse_step
             stats["refined"] = False
+            stats["scan_start_frame"] = self.scan_start_frame
+            stats["scan_end_frame"] = self.scan_end_frame
 
             if events and not self.isInterruptionRequested():
                 refined_events, refined_threshold, refined_stats = (
@@ -70,6 +78,8 @@ class LedDetectionWorker(QThread):
                         rotate_180=self.rotate_180,
                         using_fps=self.fps,
                         window_sec=1.0,
+                        scan_start_frame=self.scan_start_frame,
+                        scan_end_frame=self.scan_end_frame,
                         should_stop=self.isInterruptionRequested,
                     )
                 )

@@ -190,6 +190,32 @@ class MainWindow(QMainWindow):
         if not self.video_player.has_video() or self.led_roi is None:
             return
 
+        try:
+            scan_start_sec, scan_end_sec = self.sync_panel.led_scan_range_sec()
+        except ValueError as error:
+            self.sync_panel.mark_scan_range_valid(False)
+            QMessageBox.warning(self, "Invalid LED scan range", str(error))
+            return
+
+        scan_start_frame = (
+            self.video_player.time_sec_to_frame(scan_start_sec)
+            if scan_start_sec is not None
+            else 0
+        )
+        scan_end_frame = (
+            self.video_player.time_sec_to_frame(scan_end_sec)
+            if scan_end_sec is not None
+            else max(self.video_player.total_frames - 1, 0)
+        )
+        if scan_start_frame >= scan_end_frame:
+            self.sync_panel.mark_scan_range_valid(False)
+            QMessageBox.warning(
+                self,
+                "Invalid LED scan range",
+                "LED scan range is too short after converting to frames.",
+            )
+            return
+
         if self.led_worker is not None and self.led_worker.isRunning():
             if not self.stop_led_detection(wait=True):
                 QMessageBox.information(
@@ -209,6 +235,8 @@ class MainWindow(QMainWindow):
             rotate_180=self.video_player.rotate_180_enabled,
             fps=self.video_player.fps,
             baseline_frame=self.video_player.current_frame,
+            scan_start_frame=scan_start_frame,
+            scan_end_frame=scan_end_frame,
         )
         self.led_worker.result_ready.connect(self.finish_led_detection)
         self.led_worker.progress_changed.connect(self.update_led_detection_progress)
@@ -250,6 +278,7 @@ class MainWindow(QMainWindow):
         )
         self.sync_panel.set_led_detection_status(
             f"LED detection: ROI mean brightness delta | {len(events) // 2} intervals | "
+            f"scan frames={stats.get('scan_start_frame', 0)}-{stats.get('scan_end_frame', 0)} | "
             f"coarse step={stats.get('coarse_step', 1)} frames | "
             f"{'refined' if stats.get('refined') else 'coarse only'} | "
             f"{event_status}"
