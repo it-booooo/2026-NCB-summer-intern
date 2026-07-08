@@ -201,6 +201,8 @@ class LfpPanel(QWidget):
         self.axis_info = None
         self.lfp_fig = None
         self.axis_fig = None
+        self.lfp_step = None
+        self.axis_step = None
         self.updating_timeline = False
         self.lfp_callback_connected = False
         self.axis_callback_connected = False
@@ -404,7 +406,11 @@ class LfpPanel(QWidget):
         channel = self.selected_channel(self.lfp_channel_selector)
         try:
             if self.lfp_fig is None:
-                self.lfp_fig = draw.LFP(info=self.lfp_info, channels=channel)
+                self.lfp_fig = draw.LFP(
+                    info=self.lfp_info,
+                    channels=channel,
+                    step=self.lfp_step,
+                )
             elif self.lfp_fig is not None and channel is not None:
                 self.lfp_fig.set_lfp_channel(channel)
         except Exception as error:
@@ -426,7 +432,11 @@ class LfpPanel(QWidget):
             return
 
         try:
-            self.axis_fig = draw.accelerator(info=self.axis_info, compact=True)
+            self.axis_fig = draw.accelerator(
+                info=self.axis_info,
+                compact=True,
+                step=self.axis_step,
+            )
         except Exception as error:
             QMessageBox.warning(self, "3-axis plot failed", str(error))
             return
@@ -472,3 +482,37 @@ class LfpPanel(QWidget):
         self.axis_callback_connected = False
         self.axis_file_label.setText(f"3-axis CSV: {info['filename']} (channel 260)")
         self.plot_axis()
+
+    def set_lfp_step(self, step):
+        step = None if step is None else max(int(step), 0)
+        if self.lfp_step == step:
+            return
+
+        self.lfp_step = step
+        if not self.lfp_path:
+            return
+
+        current_xlim = self.current_timeline_xlim()
+        self.lfp_fig = None
+        self.lfp_callback_connected = False
+        self.plot_lfp()
+
+        if current_xlim is not None:
+            self.set_shared_xlim(*current_xlim, source="timeline")
+
+    def set_axis_step(self, step):
+        step = None if step is None else max(int(step), 0)
+        if self.axis_step == step:
+            return
+
+        self.axis_step = step
+        if not self.axis_path:
+            return
+
+        current_xlim = self.current_timeline_xlim()
+        self.axis_fig = None
+        self.axis_callback_connected = False
+        self.plot_axis()
+
+        if current_xlim is not None:
+            self.set_shared_xlim(*current_xlim, source="timeline")

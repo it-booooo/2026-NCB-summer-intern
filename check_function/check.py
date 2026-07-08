@@ -4,57 +4,18 @@ from pathlib import Path
 import pandas as pd
 
 
-def check(info: dict) -> None:
+def check(info: dict, output_path: str | Path | None = None) -> Path:
     """Validate CSV timestamps/data integrity and output a check report CSV."""
     path = info.get("path")
     if not path:
         raise ValueError("Path not provided in info dict")
+
     file_path = Path(path)
+    output_file = default_output_path(file_path) if output_path is None else Path(output_path)
+    output_file.parent.mkdir(parents=True, exist_ok=True)
 
-    # Prepare output file
-    output_dir = file_path.parent.parent / "output_data"
-    output_dir.mkdir(parents=True, exist_ok=True)
-    output_file = output_dir / f"{file_path.stem}_check_report.csv"
-    results = []
-
-    sample_rate: float | None = None
-    header_row: int | None = None
-    data_column_count: int | None = None
-
-    # 先用 csv.reader 讀取前面的儀器資訊
-    with file_path.open(
-        "r",
-        encoding="utf-8-sig",
-        newline="",
-    ) as file:
-        reader = csv.reader(file)
-
-        for row_num, row in enumerate(reader):
-            # 去除每一格前後空白
-            row_values = [value.strip() for value in row]
-
-            if not row_values:
-                continue
-
-            # 找真正的資料標題列
-            if row_values[0] == "Time[us]":
-                header_row = row_num
-
-                # 排除最後因逗號產生的空欄位
-                data_column_count = sum(bool(value) for value in row_values)
-                break
-    sample_rate = info.get("sample_rates", [None])[0]
-    if sample_rate is None:
-        raise ValueError("找不到 Sample Rate")
-    sample_rate = float(sample_rate)
-
-    if header_row is None:
-        raise ValueError("找不到 Time[us]")
-
-    if data_column_count is None:
-        raise ValueError("無法判斷資料欄位數量")
-
-    # 現在才交給 Pandas 讀取真正的資料表
+    sample_rate = first_sample_rate(info)
+    header_row, data_column_count = find_data_header(file_path)
     df = pd.read_csv(
         file_path,
         skiprows=header_row,
@@ -64,79 +25,121 @@ def check(info: dict) -> None:
     )
 
     expected_interval = round(1_000_000 / sample_rate)
-
-    # 第一欄是時間
-    times = pd.to_numeric(
-        df.iloc[:, 0],
-        errors="coerce",
-    )
-
-    # 檢查所有資料欄位的缺值
+    times = pd.to_numeric(df.iloc[:, 0], errors="coerce")
     missing_count = int(df.isna().sum().sum())
-
-    # 檢查重複時間
-    duplicate_mask = times.duplicated(keep=False)
-
-    # 計算相鄰時間差
     intervals = times.diff()
 
-    # 找出非正常時間間隔
-    discontinuous_mask = intervals.notna() & (intervals != expected_interval)
-
-    # Add summary results
-    results.append({"Type": "Summary", "File": str(file_path), "Value": ""})
-    results.append({"Type": "Sample rate", "File": "", "Value": f"{sample_rate} Hz"})
-    results.append(
-        {"Type": "Expected interval", "File": "", "Value": f"{expected_interval} us"}
+    duplicate_timestamp_mask = intervals.notna() & (intervals == 0)
+    discontinuous_mask = (
+        intervals.notna() & (intervals != 0) & (intervals != expected_interval)
     )
-    results.append({"Type": "Missing values", "File": "", "Value": str(missing_count)})
-    results.append(
+
+    results = [
+        {"Type": "Summary", "File": str(file_path), "Value": ""},
+        {"Type": "Sample rate", "File": "", "Value": f"{sample_rate} Hz"},
+        {
+            "Type": "Expected interval",
+            "File": "",
+            "Value": f"{expected_interval} us",
+        },
+        {"Type": "Missing values", "File": "", "Value": str(missing_count)},
         {
             "Type": "Duplicate timestamps",
             "File": "",
-            "Value": str(int(duplicate_mask.sum())),
-        }
-    )
-    results.append(
+            "Value": str(int(duplicate_timestamp_mask.sum())),
+        },
         {
             "Type": "Discontinuous timestamps",
             "File": "",
             "Value": str(int(discontinuous_mask.sum())),
-        }
-    )
+        },
+    ]
 
-    # 使用 enumerate，確保 current_index 是 int
-    for current_index, is_discontinuous in enumerate(discontinuous_mask.to_numpy()):
-        if not is_discontinuous:
+    channels = [int(channel) for channel in info.get("channels", [])]
+    for row_index, column_index in zip(*df.isna().to_numpy().nonzero()):
+        csv_line = header_row + 2 + row_index
+        time_value = times.iloc[row_index]
+        time_text = "missing" if pd.isna(time_value) else f"{int(time_value)} us"
+        channel_text = channel_label(column_index, channels, df.columns[column_index])
+
+        results.append(
+            {
+                "Type": "Missing value",
+                "File": f"line {csv_line}",
+                "Value": f"time={time_text}, channel={channel_text}",
+            }
+        )
+
+    anomaly_mask = duplicate_timestamp_mask | discontinuous_mask
+    for current_index, has_anomaly in enumerate(anomaly_mask.to_numpy()):
+        if not has_anomaly:
             continue
 
         previous_value = times.iloc[current_index - 1]
         current_value = times.iloc[current_index]
-
         if pd.isna(previous_value) or pd.isna(current_value):
             continue
 
         previous_time = int(previous_value)
         current_time = int(current_value)
-
         actual_interval = current_time - previous_time
-
-        # DataFrame 第 0 列對應
-        # Time[us] 下一列，也就是實際 CSV 資料列
         csv_line = header_row + 2 + current_index
+        result_type = (
+            "Duplicate timestamp"
+            if duplicate_timestamp_mask.iloc[current_index]
+            else "Time discontinuity"
+        )
 
         results.append(
             {
-                "Type": "Time discontinuity",
+                "Type": result_type,
                 "File": f"line {csv_line}",
-                "Value": f"{previous_time} → {current_time} us (actual: {actual_interval} us, expected: {expected_interval} us)",
+                "Value": (
+                    f"{previous_time} -> {current_time} us "
+                    f"(actual: {actual_interval} us, expected: {expected_interval} us)"
+                ),
             }
         )
 
-    # Write results to CSV file
     with output_file.open("w", encoding="utf-8-sig", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=["Type", "File", "Value"])
         writer.writeheader()
         writer.writerows(results)
 
     print(f"Report saved to: {output_file}")
+    return output_file
+
+
+def default_output_path(file_path: Path) -> Path:
+    output_dir = file_path.parent.parent / "output_data"
+    return output_dir / f"{file_path.stem}_check_report.csv"
+
+
+def first_sample_rate(info: dict) -> float:
+    sample_rate = info.get("sample_rates", [None])[0]
+    if sample_rate is None:
+        raise ValueError("Sample Rate not found")
+    return float(sample_rate)
+
+
+def channel_label(column_index: int, channels: list[int], column_name: str) -> str:
+    if column_index == 0:
+        return "Time[us]"
+
+    channel_index = column_index - 1
+    if 0 <= channel_index < len(channels):
+        return str(channels[channel_index])
+
+    return str(column_name)
+
+
+def find_data_header(file_path: Path) -> tuple[int, int]:
+    with file_path.open("r", encoding="utf-8-sig", newline="") as file:
+        reader = csv.reader(file)
+        for row_num, row in enumerate(reader):
+            row_values = [value.strip() for value in row]
+            if row_values and row_values[0] == "Time[us]":
+                data_column_count = sum(bool(value) for value in row_values)
+                return row_num, data_column_count
+
+    raise ValueError("Time[us] header not found")

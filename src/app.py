@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QGroupBox,
     QHBoxLayout,
+    QInputDialog,
     QMainWindow,
     QMessageBox,
     QPushButton,
@@ -11,7 +12,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+import check_function as check
 import csv_function as csv_func
+import draw_function as draw
 from .analysis import AnalysisMenuController
 from .event_table import EventTable
 from .export import export_events_csv, export_events_excel
@@ -77,6 +80,7 @@ class MainWindow(QMainWindow):
     def create_menu(self):
         menu_bar = self.menuBar()
         file_menu = menu_bar.addMenu("File")
+        settings_menu = menu_bar.addMenu("Settings")
         analysis_menu = menu_bar.addMenu("Analysis")
         import_menu = file_menu.addMenu("Import")
         export_menu = file_menu.addMenu("Export")
@@ -90,6 +94,8 @@ class MainWindow(QMainWindow):
         export_actions = [
             ("Export Markers as CSV", self.export_markers_csv),
             ("Export Markers as Excel", self.export_markers_excel),
+            ("Export Check Results", self.export_check_results),
+            ("Export Waveform Image", self.export_waveform_image),
         ]
 
         self.add_action(import_menu, *import_actions[0])
@@ -100,7 +106,34 @@ class MainWindow(QMainWindow):
         for text, callback in export_actions:
             self.add_action(export_menu, text, callback)
 
+        self.add_action(settings_menu, "Set LFP step", self.set_lfp_step)
+        self.add_action(settings_menu, "Set 3-axis step", self.set_axis_step)
+
         self.analysis_controller.populate_menu(analysis_menu)
+
+    def ask_step(self, title, current_step):
+        step, accepted = QInputDialog.getInt(
+            self,
+            title,
+            "Step (-1 auto, 0 all):",
+            -1 if current_step is None else int(current_step),
+            -1,
+            1_000_000,
+            1,
+        )
+        if not accepted:
+            return False, None
+        return True, None if step == -1 else step
+
+    def set_lfp_step(self):
+        accepted, step = self.ask_step("Set LFP step", self.lfp_panel.lfp_step)
+        if accepted:
+            self.lfp_panel.set_lfp_step(step)
+
+    def set_axis_step(self):
+        accepted, step = self.ask_step("Set 3-axis step", self.lfp_panel.axis_step)
+        if accepted:
+            self.lfp_panel.set_axis_step(step)
 
     def create_layout(self):
         lfp_group = self.create_group("Waveform Area", self.lfp_panel)
@@ -410,3 +443,136 @@ class MainWindow(QMainWindow):
 
         if path:
             export_func(path, events)
+
+    def signal_exports(self):
+        exports = []
+        if self.lfp_info is not None:
+            exports.append(("LFP", self.lfp_info))
+        if self.axis_info is not None:
+            exports.append(("3-axis", self.axis_info))
+        return exports
+
+    def choose_signal_export(self, title):
+        exports = self.signal_exports()
+        if not exports:
+            QMessageBox.information(
+                self,
+                "No signal data",
+                "Please import LFP or 3-axis CSV data first.",
+            )
+            return None
+
+        if len(exports) == 1:
+            return exports[0]
+
+        items = [label for label, _ in exports]
+        label, accepted = QInputDialog.getItem(
+            self,
+            title,
+            "Data:",
+            items,
+            0,
+            False,
+        )
+        if not accepted:
+            return None
+
+        return exports[items.index(label)]
+
+    def export_check_results(self):
+        selected = self.choose_signal_export("Export Check Results")
+        if selected is None:
+            return
+
+        label, info = selected
+        filename = info.get("filename", label).rsplit(".", 1)[0]
+        default_name = f"{filename}_check_report.csv"
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Check Results",
+            default_name,
+            "CSV Files (*.csv)",
+        )
+        if not path:
+            return
+
+        try:
+            output_path = check.check(info=info, output_path=path)
+        except Exception as error:
+            QMessageBox.warning(self, "Export check results failed", str(error))
+            return
+
+        QMessageBox.information(
+            self,
+            "Check Results Exported",
+            f"Check results exported to:\n{output_path}",
+        )
+
+    def export_waveform_image(self):
+        selected = self.choose_signal_export("Export Waveform Image")
+        if selected is None:
+            return
+
+        label, info = selected
+        channel = None
+        if label == "LFP":
+            channels = [int(channel) for channel in info.get("channels", [])]
+            if not channels:
+                QMessageBox.warning(
+                    self,
+                    "No LFP channels",
+                    "The imported LFP CSV does not list available channels.",
+                )
+                return
+
+            channel_items = [f"Channel {channel}" for channel in channels]
+            channel_text, accepted = QInputDialog.getItem(
+                self,
+                "Export LFP Waveform Image",
+                "Channel:",
+                channel_items,
+                0,
+                False,
+            )
+            if not accepted:
+                return
+
+            channel = channels[channel_items.index(channel_text)]
+            filename = info.get("filename", "lfp").rsplit(".", 1)[0]
+            default_name = f"{filename}_channel_{channel}.png"
+        else:
+            filename = info.get("filename", "axis").rsplit(".", 1)[0]
+            default_name = f"{filename}_waveform.png"
+
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Waveform Image",
+            default_name,
+            "PNG Images (*.png);;PDF Files (*.pdf);;SVG Files (*.svg);;All Files (*)",
+        )
+        if not path:
+            return
+
+        try:
+            if label == "LFP":
+                fig = draw.LFP(
+                    info=info,
+                    channels=channel,
+                    step=self.lfp_panel.lfp_step,
+                )
+            else:
+                fig = draw.accelerator(
+                    info=info,
+                    compact=False,
+                    step=self.lfp_panel.axis_step,
+                )
+            fig.savefig(path, dpi=300)
+        except Exception as error:
+            QMessageBox.warning(self, "Export waveform image failed", str(error))
+            return
+
+        QMessageBox.information(
+            self,
+            "Waveform Image Exported",
+            f"Waveform image exported to:\n{path}",
+        )

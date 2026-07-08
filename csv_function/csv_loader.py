@@ -18,29 +18,52 @@ def read_csv_preview(path, max_rows=8):
     return rows
 
 
+def parse_signal_csv_metadata(path):
+    channels = []
+    sample_rates = []
+    header_row = None
+    data_column_count = None
+
+    with open(path, "r", encoding="utf-8-sig", newline="") as csv_file:
+        reader = csv.reader(csv_file)
+
+        for row_num, row in enumerate(reader):
+            row_values = [value.strip() for value in row]
+            if not row_values:
+                continue
+
+            row_name = row_values[0]
+            if row_name == "Channels":
+                channels = [int(channel) for channel in row_values[1:] if channel]
+            elif row_name.startswith("Sample Rate"):
+                sample_rates = [
+                    float(sample_rate) for sample_rate in row_values[1:] if sample_rate
+                ]
+            elif row_name == "Time[us]":
+                header_row = row_num
+                data_column_count = sum(bool(value) for value in row_values)
+                break
+
+    return {
+        "channels": channels,
+        "sample_rates": sample_rates,
+        "header_row": header_row,
+        "data_column_count": data_column_count,
+    }
+
+
 def parse_lfp_csv_info(path):
-    rows = read_csv_preview(path, max_rows=6)
-
-    channel_row = rows[2] if len(rows) > 2 else []
-    sample_rate_row = rows[3] if len(rows) > 3 else []
-
-    channels = (
-        [int(channel) for channel in channel_row[1:] if channel]
-        if channel_row and channel_row[0] == "Channels"
-        else []
-    )
-    sample_rates = (
-        [float(sample_rate) for sample_rate in sample_rate_row[1:] if sample_rate]
-        if sample_rate_row and sample_rate_row[0].startswith("Sample Rate")
-        else []
-    )
+    metadata = parse_signal_csv_metadata(path)
+    channels = metadata["channels"]
 
     return {
         "path": path,
         "filename": Path(path).name,
         "channels": channels,
-        "sample_rates": sample_rates,
+        "sample_rates": metadata["sample_rates"],
         "channel_count": len(channels),
+        "header_row": metadata["header_row"],
+        "data_column_count": metadata["data_column_count"],
     }
 
 

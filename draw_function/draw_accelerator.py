@@ -8,7 +8,6 @@ from matplotlib.figure import Figure
 
 sys.path.insert(0, str(PathlibPath(__file__).parent.parent))
 
-import check_function as check
 import csv_function as csv_func
 import read_function as read
 
@@ -18,22 +17,34 @@ class AcceleratorFigure(Figure):
     reset_axis_x_zoom: Callable[[], None]
     add_axis_xlim_callback: Callable[[Callable[[tuple[float, float]], None]], None]
     axis_full_xlim: tuple[float, float]
+    axis_plot_step: int
+
+
+TARGET_PLOT_POINTS = 5000
+
+
+def resolve_plot_step(data_length: int, step: int | None) -> int:
+    if step is None:
+        return max(data_length // TARGET_PLOT_POINTS, 1)
+    return max(int(step), 0)
 
 
 def accelerator(
     info: dict | None = None,
     compact: bool = False,
+    step: int | None = None,
 ) -> AcceleratorFigure:
-    """Read/check accelerator data, draw waveform, and save the output image.
+    """Read accelerator data and draw waveform.
 
     Args:
         info: CSV metadata returned by csv_function.parse_lfp_csv_info().
             Required keys:
             - path: CSV file path selected from the GUI import action.
-            - sample_rates: Sample rate values used by check.check().
+            - sample_rates: Sample rate values used when exporting check results.
             Optional keys such as filename, channels, and channel_count are
             kept with the same structure as LFP imports.
         compact: Draw only the axes and waveform for embedding in the main GUI.
+        step: Plot every nth sample. Use None for automatic step or 0 to draw every sample.
 
     Returns:
         Generated Matplotlib figure object.
@@ -50,7 +61,6 @@ def accelerator(
         raise FileNotFoundError(f"3-axis CSV file not found: {input_file}")
 
     data = read.accelerator(str(input_file))
-    check.check(info=info)
     units = csv_func.parse_signal_csv_units(input_file)
 
     channel_name = "channel_260"
@@ -72,9 +82,19 @@ def accelerator(
 
     # Convert microseconds to seconds for plotting.
     data["time_s"] = data["time_us"] / 1e6
+    plot_step = resolve_plot_step(len(data), step)
+    if plot_step == 0 or len(data) <= plot_step:
+        plot_data = data
+    else:
+        plot_data = data.iloc[::plot_step]
 
     label = None if compact else "Channel 260"
-    ax.plot(data["time_s"], data[channel_name], label=label, linewidth=0.2)
+    ax.plot(
+        plot_data["time_s"],
+        plot_data[channel_name],
+        label=label,
+        linewidth=0.2,
+    )
 
     y_label = format_signal_label(units["value_unit"])
     if not compact:
@@ -205,19 +225,12 @@ def accelerator(
     fig.reset_axis_x_zoom = reset_axis_x_zoom
     fig.add_axis_xlim_callback = add_axis_xlim_callback
     fig.axis_full_xlim = full_xlim
+    fig.axis_plot_step = plot_step
 
-    if compact:
-        return fig
+    if not compact:
+        ax.set_title("3-axis Vector Magnitude - Channel 260")
+        ax.legend()
 
-    output_dir = Path(__file__).parent.parent / "output_data"
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    ax.set_title("3-axis Vector Magnitude - Channel 260")
-    ax.legend()
-    fig.savefig(
-        str(output_dir / "acceleration_output.png"),
-        dpi=300,
-    )
     return fig
 
 

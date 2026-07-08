@@ -8,7 +8,6 @@ from matplotlib.lines import Line2D
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import check_function as check
 import read_function as read
 
 
@@ -20,11 +19,21 @@ class LfpFigure(Figure):
     lfp_full_xlim: tuple[float, float]
     lfp_lines: dict[int, Line2D]
     lfp_channel_numbers: list[int]
+    lfp_plot_step: int
+
+
+TARGET_PLOT_POINTS = 5000
+
+
+def resolve_plot_step(data_length: int, step: int | None) -> int:
+    if step is None:
+        return max(data_length // TARGET_PLOT_POINTS, 1)
+    return max(int(step), 0)
 
 
 def LFP(
     channels: int | list[int] | tuple[int, ...] | None = 1,
-    step: int = 100,
+    step: int | None = None,
     info: dict | None = None,
 ) -> LfpFigure:
     if info is None:
@@ -39,18 +48,21 @@ def LFP(
         raise FileNotFoundError(f"LFP CSV file not found: {input_file}")
 
     data = read.LFP(str(input_file))
-    check.check(info=info)
 
     data["time_s"] = data["time_us"] / 1e6
 
-    if step == 0:
-        x = data["time_s"]
+    plot_step = resolve_plot_step(len(data), step)
+    if plot_step == 0 or len(data) <= plot_step:
         plot_data = data
     else:
-        x = data["time_s"][::step]
-        plot_data = data.iloc[::step]
+        plot_data = data.iloc[::plot_step]
+    x = plot_data["time_s"]
 
-    channel_numbers = info.get("channels") or list(range(1, 17))
+    channel_numbers = info.get("channels") or [
+        int(column.removeprefix("channel_"))
+        for column in data.columns
+        if column.startswith("channel_")
+    ]
     channel_numbers = [int(channel) for channel in channel_numbers]
 
     if channels is None:
@@ -91,7 +103,7 @@ def LFP(
     ax.grid(True)
     ax.tick_params(axis="both", labelsize=8, pad=2)
 
-    full_xlim = (float(x.iloc[0]), float(x.iloc[-1]))
+    full_xlim = (float(data["time_s"].iloc[0]), float(data["time_s"].iloc[-1]))
     if full_xlim[0] == full_xlim[1]:
         full_xlim = (full_xlim[0] - 0.5, full_xlim[1] + 0.5)
 
@@ -234,6 +246,7 @@ def LFP(
     fig.lfp_full_xlim = full_xlim
     fig.lfp_lines = lines
     fig.lfp_channel_numbers = channel_numbers
+    fig.lfp_plot_step = plot_step
 
     return fig
 
