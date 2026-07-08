@@ -15,6 +15,7 @@ class LedDetectionWorker(QThread):
         baseline_frame,
         scan_start_frame,
         scan_end_frame,
+        detect_multiple=False,
         parent=None,
     ):
         super().__init__(parent)
@@ -25,9 +26,14 @@ class LedDetectionWorker(QThread):
         self.baseline_frame = baseline_frame
         self.scan_start_frame = scan_start_frame
         self.scan_end_frame = scan_end_frame
+        self.detect_multiple = detect_multiple
 
     def run(self):
         try:
+            from src.led_multi_detector import (
+                detect_led_event_pairs_from_frame_deltas,
+                refine_led_event_pairs_from_frame_deltas,
+            )
             from src.led_detector import (
                 compute_led_brightness_curve,
                 detect_led_events_from_frame_deltas,
@@ -58,20 +64,34 @@ class LedDetectionWorker(QThread):
                 points,
                 detection_mode="frame_delta_mean_brightness",
             )
-            events, threshold, delta_stats = detect_led_events_from_frame_deltas(
-                points,
-                fps=self.fps,
-                min_duration_sec=0.1,
-            )
+            if self.detect_multiple:
+                events, threshold, delta_stats = detect_led_event_pairs_from_frame_deltas(
+                    points,
+                    fps=self.fps,
+                    min_duration_sec=0.1,
+                    min_gap_sec=0.5,
+                )
+            else:
+                events, threshold, delta_stats = detect_led_events_from_frame_deltas(
+                    points,
+                    fps=self.fps,
+                    min_duration_sec=0.1,
+                )
             stats.update(delta_stats)
             stats["coarse_step"] = coarse_step
             stats["refined"] = False
             stats["scan_start_frame"] = self.scan_start_frame
             stats["scan_end_frame"] = self.scan_end_frame
+            stats["detect_multiple"] = self.detect_multiple
 
             if events and not self.isInterruptionRequested():
+                refine_func = (
+                    refine_led_event_pairs_from_frame_deltas
+                    if self.detect_multiple
+                    else refine_led_events_from_frame_deltas
+                )
                 refined_events, refined_threshold, refined_stats = (
-                    refine_led_events_from_frame_deltas(
+                    refine_func(
                         self.video_path,
                         roi=self.roi,
                         coarse_events=events,
@@ -84,11 +104,10 @@ class LedDetectionWorker(QThread):
                     )
                 )
 
-                if refined_events:
-                    events = refined_events
-                    threshold = refined_threshold
-                    stats.update(refined_stats)
-                    stats["refined"] = True
+                events = refined_events
+                threshold = refined_threshold
+                stats.update(refined_stats)
+                stats["refined"] = True
 
             if self.isInterruptionRequested():
                 return

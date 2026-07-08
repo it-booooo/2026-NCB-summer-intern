@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from PySide6.QtWidgets import (
+    QCheckBox,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -29,6 +30,7 @@ class SyncPanel(QWidget):
         self.led_scan_end_input.setPlaceholderText("00:30.000")
         self.led_scan_end_input.setToolTip("LED scan end time. Blank = full video end.")
         self.led_scan_end_input.setFixedWidth(88)
+        self.detect_multiple_led_checkbox = QCheckBox("Detect multiple LED events")
         self.led_detection_label = QLabel("LED detection: Not analyzed")
         self.led_progress_bar = QProgressBar()
         self.led_progress_bar.setRange(0, 100)
@@ -68,6 +70,7 @@ class SyncPanel(QWidget):
         scan_range_layout.addWidget(self.led_scan_start_input)
         scan_range_layout.addWidget(QLabel("to"))
         scan_range_layout.addWidget(self.led_scan_end_input)
+        scan_range_layout.addWidget(self.detect_multiple_led_checkbox)
         scan_range_layout.addStretch()
         info_grid.addLayout(scan_range_layout, 3, 0, 1, 2)
         info_grid.addWidget(self.led_detection_label, 4, 0, 1, 2)
@@ -160,6 +163,9 @@ class SyncPanel(QWidget):
         self.mark_scan_range_valid(True)
         return start_sec, end_sec
 
+    def detect_multiple_led_events(self):
+        return self.detect_multiple_led_checkbox.isChecked()
+
     def set_led_analysis(self, points, threshold, events, baseline=None, stats=None):
         if not points:
             self.led_detection_label.setText("LED detection: No brightness data")
@@ -180,6 +186,7 @@ class SyncPanel(QWidget):
                 f"LED detection: {mode_label} | {interval_count} intervals | "
                 f"scan frames={stats.get('scan_start_frame', 0)}-{stats.get('scan_end_frame', 0)} | "
                 f"step={stats.get('coarse_step', 1)} | "
+                f"{'multiple' if stats.get('detect_multiple') else 'single'} | "
                 f"{'refined' if stats.get('refined') else 'coarse only'} | "
                 f"{event_status}"
             )

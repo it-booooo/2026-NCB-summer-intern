@@ -237,6 +237,7 @@ class MainWindow(QMainWindow):
             baseline_frame=self.video_player.current_frame,
             scan_start_frame=scan_start_frame,
             scan_end_frame=scan_end_frame,
+            detect_multiple=self.sync_panel.detect_multiple_led_events(),
         )
         self.led_worker.result_ready.connect(self.finish_led_detection)
         self.led_worker.progress_changed.connect(self.update_led_detection_progress)
@@ -279,6 +280,7 @@ class MainWindow(QMainWindow):
             f"LED detection: ROI mean brightness delta | {len(events) // 2} intervals | "
             f"scan frames={stats.get('scan_start_frame', 0)}-{stats.get('scan_end_frame', 0)} | "
             f"coarse step={stats.get('coarse_step', 1)} frames | "
+            f"{'multiple' if stats.get('detect_multiple') else 'single'} | "
             f"{'refined' if stats.get('refined') else 'coarse only'} | "
             f"{event_status}"
         )
