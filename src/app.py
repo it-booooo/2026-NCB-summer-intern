@@ -269,10 +269,7 @@ class MainWindow(QMainWindow):
         )
         self.add_led_events(events)
         event_status = (
-            f"on delta={stats.get('selected_on_delta', 0.0):.4f} "
-            f"at {stats.get('selected_on_time_sec', 0.0):.3f}s | "
-            f"off delta={stats.get('selected_off_delta', 0.0):.4f} "
-            f"at {stats.get('selected_off_time_sec', 0.0):.3f}s"
+            f"event pairs={len(events) // 2} | min delta={stats.get('min_delta', 0.0):.4f}"
             if events
             else "no LED event selected"
         )

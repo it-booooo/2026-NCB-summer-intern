@@ -170,10 +170,7 @@ class SyncPanel(QWidget):
         is_frame_delta = stats is not None and stats.get("mode", "").startswith("frame_delta")
         if is_frame_delta:
             event_status = (
-                f"on delta={stats.get('selected_on_delta', 0.0):.4f}"
-                f" at {stats.get('selected_on_time_sec', 0.0):.3f}s | "
-                f"off delta={stats.get('selected_off_delta', 0.0):.4f}"
-                f" at {stats.get('selected_off_time_sec', 0.0):.3f}s"
+                f"event pairs={interval_count} | min delta={stats.get('min_delta', 0.0):.4f}"
                 if interval_count
                 else "no LED event selected"
             )

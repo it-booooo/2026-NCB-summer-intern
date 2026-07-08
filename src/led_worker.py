@@ -30,8 +30,8 @@ class LedDetectionWorker(QThread):
         try:
             from src.led_detector import (
                 compute_led_brightness_curve,
-                detect_led_events_from_frame_deltas,
-                refine_led_events_from_frame_deltas,
+                detect_led_event_pairs_from_frame_deltas,
+                refine_led_event_pairs_from_frame_deltas,
                 score_at_frame,
                 summarize_brightness,
             )
@@ -58,10 +58,11 @@ class LedDetectionWorker(QThread):
                 points,
                 detection_mode="frame_delta_mean_brightness",
             )
-            events, threshold, delta_stats = detect_led_events_from_frame_deltas(
+            events, threshold, delta_stats = detect_led_event_pairs_from_frame_deltas(
                 points,
                 fps=self.fps,
                 min_duration_sec=0.1,
+                min_gap_sec=0.5,
             )
             stats.update(delta_stats)
             stats["coarse_step"] = coarse_step
@@ -71,7 +72,7 @@ class LedDetectionWorker(QThread):
 
             if events and not self.isInterruptionRequested():
                 refined_events, refined_threshold, refined_stats = (
-                    refine_led_events_from_frame_deltas(
+                    refine_led_event_pairs_from_frame_deltas(
                         self.video_path,
                         roi=self.roi,
                         coarse_events=events,
