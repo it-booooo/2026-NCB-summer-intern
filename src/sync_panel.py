@@ -170,9 +170,11 @@ class SyncPanel(QWidget):
         is_frame_delta = stats is not None and stats.get("mode", "").startswith("frame_delta")
         if is_frame_delta:
             event_status = (
-                f"event pairs={interval_count} | min delta={stats.get('min_delta', 0.0):.4f}"
+                f"event pairs={interval_count} | "
+                f"delta gate={stats.get('min_delta', threshold):.4f} | "
+                f"state={stats.get('state_validation', 'not checked')}"
                 if interval_count
-                else "no LED event selected"
+                else f"no LED event selected | state={stats.get('state_validation', 'not checked')}"
             )
             status = (
                 f"LED detection: {mode_label} | {interval_count} intervals | "

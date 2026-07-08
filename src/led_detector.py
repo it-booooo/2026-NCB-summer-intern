@@ -400,6 +400,77 @@ def detect_led_events_from_frame_deltas(points, fps=30.0, min_duration_sec=0.1):
     return events, stats["reference_delta"], stats
 
 
+def mean_points_between(points, start_frame, end_frame):
+    values = [
+        point.brightness
+        for point in points
+        if start_frame <= point.frame_index <= end_frame
+    ]
+    if not values:
+        return None
+
+    return float(np.mean(values))
+
+
+def validate_led_state_change(
+    points,
+    events,
+    fps=30.0,
+    window_sec=0.2,
+    min_state_delta=0.002,
+):
+    if len(events) < 2:
+        return False, {
+            "state_validation": "failed",
+            "state_delta_on": 0.0,
+            "state_delta_off": 0.0,
+        }
+
+    on_event, off_event = events[0], events[1]
+    window_frames = max(int(window_sec * fps), 1)
+
+    on_before = mean_points_between(
+        points,
+        on_event.frame_index - window_frames,
+        on_event.frame_index - 1,
+    )
+    on_after = mean_points_between(
+        points,
+        on_event.frame_index,
+        on_event.frame_index + window_frames,
+    )
+    off_before = mean_points_between(
+        points,
+        off_event.frame_index - window_frames,
+        off_event.frame_index,
+    )
+    off_after = mean_points_between(
+        points,
+        off_event.frame_index + 1,
+        off_event.frame_index + window_frames,
+    )
+
+    if None in [on_before, on_after, off_before, off_after]:
+        return False, {
+            "state_validation": "insufficient data",
+            "state_delta_on": 0.0,
+            "state_delta_off": 0.0,
+        }
+
+    state_delta_on = on_after - on_before
+    state_delta_off = off_before - off_after
+    is_valid = (
+        state_delta_on >= min_state_delta
+        and state_delta_off >= min_state_delta
+    )
+
+    return is_valid, {
+        "state_validation": "passed" if is_valid else "failed",
+        "state_delta_on": state_delta_on,
+        "state_delta_off": state_delta_off,
+    }
+
+
 def event_pair_from_deltas(points, on_delta, off_delta):
     start_point = point_for_frame(points, on_delta.frame_index)
     if start_point is None:
@@ -544,11 +615,22 @@ def refine_led_events_from_frame_deltas(
         should_stop=should_stop,
     )
 
-    return detect_led_events_from_frame_deltas(
+    events, threshold, stats = detect_led_events_from_frame_deltas(
         points,
         fps=fps,
         min_duration_sec=0.1,
     )
+    is_valid, validation_stats = validate_led_state_change(
+        points,
+        events,
+        fps=fps,
+    )
+    stats.update(validation_stats)
+
+    if not is_valid:
+        return [], threshold, stats
+
+    return events, threshold, stats
 
 
 def refine_led_event_pairs_from_frame_deltas(

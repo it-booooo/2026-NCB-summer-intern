@@ -269,9 +269,11 @@ class MainWindow(QMainWindow):
         )
         self.add_led_events(events)
         event_status = (
-            f"event pairs={len(events) // 2} | min delta={stats.get('min_delta', 0.0):.4f}"
+            f"event pairs={len(events) // 2} | "
+            f"delta gate={stats.get('min_delta', threshold):.4f} | "
+            f"state={stats.get('state_validation', 'not checked')}"
             if events
-            else "no LED event selected"
+            else f"no LED event selected | state={stats.get('state_validation', 'not checked')}"
         )
         self.sync_panel.set_led_detection_status(
             f"LED detection: ROI mean brightness delta | {len(events) // 2} intervals | "
