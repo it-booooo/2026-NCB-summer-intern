@@ -48,7 +48,6 @@ class LedDetectionWorker(QThread):
                 roi=self.roi,
                 rotate_180=self.rotate_180,
                 using_fps=self.fps,
-                detection_mode="brightness",
                 frame_step=coarse_step,
                 start_frame=self.scan_start_frame,
                 end_frame=self.scan_end_frame,

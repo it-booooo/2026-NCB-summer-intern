@@ -29,10 +29,7 @@ class LedChangePoint:
 DETECTION_MODE_LABELS = {
     "frame_delta": "Frame delta",
     "frame_delta_mean_brightness": "Frame delta (ROI mean brightness)",
-    "max_brightness": "Max brightness",
     "brightness": "Brightness",
-    "red_score": "Red score",
-    "saturation": "Saturation",
 }
 
 
@@ -42,27 +39,6 @@ def apply_roi(frame_bgr, roi=None):
 
     x, y, width, height = roi
     return frame_bgr[y : y + height, x : x + width]
-
-
-def red_score(frame_bgr, roi=None):
-    frame_bgr = apply_roi(frame_bgr, roi)
-
-    if frame_bgr.size == 0:
-        return 0.0
-
-    hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
-
-    lower_red_1 = np.array([0, 80, 80])
-    upper_red_1 = np.array([10, 255, 255])
-
-    lower_red_2 = np.array([170, 80, 80])
-    upper_red_2 = np.array([180, 255, 255])
-
-    mask_1 = cv2.inRange(hsv, lower_red_1, upper_red_1)
-    mask_2 = cv2.inRange(hsv, lower_red_2, upper_red_2)
-    mask = cv2.bitwise_or(mask_1, mask_2)
-
-    return float(np.count_nonzero(mask)) / float(mask.size)
 
 
 def mean_brightness(frame_bgr, roi=None):
@@ -91,55 +67,11 @@ def resize_roi_by_scale(frame_bgr, scale=0.5):
     )
 
 
-def top_percent_mean(values, top_percent=5.0):
-    flat_values = values.reshape(-1)
-    if flat_values.size == 0:
-        return 0.0
-
-    count = max(int(flat_values.size * float(top_percent) / 100.0), 1)
-    top_values = np.partition(flat_values, -count)[-count:]
-    return float(np.mean(top_values)) / 255.0
-
-
-def max_brightness(frame_bgr, roi=None, top_percent=5.0):
-    frame_bgr = apply_roi(frame_bgr, roi)
-
-    if frame_bgr.size == 0:
-        return 0.0
-
-    gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-    return top_percent_mean(gray, top_percent=top_percent)
-
-
-def saturation_score(frame_bgr, roi=None):
-    frame_bgr = apply_roi(frame_bgr, roi)
-
-    if frame_bgr.size == 0:
-        return 0.0
-
-    hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
-    return top_percent_mean(hsv[:, :, 1], top_percent=5.0)
-
-
-def led_feature_score(frame_bgr, roi=None, detection_mode="max_brightness"):
-    if detection_mode == "brightness":
-        return mean_brightness(frame_bgr, roi=roi)
-
-    if detection_mode == "red_score":
-        return red_score(frame_bgr, roi=roi)
-
-    if detection_mode == "saturation":
-        return saturation_score(frame_bgr, roi=roi)
-
-    return max_brightness(frame_bgr, roi=roi)
-
-
 def compute_led_brightness_curve(
     video_path,
     roi=None,
     rotate_180=False,
     using_fps=30.0,
-    detection_mode="max_brightness",
     frame_step=1,
     start_frame=0,
     end_frame=None,
@@ -185,11 +117,7 @@ def compute_led_brightness_curve(
             LedBrightnessPoint(
                 frame_index=frame_index,
                 video_time_sec=frame_index / fps,
-                brightness=led_feature_score(
-                    frame,
-                    roi=roi,
-                    detection_mode=detection_mode,
-                ),
+                brightness=mean_brightness(frame, roi=roi),
             )
         )
 
@@ -228,33 +156,7 @@ def score_at_frame(points, frame_index):
     return point.brightness if point is not None else 0.0
 
 
-def auto_threshold(points, baseline_score=None, margin=0.02):
-    if not points:
-        return 1.0
-
-    values = np.array([point.brightness for point in points], dtype=float)
-    background = float(np.percentile(values, 50))
-    peak = float(np.max(values))
-    dynamic_range = peak - background
-
-    if dynamic_range <= 0.005:
-        return min(max(peak + margin, 0.0), 1.0)
-
-    distribution_threshold = background + dynamic_range * 0.35
-
-    if baseline_score is None:
-        return min(max(distribution_threshold, 0.0), 1.0)
-
-    baseline_threshold = baseline_score + (peak - baseline_score) * 0.35
-    if baseline_score <= distribution_threshold and peak > baseline_score:
-        threshold = min(distribution_threshold, baseline_threshold)
-    else:
-        threshold = distribution_threshold
-
-    return min(max(threshold, 0.0), 1.0)
-
-
-def summarize_brightness(points, detection_mode="max_brightness"):
+def summarize_brightness(points, detection_mode="brightness"):
     if not points:
         return {
             "mode": detection_mode,
@@ -497,7 +399,6 @@ def refine_led_events_from_frame_deltas(
         roi=roi,
         rotate_180=rotate_180,
         using_fps=fps,
-        detection_mode="brightness",
         frame_step=1,
         start_frame=start_frame,
         end_frame=end_frame,
@@ -522,97 +423,3 @@ def refine_led_events_from_frame_deltas(
     return events, threshold, stats
 
 
-def detect_led_events_from_curve(
-    points,
-    threshold,
-    min_duration_sec=0.03,
-    min_gap_sec=0.2,
-    fps=30.0,
-):
-    """
-    Detect LED ON intervals.
-
-    This function records only the start and end of each LED flash.
-    Output events:
-        LED_on
-        LED_off
-    """
-
-    if not points:
-        return []
-
-    min_duration_frames = max(int(min_duration_sec * fps), 1)
-    min_gap_frames = max(int(min_gap_sec * fps), 1)
-
-    events = []
-    in_event = False
-    start_point = None
-    previous_point = None
-    peak_score = 0.0
-    last_end_frame = -min_gap_frames
-
-    for point in points:
-        is_on = point.brightness >= threshold
-
-        if is_on and not in_event:
-            if point.frame_index - last_end_frame >= min_gap_frames:
-                in_event = True
-                start_point = point
-                peak_score = point.brightness
-
-        elif is_on and in_event:
-            peak_score = max(peak_score, point.brightness)
-
-        elif not is_on and in_event:
-            end_point = previous_point or start_point
-            duration_frames = end_point.frame_index - start_point.frame_index + 1
-
-            if duration_frames >= min_duration_frames:
-                events.append(
-                    LedEvent(
-                        event_type="LED_on",
-                        video_time_sec=start_point.video_time_sec,
-                        frame_index=start_point.frame_index,
-                        brightness=start_point.brightness,
-                    )
-                )
-                events.append(
-                    LedEvent(
-                        event_type="LED_off",
-                        video_time_sec=end_point.video_time_sec,
-                        frame_index=end_point.frame_index,
-                        brightness=peak_score,
-                    )
-                )
-
-                last_end_frame = end_point.frame_index
-
-            in_event = False
-            start_point = None
-            peak_score = 0.0
-
-        previous_point = point
-
-    if in_event and start_point is not None:
-        end_point = points[-1]
-        duration_frames = end_point.frame_index - start_point.frame_index + 1
-
-        if duration_frames >= min_duration_frames:
-            events.append(
-                LedEvent(
-                    event_type="LED_on",
-                    video_time_sec=start_point.video_time_sec,
-                    frame_index=start_point.frame_index,
-                    brightness=start_point.brightness,
-                )
-            )
-            events.append(
-                LedEvent(
-                    event_type="LED_off",
-                    video_time_sec=end_point.video_time_sec,
-                    frame_index=end_point.frame_index,
-                    brightness=peak_score,
-                )
-            )
-
-    return events
