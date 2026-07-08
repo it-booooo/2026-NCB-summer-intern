@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QPushButton,
     QSizePolicy,
     QSlider,
@@ -219,6 +220,19 @@ class VideoPlayer(QWidget):
         self.info_label.setWordWrap(False)
         self.time_label.setWordWrap(False)
 
+        self.time_seek_input = QLineEdit()
+        self.time_seek_input.setPlaceholderText("time")
+        self.time_seek_input.setToolTip(
+            "Jump to time. Examples: 26.5, 00:26.500, 01:02:03.4"
+        )
+        self.time_seek_input.setFixedWidth(88)
+
+        self.frame_seek_input = QLineEdit()
+        self.frame_seek_input.setPlaceholderText("frame")
+        self.frame_seek_input.setToolTip("Jump to frame index")
+        self.frame_seek_input.setFixedWidth(72)
+        self.seek_inputs = [self.time_seek_input, self.frame_seek_input]
+
         self.play_button = QPushButton("Play")
         self.stop_button = QPushButton("Stop")
         self.prev_frame_button = QPushButton("Prev Frame")
@@ -247,6 +261,8 @@ class VideoPlayer(QWidget):
         self.next_frame_button.clicked.connect(self.advance_one_frame)
         self.rotate_button.clicked.connect(self.toggle_rotate_180)
         self.slider.sliderMoved.connect(self.seek_frame)
+        self.time_seek_input.returnPressed.connect(self.seek_to_time_input)
+        self.frame_seek_input.returnPressed.connect(self.seek_to_frame_input)
 
         controls_layout = QHBoxLayout()
         controls_layout.setContentsMargins(0, 0, 0, 0)
@@ -262,8 +278,20 @@ class VideoPlayer(QWidget):
         main_layout.setContentsMargins(4, 4, 4, 4)
         main_layout.setSpacing(2)
 
-        for widget in [self.video_label, self.info_label, self.time_label, self.slider]:
-            main_layout.addWidget(widget)
+        time_seek_layout = QHBoxLayout()
+        time_seek_layout.setContentsMargins(0, 0, 0, 0)
+        time_seek_layout.setSpacing(4)
+        time_seek_layout.addWidget(self.time_label)
+        time_seek_layout.addStretch()
+        time_seek_layout.addWidget(QLabel("Go time"))
+        time_seek_layout.addWidget(self.time_seek_input)
+        time_seek_layout.addWidget(QLabel("Go frame"))
+        time_seek_layout.addWidget(self.frame_seek_input)
+
+        main_layout.addWidget(self.video_label)
+        main_layout.addWidget(self.info_label)
+        main_layout.addLayout(time_seek_layout)
+        main_layout.addWidget(self.slider)
 
         main_layout.setStretch(0, 1)
         main_layout.addLayout(controls_layout)
@@ -297,6 +325,9 @@ class VideoPlayer(QWidget):
     def set_controls_enabled(self, enabled):
         for button in self.control_buttons:
             button.setEnabled(enabled)
+
+        for seek_input in self.seek_inputs:
+            seek_input.setEnabled(enabled)
 
     def has_video(self):
         return self.cap is not None and self.cap.isOpened()
@@ -346,6 +377,10 @@ class VideoPlayer(QWidget):
         self.slider.setRange(0, max(self.total_frames - 1, 0))
         self.slider.setEnabled(self.total_frames > 0)
         self.set_controls_enabled(True)
+        self.time_seek_input.clear()
+        self.frame_seek_input.clear()
+        self.mark_seek_input_valid(self.time_seek_input, True)
+        self.mark_seek_input_valid(self.frame_seek_input, True)
 
         self.play_button.setText("Play")
         self.rotate_button.setText("Rotate 180°")
@@ -406,6 +441,58 @@ class VideoPlayer(QWidget):
     def seek_time_sec(self, time_sec):
         self.seek_frame(self.time_sec_to_frame(time_sec))
 
+    def mark_seek_input_valid(self, widget, is_valid):
+        widget.setStyleSheet("" if is_valid else "border: 1px solid #c0392b;")
+
+    def parse_time_input(self, text):
+        text = text.strip()
+        if not text:
+            return None
+
+        try:
+            if ":" not in text:
+                return float(text)
+
+            parts = [float(part) for part in text.split(":")]
+            if len(parts) == 2:
+                minutes, seconds = parts
+                return minutes * 60 + seconds
+
+            if len(parts) == 3:
+                hours, minutes, seconds = parts
+                return hours * 3600 + minutes * 60 + seconds
+        except ValueError:
+            return None
+
+        return None
+
+    def seek_to_time_input(self):
+        seconds = self.parse_time_input(self.time_seek_input.text())
+        if seconds is None:
+            self.mark_seek_input_valid(self.time_seek_input, False)
+            return
+
+        self.mark_seek_input_valid(self.time_seek_input, True)
+        self.mark_seek_input_valid(self.frame_seek_input, True)
+        self.pause()
+        self.seek_time_sec(seconds)
+        self.time_seek_input.setText(format_time(self.current_time_sec()))
+        self.frame_seek_input.clear()
+
+    def seek_to_frame_input(self):
+        try:
+            frame_index = int(self.frame_seek_input.text().strip())
+        except ValueError:
+            self.mark_seek_input_valid(self.frame_seek_input, False)
+            return
+
+        self.mark_seek_input_valid(self.frame_seek_input, True)
+        self.mark_seek_input_valid(self.time_seek_input, True)
+        self.pause()
+        self.seek_frame(frame_index)
+        self.frame_seek_input.setText(str(self.current_frame))
+        self.time_seek_input.clear()
+
     def toggle_rotate_180(self):
         if not self.has_video():
             return
@@ -465,6 +552,8 @@ class VideoPlayer(QWidget):
         self.time_label.setText(
             f"{format_time(current_sec)} / {format_time(total_sec)}"
         )
+        self.time_seek_input.setPlaceholderText(format_time(current_sec))
+        self.frame_seek_input.setPlaceholderText(str(frame_index))
 
         self.frame_changed.emit(frame_index, current_sec)
 
