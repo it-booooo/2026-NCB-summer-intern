@@ -53,7 +53,11 @@ class MainWindow(QMainWindow):
         self.led_roi = None
         self.led_worker = None
         self.led_brightness_cache = {}
+        self.time_offset_sec = None
         self.video_player.roi_selected.connect(self.set_led_roi)
+        self.video_player.frame_changed.connect(self.update_waveform_current_time)
+        self.ttl_panel.markers_changed.connect(self.set_ttl_markers)
+        self.event_table.events_changed.connect(self.update_time_offset)
 
         self.create_menu()
         self.create_layout()
@@ -442,12 +446,20 @@ class MainWindow(QMainWindow):
             self.lfp_info = csv_func.parse_lfp_csv_info(path)
             self.lfp_panel.set_lfp_info(self.lfp_info)
             self.sync_panel.set_lfp_status(f"LFP file: {self.lfp_info['filename']}")
+            self.update_waveform_current_time(
+                self.video_player.current_frame,
+                self.video_player.current_time_sec(),
+            )
 
     def import_axis(self):
         path = self.open_csv_file("Import 3-axis (.csv)")
         if path:
             self.axis_info = csv_func.parse_lfp_csv_info(path)
             self.lfp_panel.set_axis_info(self.axis_info)
+            self.update_waveform_current_time(
+                self.video_player.current_frame,
+                self.video_player.current_time_sec(),
+            )
 
     def import_time_marker(self):
         path = self.open_csv_file("Import Time Marker (.csv)")
@@ -455,12 +467,18 @@ class MainWindow(QMainWindow):
             return
 
         self.timeMarker_info = csv_func.parse_time_marker_csv_info(path)
-        self.ttl_panel.set_markers(self.timeMarker_info.get("markers", []))
+        self.set_ttl_markers(self.timeMarker_info)
+        self.ttl_panel.set_markers(self.timeMarker_info)
         self.show_marker_panel()
 
+    def set_ttl_markers(self, info):
+        self.timeMarker_info = info
         first_marker_sec = self.timeMarker_info.get("first_marker_sec")
         if first_marker_sec is not None:
             self.sync_panel.set_ttl_marker(first_marker_sec)
+        else:
+            self.sync_panel.ttl_label.setText("TTL marker: Not loaded")
+        self.update_time_offset()
 
     def add_event(self, event_type):
         if not self.video_player.has_video():
@@ -485,6 +503,64 @@ class MainWindow(QMainWindow):
 
         if led_events:
             self.show_marker_panel()
+
+    def first_video_led_time_sec(self):
+        led_events = [
+            event for event in self.event_table.events()
+            if event["event_type"] == "LED_on"
+        ]
+        if not led_events:
+            return None
+
+        first_led_event = min(led_events, key=lambda event: event["frame_index"])
+        if self.video_player.has_video() and self.video_player.fps:
+            return self.video_player.frame_to_time_sec(first_led_event["frame_index"])
+
+        return first_led_event["video_time_sec"]
+
+    def update_time_offset(self):
+        video_led_sec = self.first_video_led_time_sec()
+        if video_led_sec is None:
+            self.sync_panel.video_led_label.setText("Video LED marker: Not selected")
+            self.sync_panel.offset_label.setText(
+                "Time offset (video - TTL): Not calculated"
+            )
+            self.time_offset_sec = None
+            self.lfp_panel.clear_current_time_marker()
+            return
+
+        self.sync_panel.set_video_led_marker(video_led_sec)
+
+        if self.timeMarker_info is None:
+            self.sync_panel.offset_label.setText(
+                "Time offset (video - TTL): Not calculated"
+            )
+            self.time_offset_sec = None
+            self.lfp_panel.clear_current_time_marker()
+            return
+
+        ttl_marker_sec = self.timeMarker_info.get("first_marker_sec")
+        if ttl_marker_sec is None:
+            self.sync_panel.offset_label.setText(
+                "Time offset (video - TTL): Not calculated"
+            )
+            self.time_offset_sec = None
+            self.lfp_panel.clear_current_time_marker()
+            return
+
+        self.time_offset_sec = video_led_sec - ttl_marker_sec
+        self.sync_panel.set_offset(self.time_offset_sec)
+        self.update_waveform_current_time(
+            self.video_player.current_frame,
+            self.video_player.current_time_sec(),
+        )
+
+    def update_waveform_current_time(self, frame_index, video_time_sec):
+        if self.time_offset_sec is None:
+            return
+
+        record_time_sec = video_time_sec - self.time_offset_sec
+        self.lfp_panel.set_current_time_marker(record_time_sec)
 
     def export_markers_csv(self):
         self.export_markers("csv")

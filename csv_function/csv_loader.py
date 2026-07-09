@@ -1,6 +1,8 @@
 import csv
 import re
 from pathlib import Path
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation
 
 
 def read_csv_preview(path, max_rows=8):
@@ -113,45 +115,93 @@ def parse_time_marker_csv_info(path):
             "filename": Path(path).name,
             "marker_count": 0,
             "markers": [],
-            "first_marker_us": None,
+            "time_column_name": None,
             "first_marker_sec": None,
         }
 
-    header = rows[0]
+    header = [column.strip() for column in rows[0]]
 
+    abs_time_column_index = None
+    record_time_column_index = None
     time_column_name = None
 
-    for column in header:
-        if column.endswith("_time(us)"):
+    for index, column in enumerate(header):
+        lower_column = column.lower()
+
+        if abs_time_column_index is None and column.endswith("_time(us)"):
+            abs_time_column_index = index
             time_column_name = column
-            break
+
+        if record_time_column_index is None and (
+            lower_column == "record_time(us)"
+            or lower_column == "recording_time(us)"
+            or lower_column == "record time(us)"
+        ):
+            record_time_column_index = index
+
+    # 如果找不到，就預設第 0 欄是 local/abs time，第 1 欄是 record time
+    if abs_time_column_index is None and len(header) >= 1:
+        abs_time_column_index = 0
+        time_column_name = header[0]
+
+    if record_time_column_index is None and len(header) >= 2:
+        record_time_column_index = 1
 
     markers = []
 
-    if time_column_name is not None:
-        column_index = header.index(time_column_name)
+    if abs_time_column_index is None or record_time_column_index is None:
+        return {
+            "path": path,
+            "filename": Path(path).name,
+            "marker_count": 0,
+            "markers": [],
+            "time_column_name": time_column_name,
+            "first_marker_sec": None,
+        }
 
-        for row in rows[1:]:
-            if column_index >= len(row) or not row[column_index]:
-                continue
+    for row in rows[1:]:
+        if (
+            abs_time_column_index >= len(row)
+            or record_time_column_index >= len(row)
+            or not row[abs_time_column_index].strip()
+            or not row[record_time_column_index].strip()
+        ):
+            continue
 
-            marker_us = float(row[column_index])
-            markers.append(
-                {
-                    "time_us": marker_us,
-                    "time_sec": marker_us / 1_000_000,
-                }
-            )
+        try:
+            local_time_us = int(Decimal(row[abs_time_column_index].strip()))
+            record_time = int(Decimal(row[record_time_column_index].strip()))
+        except (InvalidOperation, ValueError):
+            continue
 
-    first_marker_us = markers[0]["time_us"] if markers else None
-    first_marker_sec = first_marker_us / 1_000_000 if first_marker_us is not None else None
+        local_time = datetime.fromtimestamp(
+            local_time_us / 1_000_000.0,
+            tz=timezone(timedelta(hours=8)),
+        )
+
+        record_hours, remainder = divmod(record_time, 3_600_000_000)
+        record_minutes, remainder = divmod(remainder, 60_000_000)
+        record_seconds, record_microseconds = divmod(remainder, 1_000_000)
+
+        markers.append(
+            {
+                "local_time_us": local_time_us,
+                "local_time": local_time,
+                "record_time": record_time,
+                "record_hours": record_hours,
+                "record_minutes": record_minutes,
+                "record_seconds": record_seconds,
+                "record_microseconds": record_microseconds,
+            }
+        )
+
+    first_marker_sec = markers[0]["record_time"] / 1_000_000.0 if markers else None
 
     return {
         "path": path,
         "filename": Path(path).name,
+        "time_column_name": time_column_name,
         "marker_count": len(markers),
         "markers": markers,
-        "time_column_name": time_column_name,
-        "first_marker_us": first_marker_us,
         "first_marker_sec": first_marker_sec,
     }

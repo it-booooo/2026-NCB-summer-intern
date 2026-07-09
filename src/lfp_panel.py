@@ -206,6 +206,8 @@ class LfpPanel(QWidget):
         self.updating_timeline = False
         self.lfp_callback_connected = False
         self.axis_callback_connected = False
+        self.current_record_time_sec = None
+        self.current_time_lines = {}
 
         self.lfp_file_label = QLabel("LFP CSV: Not imported")
         self.axis_file_label = QLabel("3-axis CSV: Not imported")
@@ -388,6 +390,54 @@ class LfpPanel(QWidget):
         canvas.draw_idle()
 
         self.set_shared_xlim(*full_xlim, source="timeline")
+        self.update_current_time_marker()
+
+    def set_current_time_marker(self, record_time_sec):
+        self.current_record_time_sec = record_time_sec
+        self.update_current_time_marker()
+
+    def clear_current_time_marker(self):
+        self.current_record_time_sec = None
+        for line in self.current_time_lines.values():
+            line.remove()
+        self.current_time_lines = {}
+
+        for canvas in [self.lfp_canvas, self.axis_canvas, self.timeline_canvas]:
+            if canvas is not None:
+                canvas.draw_idle()
+
+    def update_current_time_marker(self):
+        if self.current_record_time_sec is None:
+            return
+
+        figure_items = [
+            ("lfp", self.lfp_fig, self.lfp_canvas),
+            ("axis", self.axis_fig, self.axis_canvas),
+            ("timeline", self.timeline_fig, self.timeline_canvas),
+        ]
+
+        for key, fig, canvas in figure_items:
+            if fig is None or canvas is None or not fig.axes:
+                continue
+
+            ax = fig.axes[0]
+            line = self.current_time_lines.get(key)
+            if line is None or line.axes is not ax:
+                line = ax.axvline(
+                    self.current_record_time_sec,
+                    color="#d62728",
+                    linestyle="--",
+                    linewidth=1.0,
+                    zorder=10,
+                )
+                self.current_time_lines[key] = line
+            else:
+                line.set_xdata([
+                    self.current_record_time_sec,
+                    self.current_record_time_sec,
+                ])
+
+            canvas.draw_idle()
 
     def selected_channel(self, selector):
         channel = selector.currentData()
@@ -426,6 +476,7 @@ class LfpPanel(QWidget):
             self.lfp_callback_connected = True
 
         self.create_or_update_timeline()
+        self.update_current_time_marker()
 
     def plot_axis(self):
         if not self.axis_path:
@@ -450,6 +501,7 @@ class LfpPanel(QWidget):
             self.axis_callback_connected = True
 
         self.create_or_update_timeline()
+        self.update_current_time_marker()
 
     def set_lfp_info(self, info):
         self.lfp_info = info

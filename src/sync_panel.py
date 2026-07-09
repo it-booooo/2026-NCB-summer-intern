@@ -452,4 +452,4 @@ class SyncPanel(QWidget):
         )
 
     def set_offset(self, offset_sec):
-        self.offset_label.setText(f"Time offset: {offset_sec:.6f} sec")
+        self.offset_label.setText(f"Time offset (video - TTL): {offset_sec:.6f} sec")
