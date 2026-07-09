@@ -383,7 +383,7 @@ class MainWindow(QMainWindow):
             return
 
         self.timeMarker_info = csv_func.parse_time_marker_csv_info(path)
-        self.ttl_panel.set_markers(self.timeMarker_info.get("markers", []))
+        self.ttl_panel.set_markers(self.timeMarker_info)
         self.show_marker_panel()
 
         first_marker_sec = self.timeMarker_info.get("first_marker_sec")

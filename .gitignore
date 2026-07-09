@@ -8,6 +8,7 @@ build/
 dist/
 *.exe
 *.spec
+*.param
 
 # VS Code
 .vscode/
