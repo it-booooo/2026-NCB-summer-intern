@@ -133,9 +133,7 @@ def compute_led_brightness_curve(
             frame_index += 1
             skipped += 1
 
-        if progress_callback is not None and (
-            len(points) == 1 or len(points) % 20 == 0 or frame_index > end_frame
-        ):
+        if progress_callback is not None:
             completed_frames = min(max(frame_index - start_frame, 0), scan_total_frames)
             progress_callback(completed_frames, scan_total_frames)
 

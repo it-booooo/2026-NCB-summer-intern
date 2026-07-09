@@ -41,23 +41,24 @@ def detect_led_event_pairs_from_frame_deltas(
     min_duration_sec=0.1,
     min_gap_sec=0.5,
     max_events=20,
+    max_candidates=80,
 ):
     if len(points) < 2:
         return [], 0.0, summarize_frame_deltas([])
 
     deltas = compute_frame_deltas(points)
     stats = summarize_frame_deltas(deltas)
-    positive_candidates = sorted(
-        [point for point in deltas if point.delta > 0],
-        key=lambda point: point.delta,
-        reverse=True,
-    )
-    negative_candidates = sorted(
-        [point for point in deltas if point.delta < 0],
-        key=lambda point: point.delta,
-    )
     abs_values = np.array([abs(point.delta) for point in deltas], dtype=float)
     min_delta = max(float(np.percentile(abs_values, 95)) * 0.5, 0.001)
+    positive_candidates = sorted(
+        [point for point in deltas if point.delta >= min_delta],
+        key=lambda point: point.delta,
+        reverse=True,
+    )[:max_candidates]
+    negative_candidates = sorted(
+        [point for point in deltas if point.delta <= -min_delta],
+        key=lambda point: point.delta,
+    )[:max_candidates]
     min_duration_frames = max(int(min_duration_sec * fps), 1)
     min_gap_frames = max(int(min_gap_sec * fps), 1)
     excluded_ranges = []
@@ -72,11 +73,11 @@ def detect_led_event_pairs_from_frame_deltas(
         best_score = 0.0
 
         for on_delta in positive_candidates:
-            if on_delta.delta < min_delta or is_excluded(on_delta.frame_index):
+            if is_excluded(on_delta.frame_index):
                 continue
 
             for off_delta in negative_candidates:
-                if abs(off_delta.delta) < min_delta or is_excluded(off_delta.frame_index):
+                if is_excluded(off_delta.frame_index):
                     continue
 
                 duration_frames = off_delta.frame_index - on_delta.frame_index
@@ -108,6 +109,9 @@ def detect_led_event_pairs_from_frame_deltas(
     events.sort(key=lambda event: event.frame_index)
     stats["event_count"] = len(selected_pairs)
     stats["min_delta"] = min_delta
+    stats["candidate_limit"] = max_candidates
+    stats["positive_candidate_count"] = len(positive_candidates)
+    stats["negative_candidate_count"] = len(negative_candidates)
     stats["selected_on_delta"] = selected_pairs[0][0].delta if selected_pairs else 0.0
     stats["selected_on_time_sec"] = (
         selected_pairs[0][0].video_time_sec if selected_pairs else 0.0

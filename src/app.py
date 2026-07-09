@@ -52,6 +52,7 @@ class MainWindow(QMainWindow):
         self.timeMarker_info = None
         self.led_roi = None
         self.led_worker = None
+        self.led_brightness_cache = {}
         self.video_player.roi_selected.connect(self.set_led_roi)
 
         self.create_menu()
@@ -258,8 +259,13 @@ class MainWindow(QMainWindow):
                 )
                 return
 
+        cache_key = self.led_cache_key(scan_start_frame, scan_end_frame)
+        cached_points = self.led_brightness_cache.get(cache_key)
+
         self.sync_panel.set_led_detection_status(
-            "LED detection: analyzing ROI frame changes. You can wait here; video playback is not required."
+            "LED detection: using cached ROI brightness data."
+            if cached_points is not None
+            else "LED detection: analyzing ROI frame changes. You can wait here; video playback is not required."
         )
         self.sync_panel.begin_led_detection_progress()
         self.led_worker = LedDetectionWorker(
@@ -271,12 +277,46 @@ class MainWindow(QMainWindow):
             scan_start_frame=scan_start_frame,
             scan_end_frame=scan_end_frame,
             detect_multiple=self.sync_panel.detect_multiple_led_events(),
+            cached_points=cached_points,
         )
-        self.led_worker.result_ready.connect(self.finish_led_detection)
-        self.led_worker.progress_changed.connect(self.update_led_detection_progress)
-        self.led_worker.failed.connect(self.fail_led_detection)
+        worker = self.led_worker
+        worker.result_ready.connect(
+            lambda points, threshold, events, baseline, stats, worker=worker: (
+                self.finish_led_detection(
+                    worker,
+                    points,
+                    threshold,
+                    events,
+                    baseline,
+                    stats,
+                    cache_key,
+                )
+            )
+        )
+        worker.progress_changed.connect(
+            lambda current_frame, total_frames, worker=worker: (
+                self.update_led_detection_progress(worker, current_frame, total_frames)
+            )
+        )
+        worker.stage_changed.connect(
+            lambda text, worker=worker: self.update_led_detection_stage(worker, text)
+        )
+        worker.failed.connect(
+            lambda message, worker=worker: self.fail_led_detection(worker, message)
+        )
         self.led_worker.finished.connect(self.cleanup_led_worker)
         self.led_worker.start()
+
+    def led_cache_key(self, scan_start_frame, scan_end_frame):
+        return (
+            self.video_player.video_path,
+            tuple(self.led_roi) if self.led_roi is not None else None,
+            bool(self.video_player.rotate_180_enabled),
+            float(self.video_player.fps or 0.0),
+            int(scan_start_frame),
+            int(scan_end_frame),
+            20,
+        )
 
     def stop_led_detection(self, wait=False):
         if self.led_worker is None:
@@ -289,9 +329,21 @@ class MainWindow(QMainWindow):
 
         return not self.led_worker.isRunning()
 
-    def finish_led_detection(self, points, threshold, events, baseline, stats):
-        if self.sender() is not self.led_worker:
+    def finish_led_detection(
+        self,
+        worker,
+        points,
+        threshold,
+        events,
+        baseline,
+        stats,
+        cache_key,
+    ):
+        if self.led_worker is not None and worker is not self.led_worker:
             return
+
+        if points and cache_key is not None and not stats.get("scan_cache_hit"):
+            self.led_brightness_cache[cache_key] = points
 
         self.sync_panel.finish_led_detection_progress()
         self.sync_panel.set_led_analysis(
@@ -309,23 +361,42 @@ class MainWindow(QMainWindow):
             if events
             else f"no LED event selected | state={stats.get('state_validation', 'not checked')}"
         )
-        self.sync_panel.set_led_detection_status(
+        status = (
             f"LED detection: ROI mean brightness delta | {len(events) // 2} intervals | "
             f"scan frames={stats.get('scan_start_frame', 0)}-{stats.get('scan_end_frame', 0)} | "
             f"coarse step={stats.get('coarse_step', 1)} frames | "
+            f"points={len(points or [])} | "
             f"{'multiple' if stats.get('detect_multiple') else 'single'} | "
             f"{'refined' if stats.get('refined') else 'coarse only'} | "
             f"{event_status}"
         )
+        if stats.get("detection_error"):
+            status += f" | detection error={stats['detection_error']}"
+        if stats.get("refine_error"):
+            status += f" | refine error={stats['refine_error']}"
+        status += (
+            f" | scan={stats.get('scan_elapsed_sec', 0.0):.1f}s"
+            f" detect={stats.get('detect_elapsed_sec', 0.0):.1f}s"
+            f" refine={stats.get('refine_elapsed_sec', 0.0):.1f}s"
+        )
+        if stats.get("scan_cache_hit"):
+            status += " | cached scan"
+        self.sync_panel.set_led_detection_status(status)
 
-    def update_led_detection_progress(self, current_frame, total_frames):
-        if self.sender() is not self.led_worker:
+    def update_led_detection_progress(self, worker, current_frame, total_frames):
+        if self.led_worker is not None and worker is not self.led_worker:
             return
 
         self.sync_panel.update_led_detection_progress(current_frame, total_frames)
 
-    def fail_led_detection(self, message):
-        if self.sender() is not self.led_worker:
+    def update_led_detection_stage(self, worker, text):
+        if self.led_worker is not None and worker is not self.led_worker:
+            return
+
+        self.sync_panel.set_led_detection_stage(text)
+
+    def fail_led_detection(self, worker, message):
+        if self.led_worker is not None and worker is not self.led_worker:
             return
 
         self.sync_panel.fail_led_detection_progress()
@@ -350,6 +421,7 @@ class MainWindow(QMainWindow):
             return
 
         if self.video_player.load_video():
+            self.led_brightness_cache.clear()
             self.sync_panel.set_video_path(self.video_player.video_path)
 
     def closeEvent(self, event):

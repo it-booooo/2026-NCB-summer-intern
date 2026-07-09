@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from PySide6.QtCore import QTimer, Qt
+from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import (
     QCheckBox,
     QGridLayout,
@@ -11,6 +13,86 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from src.video_utils import format_time
+
+
+class RoiPlotIndicator(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.angle = 0
+        self.state = "idle"
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.advance)
+        self.setFixedSize(14, 14)
+        self.setToolTip("ROI plot has not been generated.")
+
+    def advance(self):
+        self.angle = (self.angle + 35) % 360
+        self.update()
+
+    def set_idle(self):
+        self.timer.stop()
+        self.angle = 0
+        self.state = "idle"
+        self.setToolTip("ROI plot has not been generated.")
+        self.show()
+        self.update()
+
+    def start_rendering(self):
+        self.angle = 0
+        self.state = "rendering"
+        self.setToolTip("Generating ROI plot...")
+        self.show()
+        self.timer.start(80)
+        self.update()
+
+    def set_done(self, has_points):
+        self.timer.stop()
+        self.state = "done" if has_points else "empty"
+        self.setToolTip(
+            "ROI plot generated."
+            if has_points
+            else "ROI plot generated without brightness data."
+        )
+        self.show()
+        self.update()
+
+    def set_failed(self):
+        self.timer.stop()
+        self.state = "failed"
+        self.setToolTip("LED analysis failed.")
+        self.show()
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        rect = self.rect().adjusted(2, 2, -2, -2)
+
+        if self.state == "done":
+            painter.setBrush(QColor("#2f80ed"))
+            painter.setPen(QPen(QColor("#2f80ed"), 2))
+            painter.drawEllipse(rect)
+            return
+
+        if self.state == "failed":
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(QPen(QColor("#c0392b"), 2))
+            painter.drawEllipse(rect)
+            return
+
+        if self.state == "rendering":
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(QPen(QColor("#d2e4ff"), 2))
+            painter.drawEllipse(rect)
+            painter.setPen(QPen(QColor("#2f80ed"), 2))
+            painter.drawArc(rect, self.angle * 16, 115 * 16)
+            return
+
+        painter.setBrush(Qt.NoBrush)
+        painter.setPen(QPen(QColor("#777777"), 2))
+        painter.drawEllipse(rect)
 
 
 class SyncPanel(QWidget):
@@ -37,13 +119,17 @@ class SyncPanel(QWidget):
         self.led_progress_bar.setValue(0)
         self.led_progress_bar.setTextVisible(True)
         self.led_progress_bar.hide()
+
+        self.roi_plot_indicator = RoiPlotIndicator(self)
+        self.roi_plot_indicator.set_idle()
+
         self.offset_label = QLabel("Time offset: Not calculated")
         self.led_curve_canvas = None
 
-        self.note_label = QLabel(
-            "This area will summarize video-LFP synchronization after LED and TTL markers are available."
+        self.led_scan_start_input.returnPressed.connect(
+            self.normalize_led_scan_range_inputs
         )
-        self.note_label.setStyleSheet("color: #666;")
+        self.led_scan_end_input.returnPressed.connect(self.normalize_led_scan_range_inputs)
 
         for label in [
             self.video_file_label,
@@ -53,16 +139,13 @@ class SyncPanel(QWidget):
             self.led_roi_label,
             self.led_detection_label,
             self.offset_label,
-            self.note_label,
         ]:
             label.setWordWrap(True)
 
         info_grid = QGridLayout()
-        info_grid.addWidget(self.video_file_label, 0, 0)
-        info_grid.addWidget(self.lfp_file_label, 0, 1)
-        info_grid.addWidget(self.video_led_label, 1, 0)
-        info_grid.addWidget(self.ttl_label, 1, 1)
-        info_grid.addWidget(self.led_roi_label, 2, 0, 1, 2)
+        info_grid.setVerticalSpacing(4)
+        info_grid.addWidget(self.led_roi_label, 0, 0, 1, 2)
+
         scan_range_layout = QHBoxLayout()
         scan_range_layout.setContentsMargins(0, 0, 0, 0)
         scan_range_layout.setSpacing(4)
@@ -72,19 +155,25 @@ class SyncPanel(QWidget):
         scan_range_layout.addWidget(self.led_scan_end_input)
         scan_range_layout.addWidget(self.detect_multiple_led_checkbox)
         scan_range_layout.addStretch()
-        info_grid.addLayout(scan_range_layout, 3, 0, 1, 2)
-        info_grid.addWidget(self.led_detection_label, 4, 0, 1, 2)
-        info_grid.addWidget(self.led_progress_bar, 5, 0, 1, 2)
-        info_grid.addWidget(self.offset_label, 6, 0, 1, 2)
+        info_grid.addLayout(scan_range_layout, 1, 0, 1, 2)
+
+        led_status_layout = QHBoxLayout()
+        led_status_layout.setContentsMargins(0, 0, 0, 0)
+        led_status_layout.setSpacing(5)
+        led_status_layout.addWidget(self.roi_plot_indicator)
+        led_status_layout.addWidget(self.led_detection_label, stretch=1)
+        info_grid.addLayout(led_status_layout, 2, 0, 1, 2)
+        info_grid.addWidget(self.led_progress_bar, 3, 0, 1, 2)
+        info_grid.addWidget(self.offset_label, 4, 0, 1, 2)
 
         self.action_layout = QHBoxLayout()
         self.action_layout.setContentsMargins(0, 0, 0, 0)
         self.action_layout.addStretch()
 
         layout = QVBoxLayout()
+        layout.setSpacing(4)
         layout.addLayout(self.action_layout)
         layout.addLayout(info_grid)
-        layout.addWidget(self.note_label)
         self.led_curve_area = QVBoxLayout()
         layout.addLayout(self.led_curve_area, stretch=1)
 
@@ -133,6 +222,27 @@ class SyncPanel(QWidget):
 
         return None
 
+    def format_scan_input(self, widget):
+        text = widget.text().strip()
+        if not text:
+            widget.setStyleSheet("")
+            return True
+
+        seconds = self.parse_time_input(text)
+        if seconds is None or seconds < 0:
+            widget.setStyleSheet("border: 1px solid #c0392b;")
+            return False
+
+        widget.setStyleSheet("")
+        widget.setText(format_time(seconds))
+        return True
+
+    def normalize_led_scan_range_inputs(self):
+        start_ok = self.format_scan_input(self.led_scan_start_input)
+        end_ok = self.format_scan_input(self.led_scan_end_input)
+        if start_ok and end_ok:
+            self.mark_scan_range_valid(True)
+
     def mark_scan_range_valid(self, is_valid):
         style = "" if is_valid else "border: 1px solid #c0392b;"
         self.led_scan_start_input.setStyleSheet(style)
@@ -166,21 +276,53 @@ class SyncPanel(QWidget):
     def detect_multiple_led_events(self):
         return self.detect_multiple_led_checkbox.isChecked()
 
+    def set_roi_plot_idle(self):
+        self.roi_plot_indicator.set_idle()
+
+    def begin_roi_plot_render(self):
+        self.roi_plot_indicator.start_rendering()
+
+    def finish_roi_plot_render(self, has_points):
+        self.roi_plot_indicator.set_done(has_points)
+
     def set_led_analysis(self, points, threshold, events, baseline=None, stats=None):
         points = points or []
         events = events or []
+        stats = stats or {}
+        self.begin_roi_plot_render()
+        self.led_detection_label.setText(
+            f"Generating ROI plot... points={len(points)}"
+        )
+        QTimer.singleShot(
+            50,
+            lambda: self.render_led_analysis(
+                points,
+                threshold,
+                events,
+                baseline=baseline,
+                stats=stats,
+            ),
+        )
+
+    def render_led_analysis(self, points, threshold, events, baseline=None, stats=None):
+        stats = stats or {}
 
         if self.led_curve_canvas is not None:
             self.led_curve_canvas.setParent(None)
             self.led_curve_canvas.deleteLater()
             self.led_curve_canvas = None
+        while self.led_curve_area.count():
+            item = self.led_curve_area.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(None)
 
         if not points:
             self.led_detection_label.setText("LED detection: No brightness data")
         else:
             interval_count = len(events) // 2
             mode_label = stats["mode_label"] if stats is not None else "LED score"
-            is_frame_delta = stats is not None and stats.get("mode", "").startswith("frame_delta")
+            is_frame_delta = stats.get("mode", "").startswith("frame_delta")
             if is_frame_delta:
                 event_status = (
                     f"event pairs={interval_count} | "
@@ -193,17 +335,24 @@ class SyncPanel(QWidget):
                     f"LED detection: {mode_label} | {interval_count} intervals | "
                     f"scan frames={stats.get('scan_start_frame', 0)}-{stats.get('scan_end_frame', 0)} | "
                     f"step={stats.get('coarse_step', 1)} | "
+                    f"points={len(points)} | "
                     f"{'multiple' if stats.get('detect_multiple') else 'single'} | "
                     f"{'refined' if stats.get('refined') else 'coarse only'} | "
                     f"{event_status}"
                 )
+                if stats.get("refine_error"):
+                    status += f" | refine error={stats['refine_error']}"
+                if stats.get("detection_error"):
+                    status += f" | detection error={stats['detection_error']}"
+                status += self.format_timing_status(stats)
             else:
                 status = (
                     f"LED detection: {mode_label} | "
-                    f"{interval_count} intervals | threshold={threshold:.4f}"
+                    f"{interval_count} intervals | points={len(points)} | threshold={threshold:.4f}"
                 )
                 if baseline is not None:
                     status += f" | baseline={baseline:.4f}"
+                status += self.format_timing_status(stats)
 
             if stats is not None and not is_frame_delta:
                 status += (
@@ -235,7 +384,7 @@ class SyncPanel(QWidget):
         for event in events:
             color = "green" if event.event_type == "LED_on" else "red"
             ax.axvline(event.video_time_sec, color=color, linestyle="--", linewidth=0.8)
-        is_frame_delta = stats is not None and stats.get("mode", "").startswith("frame_delta")
+        is_frame_delta = stats.get("mode", "").startswith("frame_delta")
         if points and baseline is not None and not is_frame_delta:
             ax.axhline(baseline, color="gray", linestyle=":", linewidth=0.8)
         ax.set_xlabel("Time (s)", fontsize=8)
@@ -246,8 +395,13 @@ class SyncPanel(QWidget):
         self.led_curve_area.addWidget(canvas)
         self.led_curve_canvas = canvas
         canvas.draw_idle()
+        QTimer.singleShot(
+            250,
+            lambda has_points=bool(points): self.finish_roi_plot_render(has_points),
+        )
 
     def begin_led_detection_progress(self):
+        self.set_roi_plot_idle()
         self.led_progress_bar.setRange(0, 100)
         self.led_progress_bar.setValue(0)
         self.led_progress_bar.setFormat("Analyzing LED ROI: 0%")
@@ -274,7 +428,14 @@ class SyncPanel(QWidget):
         self.led_progress_bar.setFormat("LED analysis complete")
         self.led_progress_bar.show()
 
+    def set_led_detection_stage(self, text):
+        self.led_detection_label.setText(f"LED detection: {text}")
+        self.led_progress_bar.setRange(0, 0)
+        self.led_progress_bar.setFormat(text)
+        self.led_progress_bar.show()
+
     def fail_led_detection_progress(self):
+        self.roi_plot_indicator.set_failed()
         self.led_progress_bar.setRange(0, 100)
         self.led_progress_bar.setValue(0)
         self.led_progress_bar.setFormat("LED analysis failed")
@@ -282,6 +443,13 @@ class SyncPanel(QWidget):
 
     def set_led_detection_status(self, text):
         self.led_detection_label.setText(text)
+
+    def format_timing_status(self, stats):
+        return (
+            f" | scan={stats.get('scan_elapsed_sec', 0.0):.1f}s"
+            f" detect={stats.get('detect_elapsed_sec', 0.0):.1f}s"
+            f" refine={stats.get('refine_elapsed_sec', 0.0):.1f}s"
+        )
 
     def set_offset(self, offset_sec):
         self.offset_label.setText(f"Time offset: {offset_sec:.6f} sec")
