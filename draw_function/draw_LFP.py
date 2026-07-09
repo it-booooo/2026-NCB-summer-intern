@@ -9,6 +9,7 @@ from matplotlib.lines import Line2D
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import read_function as read
+import csv_function as csv_func
 
 
 class LfpFigure(Figure):
@@ -48,6 +49,7 @@ def LFP(
         raise FileNotFoundError(f"LFP CSV file not found: {input_file}")
 
     data = read.LFP(str(input_file))
+    units = csv_func.parse_signal_csv_units(input_file)
 
     data["time_s"] = data["time_us"] / 1e6
 
@@ -85,7 +87,7 @@ def LFP(
             FigureClass=LfpFigure,
         ),
     )
-    ax = fig.add_axes((0.06, 0.18, 0.92, 0.74))
+    ax = fig.add_axes((0.10, 0.30, 0.88, 0.60))
 
     lines: dict[int, Line2D] = {}
 
@@ -99,9 +101,30 @@ def LFP(
         )[0]
         lines[channel] = line
     
-    ax.set_ylabel("Signal Value")
-    ax.grid(True)
-    ax.tick_params(axis="both", labelsize=8, pad=2)
+    ax.set_xlabel("")
+    ax.set_ylabel("")
+    ax.text(
+        -0.075,
+        1.00,
+        format_signal_label(units["value_unit"]),
+        fontsize=7,
+        ha="right",
+        va="center",
+        transform=ax.transAxes,
+        clip_on=False,
+    )
+    ax.text(
+        -0.075,
+        -0.16,
+        "Time (s)",
+        fontsize=7,
+        ha="right",
+        va="center",
+        transform=ax.transAxes,
+        clip_on=False,
+    )
+    ax.grid(True, linewidth=0.4, alpha=0.35)
+    ax.tick_params(axis="both", labelsize=7, pad=1)
 
     full_xlim = (float(data["time_s"].iloc[0]), float(data["time_s"].iloc[-1]))
     if full_xlim[0] == full_xlim[1]:

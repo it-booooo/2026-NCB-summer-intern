@@ -76,7 +76,7 @@ def accelerator(
         ),
     )
     if compact:
-        ax = fig.add_axes((0.06, 0.22, 0.92, 0.68))
+        ax = fig.add_axes((0.10, 0.30, 0.88, 0.60))
     else:
         ax = fig.add_subplot(111)
 
@@ -97,11 +97,29 @@ def accelerator(
     )
 
     y_label = format_signal_label(units["value_unit"])
-    if not compact:
-        ax.set_xlabel(f"Time ({units['time_unit']})", fontsize=8, labelpad=2)
-    ax.set_ylabel(y_label, fontsize=8, rotation=0, labelpad=18)
-    ax.yaxis.set_label_coords(-0.04, 1.02)
-    ax.tick_params(axis="both", labelsize=8, pad=1)
+    ax.set_xlabel("")
+    ax.set_ylabel("")
+    ax.text(
+        -0.075,
+        1.00,
+        y_label,
+        fontsize=7,
+        ha="right",
+        va="center",
+        transform=ax.transAxes,
+        clip_on=False,
+    )
+    ax.text(
+        -0.075,
+        -0.16,
+        f"Time ({units['time_unit']})",
+        fontsize=7,
+        ha="right",
+        va="center",
+        transform=ax.transAxes,
+        clip_on=False,
+    )
+    ax.tick_params(axis="both", labelsize=7, pad=1)
 
     ax.grid(True, linewidth=0.4, alpha=0.35)
     full_xlim = (float(data["time_s"].iloc[0]), float(data["time_s"].iloc[-1]))
