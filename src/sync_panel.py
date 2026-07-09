@@ -37,7 +37,7 @@ class SyncPanel(QWidget):
         self.led_progress_bar.setValue(0)
         self.led_progress_bar.setTextVisible(True)
         self.led_progress_bar.hide()
-        self.offset_label = QLabel("Time offset: Not calculated")
+        self.offset_label = QLabel("Time offset (video - TTL): Not calculated")
         self.led_curve_canvas = None
 
         self.note_label = QLabel(
@@ -284,4 +284,4 @@ class SyncPanel(QWidget):
         self.led_detection_label.setText(text)
 
     def set_offset(self, offset_sec):
-        self.offset_label.setText(f"Time offset: {offset_sec:.6f} sec")
+        self.offset_label.setText(f"Time offset (video - TTL): {offset_sec:.6f} sec")

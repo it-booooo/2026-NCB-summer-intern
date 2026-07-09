@@ -1,5 +1,4 @@
 import csv
-import decimal
 import re
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
@@ -117,6 +116,7 @@ def parse_time_marker_csv_info(path):
             "marker_count": 0,
             "markers": [],
             "time_column_name": None,
+            "first_marker_sec": None,
         }
 
     header = [column.strip() for column in rows[0]]
@@ -156,6 +156,7 @@ def parse_time_marker_csv_info(path):
             "marker_count": 0,
             "markers": [],
             "time_column_name": time_column_name,
+            "first_marker_sec": None,
         }
 
     for row in rows[1:]:
@@ -194,10 +195,13 @@ def parse_time_marker_csv_info(path):
             }
         )
 
+    first_marker_sec = markers[0]["record_time"] / 1_000_000.0 if markers else None
+
     return {
         "path": path,
         "filename": Path(path).name,
         "time_column_name": time_column_name,
         "marker_count": len(markers),
         "markers": markers,
+        "first_marker_sec": first_marker_sec,
     }

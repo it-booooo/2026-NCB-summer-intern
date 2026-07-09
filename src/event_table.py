@@ -1,4 +1,4 @@
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHeaderView,
@@ -23,6 +23,7 @@ class NoteEditor(QLineEdit):
 class EventTable(QTableWidget):
     DISPLAY_HEADERS = ["event type", "video time", "frame", "note"]
     DATA_KEYS = ["event_type", "video_time_sec", "frame_index", "note"]
+    events_changed = Signal()
 
     NOTE_COLUMN = 3
 
@@ -77,12 +78,14 @@ class EventTable(QTableWidget):
 
         note_editor = NoteEditor(note)
         self.setCellWidget(row, self.NOTE_COLUMN, note_editor)
+        self.events_changed.emit()
 
     def delete_selected_rows(self):
         current_row = self.currentRow()
 
         if current_row >= 0:
             self.removeRow(current_row)
+            self.events_changed.emit()
 
     def events(self):
         rows = []
