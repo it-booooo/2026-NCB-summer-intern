@@ -4,6 +4,11 @@ import cv2
 import numpy as np
 
 
+DETECTION_MODE = "frame_delta_mean_brightness"
+DETECTION_MODE_LABEL = "Frame delta (ROI mean brightness)"
+MIN_THRESHOLD = 1e-6
+
+
 @dataclass
 class LedEvent:
     event_type: str
@@ -26,30 +31,12 @@ class LedChangePoint:
     delta: float
 
 
-DETECTION_MODE_LABELS = {
-    "frame_delta": "Frame delta",
-    "frame_delta_mean_brightness": "Frame delta (ROI mean brightness)",
-    "brightness": "Brightness",
-}
-
-
 def apply_roi(frame_bgr, roi=None):
     if roi is None:
         return frame_bgr
 
     x, y, width, height = roi
     return frame_bgr[y : y + height, x : x + width]
-
-
-def mean_brightness(frame_bgr, roi=None):
-    frame_bgr = apply_roi(frame_bgr, roi)
-
-    if frame_bgr.size == 0:
-        return 0.0
-
-    frame_bgr = resize_roi_by_scale(frame_bgr, scale=0.5)
-    gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-    return float(np.mean(gray)) / 255.0
 
 
 def resize_roi_by_scale(frame_bgr, scale=0.5):
@@ -65,6 +52,17 @@ def resize_roi_by_scale(frame_bgr, scale=0.5):
         (resized_width, resized_height),
         interpolation=cv2.INTER_AREA,
     )
+
+
+def mean_brightness(frame_bgr, roi=None):
+    frame_bgr = apply_roi(frame_bgr, roi)
+
+    if frame_bgr.size == 0:
+        return 0.0
+
+    frame_bgr = resize_roi_by_scale(frame_bgr, scale=0.5)
+    gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+    return float(np.mean(gray)) / 255.0
 
 
 def compute_led_brightness_curve(
@@ -96,7 +94,6 @@ def compute_led_brightness_curve(
 
     points = []
     frame_index = start_frame
-
     scan_total_frames = max(end_frame - start_frame + 1, 1)
 
     if progress_callback is not None:
@@ -146,45 +143,6 @@ def compute_led_brightness_curve(
     return points
 
 
-def score_at_frame(points, frame_index):
-    if not points:
-        return 0.0
-
-    point = point_for_frame(points, frame_index)
-    return point.brightness if point is not None else 0.0
-
-
-def summarize_brightness(points, detection_mode="brightness"):
-    if not points:
-        return {
-            "mode": detection_mode,
-            "mode_label": DETECTION_MODE_LABELS.get(detection_mode, detection_mode),
-            "min": 0.0,
-            "median": 0.0,
-            "max": 0.0,
-            "dynamic_range": 0.0,
-            "peak_frame": 0,
-            "peak_time_sec": 0.0,
-        }
-
-    values = np.array([point.brightness for point in points], dtype=float)
-    peak_index = int(np.argmax(values))
-    peak_point = points[peak_index]
-    median = float(np.percentile(values, 50))
-    maximum = float(values[peak_index])
-
-    return {
-        "mode": detection_mode,
-        "mode_label": DETECTION_MODE_LABELS.get(detection_mode, detection_mode),
-        "min": float(np.min(values)),
-        "median": median,
-        "max": maximum,
-        "dynamic_range": maximum - median,
-        "peak_frame": peak_point.frame_index,
-        "peak_time_sec": peak_point.video_time_sec,
-    }
-
-
 def compute_frame_deltas(points):
     if len(points) < 2:
         return []
@@ -199,33 +157,6 @@ def compute_frame_deltas(points):
     ]
 
 
-def summarize_frame_deltas(deltas):
-    if not deltas:
-        return {
-            "max_positive_delta": 0.0,
-            "max_positive_frame": 0,
-            "max_positive_time_sec": 0.0,
-            "max_negative_delta": 0.0,
-            "max_negative_frame": 0,
-            "max_negative_time_sec": 0.0,
-            "reference_delta": 0.0,
-        }
-
-    positive = max(deltas, key=lambda point: point.delta)
-    negative = min(deltas, key=lambda point: point.delta)
-    abs_values = np.array([abs(point.delta) for point in deltas], dtype=float)
-
-    return {
-        "max_positive_delta": positive.delta,
-        "max_positive_frame": positive.frame_index,
-        "max_positive_time_sec": positive.video_time_sec,
-        "max_negative_delta": negative.delta,
-        "max_negative_frame": negative.frame_index,
-        "max_negative_time_sec": negative.video_time_sec,
-        "reference_delta": float(np.percentile(abs_values, 99)),
-    }
-
-
 def point_for_frame(points, frame_index):
     if not points:
         return None
@@ -234,60 +165,19 @@ def point_for_frame(points, frame_index):
     return min(points, key=lambda point: abs(point.frame_index - frame_index))
 
 
-def detect_led_events_from_frame_deltas(points, fps=30.0, min_duration_sec=0.1):
-    if len(points) < 2:
-        return [], 0.0, summarize_frame_deltas([])
+def event_pair_from_deltas(points, on_delta, off_delta):
+    on_point = point_for_frame(points, on_delta.frame_index)
+    off_point = point_for_frame(points, off_delta.frame_index)
 
-    deltas = compute_frame_deltas(points)
-    positive_candidates = sorted(
-        [point for point in deltas if point.delta > 0],
-        key=lambda point: point.delta,
-        reverse=True,
-    )[:30]
-    negative_candidates = sorted(
-        [point for point in deltas if point.delta < 0],
-        key=lambda point: point.delta,
-    )[:30]
-    min_duration_frames = max(int(min_duration_sec * fps), 1)
-    best_pair = None
-    best_score = 0.0
+    if on_point is None or off_point is None:
+        return []
 
-    for on_delta in positive_candidates:
-        for off_delta in negative_candidates:
-            duration_frames = off_delta.frame_index - on_delta.frame_index
-            if duration_frames < min_duration_frames:
-                continue
-
-            pair_score = abs(on_delta.delta) + abs(off_delta.delta)
-            if pair_score > best_score:
-                best_pair = (on_delta, off_delta)
-                best_score = pair_score
-
-    stats = summarize_frame_deltas(deltas)
-    if best_pair is None:
-        return [], stats["reference_delta"], stats
-
-    on_delta, off_delta = best_pair
-    start_point = point_for_frame(points, on_delta.frame_index)
-    off_frame_index = max(off_delta.frame_index - 1, start_point.frame_index)
-    off_point = point_for_frame(points, off_frame_index)
-
-    if start_point is None or off_point is None:
-        return [], stats["reference_delta"], stats
-
-    stats["selected_on_delta"] = on_delta.delta
-    stats["selected_on_frame"] = on_delta.frame_index
-    stats["selected_on_time_sec"] = on_delta.video_time_sec
-    stats["selected_off_delta"] = off_delta.delta
-    stats["selected_off_frame"] = off_delta.frame_index
-    stats["selected_off_time_sec"] = off_delta.video_time_sec
-
-    events = [
+    return [
         LedEvent(
             event_type="LED_on",
-            video_time_sec=start_point.video_time_sec,
-            frame_index=start_point.frame_index,
-            brightness=start_point.brightness,
+            video_time_sec=on_point.video_time_sec,
+            frame_index=on_point.frame_index,
+            brightness=on_point.brightness,
         ),
         LedEvent(
             event_type="LED_off",
@@ -297,81 +187,120 @@ def detect_led_events_from_frame_deltas(points, fps=30.0, min_duration_sec=0.1):
         ),
     ]
 
-    return events, stats["reference_delta"], stats
 
-
-def mean_points_between(points, start_frame, end_frame):
-    values = [
-        point.brightness
-        for point in points
-        if start_frame <= point.frame_index <= end_frame
-    ]
-    if not values:
-        return None
-
-    return float(np.mean(values))
-
-
-def validate_led_state_change(
-    points,
-    events,
-    fps=30.0,
-    window_sec=0.2,
-    min_state_delta=0.002,
+def _detection_stats(
+    threshold,
+    event_count,
+    points_count,
+    expected_duration_sec,
+    min_duration_sec,
+    max_duration_sec,
 ):
-    if len(events) < 2:
-        return False, {
-            "state_validation": "failed",
-            "state_delta_on": 0.0,
-            "state_delta_off": 0.0,
-        }
-
-    on_event, off_event = events[0], events[1]
-    window_frames = max(int(window_sec * fps), 1)
-
-    on_before = mean_points_between(
-        points,
-        on_event.frame_index - window_frames,
-        on_event.frame_index - 1,
-    )
-    on_after = mean_points_between(
-        points,
-        on_event.frame_index,
-        on_event.frame_index + window_frames,
-    )
-    off_before = mean_points_between(
-        points,
-        off_event.frame_index - window_frames,
-        off_event.frame_index,
-    )
-    off_after = mean_points_between(
-        points,
-        off_event.frame_index + 1,
-        off_event.frame_index + window_frames,
-    )
-
-    if None in [on_before, on_after, off_before, off_after]:
-        return False, {
-            "state_validation": "insufficient data",
-            "state_delta_on": 0.0,
-            "state_delta_off": 0.0,
-        }
-
-    state_delta_on = on_after - on_before
-    state_delta_off = off_before - off_after
-    is_valid = (
-        state_delta_on >= min_state_delta
-        and state_delta_off >= min_state_delta
-    )
-
-    return is_valid, {
-        "state_validation": "passed" if is_valid else "failed",
-        "state_delta_on": state_delta_on,
-        "state_delta_off": state_delta_off,
+    return {
+        "mode": DETECTION_MODE,
+        "mode_label": DETECTION_MODE_LABEL,
+        "threshold": threshold,
+        "event_count": event_count,
+        "points_count": points_count,
+        "expected_duration_sec": expected_duration_sec,
+        "min_duration_sec": min_duration_sec,
+        "max_duration_sec": max_duration_sec,
     }
 
 
-def refine_led_events_from_frame_deltas(
+def detect_led_event_pairs_from_frame_deltas(
+    points,
+    fps=30.0,
+    expected_duration_sec=1.0,
+    min_duration_sec=0.6,
+    max_duration_sec=1.5,
+    min_gap_sec=0.5,
+    max_events=1,
+    duration_weight=0.1,
+):
+    deltas = compute_frame_deltas(points)
+    if not deltas:
+        stats = _detection_stats(
+            threshold=0.0,
+            event_count=0,
+            points_count=len(points),
+            expected_duration_sec=expected_duration_sec,
+            min_duration_sec=min_duration_sec,
+            max_duration_sec=max_duration_sec,
+        )
+        return [], 0.0, stats
+
+    abs_delta_mean = float(np.mean([abs(point.delta) for point in deltas]))
+    threshold = max(3.0 * abs_delta_mean, MIN_THRESHOLD)
+    on_candidates = [point for point in deltas if point.delta > threshold]
+    off_candidates = [point for point in deltas if point.delta < -threshold]
+    max_events = max(int(max_events), 0)
+    fps = max(float(fps or 30.0), MIN_THRESHOLD)
+    min_gap_frames = max(int(min_gap_sec * fps), 1)
+    excluded_ranges = []
+    selected_pairs = []
+
+    def overlaps_excluded(start_frame, end_frame):
+        return any(
+            start_frame <= excluded_end and end_frame >= excluded_start
+            for excluded_start, excluded_end in excluded_ranges
+        )
+
+    while len(selected_pairs) < max_events:
+        best_pair = None
+        best_score = None
+
+        for on_delta in on_candidates:
+            for off_delta in off_candidates:
+                if off_delta.frame_index <= on_delta.frame_index:
+                    continue
+
+                if overlaps_excluded(on_delta.frame_index, off_delta.frame_index):
+                    continue
+
+                duration_sec = off_delta.video_time_sec - on_delta.video_time_sec
+                if not (min_duration_sec <= duration_sec <= max_duration_sec):
+                    continue
+
+                pair_score = (
+                    abs(on_delta.delta)
+                    + abs(off_delta.delta)
+                    - duration_weight * abs(duration_sec - expected_duration_sec)
+                )
+                if best_score is None or pair_score > best_score:
+                    best_pair = (on_delta, off_delta)
+                    best_score = pair_score
+
+        if best_pair is None:
+            break
+
+        on_delta, off_delta = best_pair
+        selected_pairs.append(best_pair)
+        excluded_ranges.append(
+            (
+                max(on_delta.frame_index - min_gap_frames, 0),
+                off_delta.frame_index + min_gap_frames,
+            )
+        )
+
+    events = []
+    for on_delta, off_delta in selected_pairs:
+        events.extend(event_pair_from_deltas(points, on_delta, off_delta))
+
+    events.sort(key=lambda event: event.frame_index)
+    event_count = len(events) // 2
+    stats = _detection_stats(
+        threshold=threshold,
+        event_count=event_count,
+        points_count=len(points),
+        expected_duration_sec=expected_duration_sec,
+        min_duration_sec=min_duration_sec,
+        max_duration_sec=max_duration_sec,
+    )
+    return events, threshold, stats
+
+
+def refine_led_event_pairs_from_frame_deltas(
     video_path,
     roi,
     coarse_events,
@@ -381,43 +310,101 @@ def refine_led_events_from_frame_deltas(
     scan_start_frame=0,
     scan_end_frame=None,
     should_stop=None,
+    expected_duration_sec=1.0,
+    min_duration_sec=0.6,
+    max_duration_sec=1.5,
+    min_gap_sec=0.5,
+    max_events=1,
+    duration_weight=0.1,
 ):
-    if len(coarse_events) < 2:
-        return [], 0.0, summarize_frame_deltas([])
+    max_events = max(int(max_events), 0)
+    if not coarse_events or max_events == 0:
+        return [], 0.0, _detection_stats(
+            threshold=0.0,
+            event_count=0,
+            points_count=0,
+            expected_duration_sec=expected_duration_sec,
+            min_duration_sec=min_duration_sec,
+            max_duration_sec=max_duration_sec,
+        )
 
-    fps = float(using_fps or 30.0)
+    fps = max(float(using_fps or 30.0), MIN_THRESHOLD)
     window_frames = max(int(window_sec * fps), 1)
-    start_frame = max(coarse_events[0].frame_index - window_frames, scan_start_frame, 0)
-    end_frame = coarse_events[1].frame_index + window_frames
-    if scan_end_frame is not None:
-        end_frame = min(end_frame, scan_end_frame)
+    min_gap_frames = max(int(min_gap_sec * fps), 1)
+    refined_events = []
+    thresholds = []
+    excluded_ranges = []
 
-    points = compute_led_brightness_curve(
-        video_path,
-        roi=roi,
-        rotate_180=rotate_180,
-        using_fps=fps,
-        frame_step=1,
-        start_frame=start_frame,
-        end_frame=end_frame,
-        should_stop=should_stop,
+    def overlaps_refined_event(start_frame, end_frame):
+        return any(
+            start_frame <= excluded_end and end_frame >= excluded_start
+            for excluded_start, excluded_end in excluded_ranges
+        )
+
+    for index in range(0, len(coarse_events), 2):
+        if len(refined_events) // 2 >= max_events:
+            break
+
+        if should_stop is not None and should_stop():
+            break
+
+        pair = coarse_events[index : index + 2]
+        if len(pair) < 2:
+            continue
+
+        on_event, off_event = pair
+        start_frame = max(on_event.frame_index - window_frames, scan_start_frame, 0)
+        end_frame = off_event.frame_index + window_frames
+        if scan_end_frame is not None:
+            end_frame = min(end_frame, scan_end_frame)
+        if start_frame >= end_frame:
+            continue
+
+        fine_points = compute_led_brightness_curve(
+            video_path,
+            roi=roi,
+            rotate_180=rotate_180,
+            using_fps=fps,
+            frame_step=1,
+            start_frame=start_frame,
+            end_frame=end_frame,
+            should_stop=should_stop,
+        )
+        events, threshold, _ = detect_led_event_pairs_from_frame_deltas(
+            fine_points,
+            fps=fps,
+            expected_duration_sec=expected_duration_sec,
+            min_duration_sec=min_duration_sec,
+            max_duration_sec=max_duration_sec,
+            min_gap_sec=min_gap_sec,
+            max_events=1,
+            duration_weight=duration_weight,
+        )
+        if len(events) < 2:
+            continue
+
+        refined_start = events[0].frame_index
+        refined_end = events[1].frame_index
+        if overlaps_refined_event(refined_start, refined_end):
+            continue
+
+        refined_events.extend(events[:2])
+        thresholds.append(threshold)
+        excluded_ranges.append(
+            (
+                max(refined_start - min_gap_frames, 0),
+                refined_end + min_gap_frames,
+            )
+        )
+
+    refined_events.sort(key=lambda event: event.frame_index)
+    threshold = float(np.mean(thresholds)) if thresholds else 0.0
+    stats = _detection_stats(
+        threshold=threshold,
+        event_count=len(refined_events) // 2,
+        points_count=0,
+        expected_duration_sec=expected_duration_sec,
+        min_duration_sec=min_duration_sec,
+        max_duration_sec=max_duration_sec,
     )
-
-    events, threshold, stats = detect_led_events_from_frame_deltas(
-        points,
-        fps=fps,
-        min_duration_sec=0.1,
-    )
-    is_valid, validation_stats = validate_led_state_change(
-        points,
-        events,
-        fps=fps,
-    )
-    stats.update(validation_stats)
-
-    if not is_valid:
-        return [], threshold, stats
-
-    return events, threshold, stats
-
-
+    return refined_events, threshold, stats

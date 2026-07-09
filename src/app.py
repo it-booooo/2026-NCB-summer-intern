@@ -277,7 +277,6 @@ class MainWindow(QMainWindow):
             roi=self.led_roi,
             rotate_180=self.video_player.rotate_180_enabled,
             fps=self.video_player.fps,
-            baseline_frame=self.video_player.current_frame,
             scan_start_frame=scan_start_frame,
             scan_end_frame=scan_end_frame,
             detect_multiple=self.sync_panel.detect_multiple_led_events(),
@@ -285,13 +284,12 @@ class MainWindow(QMainWindow):
         )
         worker = self.led_worker
         worker.result_ready.connect(
-            lambda points, threshold, events, baseline, stats, worker=worker: (
+            lambda points, threshold, events, stats, worker=worker: (
                 self.finish_led_detection(
                     worker,
                     points,
                     threshold,
                     events,
-                    baseline,
                     stats,
                     cache_key,
                 )
@@ -339,14 +337,14 @@ class MainWindow(QMainWindow):
         points,
         threshold,
         events,
-        baseline,
         stats,
         cache_key,
     ):
         if self.led_worker is not None and worker is not self.led_worker:
             return
 
-        if points and cache_key is not None and not stats.get("scan_cache_hit"):
+        cache_hit = worker.cached_points is not None
+        if points and cache_key is not None and not cache_hit:
             self.led_brightness_cache[cache_key] = points
 
         self.sync_panel.finish_led_detection_progress()
@@ -354,36 +352,31 @@ class MainWindow(QMainWindow):
             points,
             threshold,
             events,
-            baseline=baseline,
             stats=stats,
         )
+        interval_count = stats.get("event_count", len(events) // 2)
+        mode_label = stats.get("mode_label", "Frame delta (ROI mean brightness)")
         self.add_led_events(events)
         event_status = (
-            f"event pairs={len(events) // 2} | "
-            f"delta gate={stats.get('min_delta', threshold):.4f} | "
-            f"state={stats.get('state_validation', 'not checked')}"
-            if events
-            else f"no LED event selected | state={stats.get('state_validation', 'not checked')}"
+            f"event pairs={interval_count}" if events else "no LED event selected"
         )
         status = (
-            f"LED detection: ROI mean brightness delta | {len(events) // 2} intervals | "
+            f"LED detection: {mode_label} | {interval_count} intervals | "
             f"scan frames={stats.get('scan_start_frame', 0)}-{stats.get('scan_end_frame', 0)} | "
-            f"coarse step={stats.get('coarse_step', 1)} frames | "
-            f"points={len(points or [])} | "
+            f"coarse step={stats.get('coarse_step', 20)} frames | "
+            f"refine window={stats.get('refine_window_sec', 1.0):.1f}s | "
+            f"points={stats.get('points_count', len(points or []))} | "
             f"{'multiple' if stats.get('detect_multiple') else 'single'} | "
-            f"{'refined' if stats.get('refined') else 'coarse only'} | "
+            f"threshold={stats.get('threshold', threshold):.6f} | "
+            f"duration={stats.get('min_duration_sec', 0.6):.1f}-{stats.get('max_duration_sec', 1.5):.1f}s "
+            f"target={stats.get('expected_duration_sec', 1.0):.1f}s | "
             f"{event_status}"
         )
-        if stats.get("detection_error"):
-            status += f" | detection error={stats['detection_error']}"
-        if stats.get("refine_error"):
-            status += f" | refine error={stats['refine_error']}"
         status += (
             f" | scan={stats.get('scan_elapsed_sec', 0.0):.1f}s"
             f" detect={stats.get('detect_elapsed_sec', 0.0):.1f}s"
-            f" refine={stats.get('refine_elapsed_sec', 0.0):.1f}s"
         )
-        if stats.get("scan_cache_hit"):
+        if cache_hit:
             status += " | cached scan"
         self.sync_panel.set_led_detection_status(status)
 

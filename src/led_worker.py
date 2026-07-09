@@ -3,7 +3,7 @@ from time import perf_counter
 
 
 class LedDetectionWorker(QThread):
-    result_ready = Signal(object, float, object, float, object)
+    result_ready = Signal(object, float, object, object)
     progress_changed = Signal(int, int)
     stage_changed = Signal(str)
     failed = Signal(str)
@@ -14,7 +14,6 @@ class LedDetectionWorker(QThread):
         roi,
         rotate_180,
         fps,
-        baseline_frame,
         scan_start_frame,
         scan_end_frame,
         detect_multiple=False,
@@ -26,7 +25,6 @@ class LedDetectionWorker(QThread):
         self.roi = roi
         self.rotate_180 = rotate_180
         self.fps = fps
-        self.baseline_frame = baseline_frame
         self.scan_start_frame = scan_start_frame
         self.scan_end_frame = scan_end_frame
         self.detect_multiple = detect_multiple
@@ -34,20 +32,16 @@ class LedDetectionWorker(QThread):
 
     def run(self):
         try:
-            from src.led_multi_detector import (
-                detect_led_event_pairs_from_frame_deltas,
-                refine_led_event_pairs_from_frame_deltas,
-            )
             from src.led_detector import (
                 compute_led_brightness_curve,
-                detect_led_events_from_frame_deltas,
-                refine_led_events_from_frame_deltas,
-                score_at_frame,
-                summarize_brightness,
+                detect_led_event_pairs_from_frame_deltas,
+                refine_led_event_pairs_from_frame_deltas,
             )
 
             started_at = perf_counter()
             coarse_step = 20
+            refine_window_sec = 1.0
+            max_events = 20 if self.detect_multiple else 1
             if self.cached_points is None:
                 points = compute_led_brightness_curve(
                     self.video_path,
@@ -74,76 +68,48 @@ class LedDetectionWorker(QThread):
 
             self.stage_changed.emit("Detecting LED events...")
             detect_started_at = perf_counter()
-            baseline = score_at_frame(points, self.baseline_frame)
-            threshold, stats = 0.0, summarize_brightness(
+            coarse_events, threshold, stats = detect_led_event_pairs_from_frame_deltas(
                 points,
-                detection_mode="frame_delta_mean_brightness",
+                fps=self.fps,
+                max_events=max_events,
             )
-            events = []
-            try:
-                if self.detect_multiple:
-                    events, threshold, delta_stats = detect_led_event_pairs_from_frame_deltas(
-                        points,
-                        fps=self.fps,
-                        min_duration_sec=0.1,
-                        min_gap_sec=0.5,
+
+            events = coarse_events
+            if coarse_events and not self.isInterruptionRequested():
+                self.stage_changed.emit("Refining LED events...")
+                refined_events, refined_threshold, _ = (
+                    refine_led_event_pairs_from_frame_deltas(
+                        self.video_path,
+                        roi=self.roi,
+                        coarse_events=coarse_events,
+                        rotate_180=self.rotate_180,
+                        using_fps=self.fps,
+                        window_sec=refine_window_sec,
+                        scan_start_frame=self.scan_start_frame,
+                        scan_end_frame=self.scan_end_frame,
+                        should_stop=self.isInterruptionRequested,
+                        max_events=max_events,
                     )
-                else:
-                    events, threshold, delta_stats = detect_led_events_from_frame_deltas(
-                        points,
-                        fps=self.fps,
-                        min_duration_sec=0.1,
-                    )
-                stats.update(delta_stats)
-            except Exception as error:
-                stats["detection_error"] = str(error)
+                )
+                events = refined_events
+                threshold = refined_threshold if refined_events else threshold
+
             detect_elapsed_sec = perf_counter() - detect_started_at
-            stats["coarse_step"] = coarse_step
-            stats["refined"] = False
+            stats["threshold"] = threshold
+            stats["event_count"] = len(events) // 2
             stats["scan_start_frame"] = self.scan_start_frame
             stats["scan_end_frame"] = self.scan_end_frame
             stats["detect_multiple"] = self.detect_multiple
+            stats["points_count"] = len(points)
+            stats["coarse_step"] = coarse_step
+            stats["refine_window_sec"] = refine_window_sec
             stats["scan_elapsed_sec"] = scan_elapsed_sec
-            stats["scan_cache_hit"] = self.cached_points is not None
             stats["detect_elapsed_sec"] = detect_elapsed_sec
-            stats["refine_elapsed_sec"] = 0.0
-
-            if events and not self.isInterruptionRequested():
-                self.stage_changed.emit("Refining LED events...")
-                refine_started_at = perf_counter()
-                try:
-                    refine_func = (
-                        refine_led_event_pairs_from_frame_deltas
-                        if self.detect_multiple
-                        else refine_led_events_from_frame_deltas
-                    )
-                    refined_events, refined_threshold, refined_stats = (
-                        refine_func(
-                            self.video_path,
-                            roi=self.roi,
-                            coarse_events=events,
-                            rotate_180=self.rotate_180,
-                            using_fps=self.fps,
-                            window_sec=1.0,
-                            scan_start_frame=self.scan_start_frame,
-                            scan_end_frame=self.scan_end_frame,
-                            should_stop=self.isInterruptionRequested,
-                        )
-                    )
-
-                    events = refined_events
-                    threshold = refined_threshold
-                    stats.update(refined_stats)
-                    stats["refined"] = True
-                except Exception as error:
-                    stats["refine_error"] = str(error)
-                    stats["refined"] = False
-                stats["refine_elapsed_sec"] = perf_counter() - refine_started_at
 
             if self.isInterruptionRequested():
                 return
 
-            self.result_ready.emit(points, threshold, events, baseline, stats)
+            self.result_ready.emit(points, threshold, events, stats)
         except Exception as error:
             if not self.isInterruptionRequested():
                 self.failed.emit(str(error))

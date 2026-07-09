@@ -285,7 +285,7 @@ class SyncPanel(QWidget):
     def finish_roi_plot_render(self, has_points):
         self.roi_plot_indicator.set_done(has_points)
 
-    def set_led_analysis(self, points, threshold, events, baseline=None, stats=None):
+    def set_led_analysis(self, points, threshold, events, stats=None):
         points = points or []
         events = events or []
         stats = stats or {}
@@ -299,12 +299,11 @@ class SyncPanel(QWidget):
                 points,
                 threshold,
                 events,
-                baseline=baseline,
                 stats=stats,
             ),
         )
 
-    def render_led_analysis(self, points, threshold, events, baseline=None, stats=None):
+    def render_led_analysis(self, points, threshold, events, stats=None):
         stats = stats or {}
 
         if self.led_curve_canvas is not None:
@@ -320,45 +319,26 @@ class SyncPanel(QWidget):
         if not points:
             self.led_detection_label.setText("LED detection: No brightness data")
         else:
-            interval_count = len(events) // 2
-            mode_label = stats["mode_label"] if stats is not None else "LED score"
-            is_frame_delta = stats.get("mode", "").startswith("frame_delta")
-            if is_frame_delta:
-                event_status = (
-                    f"event pairs={interval_count} | "
-                    f"delta gate={stats.get('min_delta', threshold):.4f} | "
-                    f"state={stats.get('state_validation', 'not checked')}"
-                    if interval_count
-                    else f"no LED event selected | state={stats.get('state_validation', 'not checked')}"
-                )
-                status = (
-                    f"LED detection: {mode_label} | {interval_count} intervals | "
-                    f"scan frames={stats.get('scan_start_frame', 0)}-{stats.get('scan_end_frame', 0)} | "
-                    f"step={stats.get('coarse_step', 1)} | "
-                    f"points={len(points)} | "
-                    f"{'multiple' if stats.get('detect_multiple') else 'single'} | "
-                    f"{'refined' if stats.get('refined') else 'coarse only'} | "
-                    f"{event_status}"
-                )
-                if stats.get("refine_error"):
-                    status += f" | refine error={stats['refine_error']}"
-                if stats.get("detection_error"):
-                    status += f" | detection error={stats['detection_error']}"
-                status += self.format_timing_status(stats)
-            else:
-                status = (
-                    f"LED detection: {mode_label} | "
-                    f"{interval_count} intervals | points={len(points)} | threshold={threshold:.4f}"
-                )
-                if baseline is not None:
-                    status += f" | baseline={baseline:.4f}"
-                status += self.format_timing_status(stats)
-
-            if stats is not None and not is_frame_delta:
-                status += (
-                    f" | max={stats['max']:.4f}"
-                    f" at {stats['peak_time_sec']:.3f}s"
-                )
+            interval_count = stats.get("event_count", len(events) // 2)
+            mode_label = stats.get("mode_label", "Frame delta (ROI mean brightness)")
+            event_status = (
+                f"event pairs={interval_count}"
+                if interval_count
+                else "no LED event selected"
+            )
+            status = (
+                f"LED detection: {mode_label} | {interval_count} intervals | "
+                f"scan frames={stats.get('scan_start_frame', 0)}-{stats.get('scan_end_frame', 0)} | "
+                f"coarse step={stats.get('coarse_step', 20)} frames | "
+                f"refine window={stats.get('refine_window_sec', 1.0):.1f}s | "
+                f"points={stats.get('points_count', len(points))} | "
+                f"{'multiple' if stats.get('detect_multiple') else 'single'} | "
+                f"threshold={stats.get('threshold', threshold):.6f} | "
+                f"duration={stats.get('min_duration_sec', 0.6):.1f}-{stats.get('max_duration_sec', 1.5):.1f}s "
+                f"target={stats.get('expected_duration_sec', 1.0):.1f}s | "
+                f"{event_status}"
+            )
+            status += self.format_timing_status(stats)
             self.led_detection_label.setText(status)
 
         from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
@@ -371,24 +351,33 @@ class SyncPanel(QWidget):
 
         ax = figure.add_subplot(111)
         times = [point.video_time_sec for point in points]
-        values = [point.brightness for point in points]
+        delta_times = [points[index].video_time_sec for index in range(1, len(points))]
+        delta_values = [
+            points[index].brightness - points[index - 1].brightness
+            for index in range(1, len(points))
+        ]
         if points:
-            ax.plot(times, values, linewidth=0.8)
+            if delta_values:
+                ax.plot(delta_times, delta_values, linewidth=0.8)
+            else:
+                ax.plot(times, [0.0 for _ in times], linewidth=0.8)
             if len(times) == 1:
                 ax.set_xlim(times[0] - 1.0, times[0] + 1.0)
             else:
                 ax.set_xlim(min(times), max(times))
         else:
             ax.set_xlim(0.0, 1.0)
-            ax.set_ylim(0.0, 1.0)
+            ax.set_ylim(-1.0, 1.0)
+        ax.axhline(0.0, color="gray", linestyle=":", linewidth=0.7)
+        threshold_value = stats.get("threshold", threshold)
+        if threshold_value > 0:
+            ax.axhline(threshold_value, color="gray", linestyle="--", linewidth=0.6)
+            ax.axhline(-threshold_value, color="gray", linestyle="--", linewidth=0.6)
         for event in events:
             color = "green" if event.event_type == "LED_on" else "red"
             ax.axvline(event.video_time_sec, color=color, linestyle="--", linewidth=0.8)
-        is_frame_delta = stats.get("mode", "").startswith("frame_delta")
-        if points and baseline is not None and not is_frame_delta:
-            ax.axhline(baseline, color="gray", linestyle=":", linewidth=0.8)
         ax.set_xlabel("Time (s)", fontsize=8)
-        ax.set_ylabel("ROI Mean Brightness", fontsize=8)
+        ax.set_ylabel("ROI Brightness Delta", fontsize=8)
         ax.tick_params(axis="both", labelsize=8, pad=1)
         ax.grid(True, linewidth=0.4, alpha=0.35)
 
@@ -448,7 +437,6 @@ class SyncPanel(QWidget):
         return (
             f" | scan={stats.get('scan_elapsed_sec', 0.0):.1f}s"
             f" detect={stats.get('detect_elapsed_sec', 0.0):.1f}s"
-            f" refine={stats.get('refine_elapsed_sec', 0.0):.1f}s"
         )
 
     def set_offset(self, offset_sec):
