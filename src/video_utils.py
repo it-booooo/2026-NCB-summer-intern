@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from pathlib import Path
 
+from numpy.linalg import det
+
 
 @dataclass
 class VideoMetadata:
@@ -28,7 +30,7 @@ def open_video(path):
     return cap
 
 
-def parse_video_metadata(path, using_fps=30.0):
+def parse_video_metadata(path, using_fps=None):
     import cv2
 
     cap = open_video(path)
@@ -41,6 +43,8 @@ def parse_video_metadata(path, using_fps=30.0):
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
     detected_fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+    if not using_fps:
+        using_fps = detected_fps
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
 
     fourcc_value = int(cap.get(cv2.CAP_PROP_FOURCC) or 0)
