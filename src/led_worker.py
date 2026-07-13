@@ -17,6 +17,7 @@ class LedDetectionWorker(QThread):
         scan_start_frame,
         scan_end_frame,
         detect_multiple=False,
+        max_events=None,
         cached_points=None,
         parent=None,
     ):
@@ -28,6 +29,7 @@ class LedDetectionWorker(QThread):
         self.scan_start_frame = scan_start_frame
         self.scan_end_frame = scan_end_frame
         self.detect_multiple = detect_multiple
+        self.max_events = max_events
         self.cached_points = cached_points
 
     def run(self):
@@ -41,7 +43,11 @@ class LedDetectionWorker(QThread):
             started_at = perf_counter()
             coarse_step = 20
             refine_window_sec = 1.0
-            max_events = 20 if self.detect_multiple else 1
+            max_events = (
+                max(int(self.max_events or 0), 0)
+                if self.detect_multiple
+                else 1
+            )
             scan_acceleration_info = {}
             if self.cached_points is None:
                 points = compute_led_brightness_curve(
@@ -102,6 +108,7 @@ class LedDetectionWorker(QThread):
             detect_elapsed_sec = perf_counter() - detect_started_at
             stats["threshold"] = threshold
             stats["event_count"] = len(events) // 2
+            stats["requested_event_count"] = max_events
             stats["scan_start_frame"] = self.scan_start_frame
             stats["scan_end_frame"] = self.scan_end_frame
             stats["detect_multiple"] = self.detect_multiple

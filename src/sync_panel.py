@@ -333,6 +333,7 @@ class SyncPanel(QWidget):
                 f"refine window={stats.get('refine_window_sec', 1.0):.1f}s | "
                 f"points={stats.get('points_count', len(points))} | "
                 f"{'multiple' if stats.get('detect_multiple') else 'single'} | "
+                f"requested={stats.get('requested_event_count', interval_count)} | "
                 f"threshold={stats.get('threshold', threshold):.6f} | "
                 f"duration={stats.get('min_duration_sec', 0.6):.1f}-{stats.get('max_duration_sec', 1.5):.1f}s "
                 f"target={stats.get('expected_duration_sec', 1.0):.1f}s | "

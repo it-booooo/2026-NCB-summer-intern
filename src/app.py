@@ -303,6 +303,26 @@ class MainWindow(QMainWindow):
             )
             return
 
+        detect_multiple = self.sync_panel.detect_multiple_led_events()
+        max_events = 1
+        if detect_multiple:
+            if self.timeMarker_info is None:
+                QMessageBox.warning(
+                    self,
+                    "TTL marker required",
+                    "Please import TTL CSV before detecting multiple LED events.",
+                )
+                return
+
+            max_events = int(self.timeMarker_info.get("marker_count") or 0)
+            if max_events <= 0:
+                QMessageBox.warning(
+                    self,
+                    "TTL marker required",
+                    "The imported TTL CSV does not contain any TTL events.",
+                )
+                return
+
         if self.led_worker is not None and self.led_worker.isRunning():
             if not self.stop_led_detection(wait=True):
                 QMessageBox.information(
@@ -328,7 +348,8 @@ class MainWindow(QMainWindow):
             fps=self.video_player.fps,
             scan_start_frame=scan_start_frame,
             scan_end_frame=scan_end_frame,
-            detect_multiple=self.sync_panel.detect_multiple_led_events(),
+            detect_multiple=detect_multiple,
+            max_events=max_events,
             cached_points=cached_points,
         )
         worker = self.led_worker
@@ -416,6 +437,7 @@ class MainWindow(QMainWindow):
             f"refine window={stats.get('refine_window_sec', 1.0):.1f}s | "
             f"points={stats.get('points_count', len(points or []))} | "
             f"{'multiple' if stats.get('detect_multiple') else 'single'} | "
+            f"requested={stats.get('requested_event_count', interval_count)} | "
             f"threshold={stats.get('threshold', threshold):.6f} | "
             f"duration={stats.get('min_duration_sec', 0.6):.1f}-{stats.get('max_duration_sec', 1.5):.1f}s "
             f"target={stats.get('expected_duration_sec', 1.0):.1f}s | "
