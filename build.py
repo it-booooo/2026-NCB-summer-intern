@@ -54,6 +54,8 @@ def main():
         "PigBehaviorSync",
         "--windowed",
         "--onefile",
+        "--hidden-import=pyopencl",
+        "--hidden-import=pyopencl._cl",
         *conda_runtime_binaries(),
         "__main__.py",
     ]

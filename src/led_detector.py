@@ -75,7 +75,54 @@ def compute_led_brightness_curve(
     end_frame=None,
     should_stop=None,
     progress_callback=None,
+    acceleration_info=None,
 ):
+    if acceleration_info is not None:
+        acceleration_info.clear()
+
+    try:
+        from src.led_opencl import (
+            OpenClUnavailable,
+            compute_led_brightness_curve_opencl,
+        )
+
+        opencl_points = compute_led_brightness_curve_opencl(
+            video_path,
+            roi=roi,
+            rotate_180=rotate_180,
+            using_fps=using_fps,
+            frame_step=frame_step,
+            start_frame=start_frame,
+            end_frame=end_frame,
+            should_stop=should_stop,
+            progress_callback=progress_callback,
+            acceleration_info=acceleration_info,
+        )
+        return [
+            LedBrightnessPoint(
+                frame_index=frame_index,
+                video_time_sec=video_time_sec,
+                brightness=brightness,
+            )
+            for frame_index, video_time_sec, brightness in opencl_points
+        ]
+    except OpenClUnavailable as error:
+        if acceleration_info is not None:
+            acceleration_info.update(
+                {
+                    "brightness_backend": "cpu",
+                    "opencl_fallback_reason": str(error),
+                }
+            )
+    except Exception as error:
+        if acceleration_info is not None:
+            acceleration_info.update(
+                {
+                    "brightness_backend": "cpu",
+                    "opencl_fallback_reason": str(error),
+                }
+            )
+
     cap = cv2.VideoCapture(video_path)
 
     if not cap.isOpened():
@@ -135,6 +182,9 @@ def compute_led_brightness_curve(
             progress_callback(completed_frames, scan_total_frames)
 
     cap.release()
+
+    if acceleration_info is not None:
+        acceleration_info.setdefault("brightness_backend", "cpu")
 
     if progress_callback is not None:
         completed_frames = min(max(frame_index - start_frame, 0), scan_total_frames)
@@ -316,6 +366,7 @@ def refine_led_event_pairs_from_frame_deltas(
     min_gap_sec=0.5,
     max_events=1,
     duration_weight=0.1,
+    acceleration_info=None,
 ):
     max_events = max(int(max_events), 0)
     if not coarse_events or max_events == 0:
@@ -369,6 +420,7 @@ def refine_led_event_pairs_from_frame_deltas(
             start_frame=start_frame,
             end_frame=end_frame,
             should_stop=should_stop,
+            acceleration_info=acceleration_info,
         )
         events, threshold, _ = detect_led_event_pairs_from_frame_deltas(
             fine_points,

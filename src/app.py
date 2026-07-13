@@ -113,6 +113,7 @@ class MainWindow(QMainWindow):
 
         self.add_action(settings_menu, "Set LFP step", self.set_lfp_step)
         self.add_action(settings_menu, "Set 3-axis step", self.set_axis_step)
+        self.add_action(settings_menu, "Check OpenCL GPU", self.show_opencl_status)
 
         self.analysis_controller.populate_menu(analysis_menu)
 
@@ -139,6 +140,51 @@ class MainWindow(QMainWindow):
         accepted, step = self.ask_step("Set 3-axis step", self.lfp_panel.axis_step)
         if accepted:
             self.lfp_panel.set_axis_step(step)
+
+    def show_opencl_status(self):
+        try:
+            from src.led_opencl import opencl_status
+
+            status = opencl_status()
+        except Exception as error:
+            QMessageBox.warning(
+                self,
+                "OpenCL GPU",
+                f"OpenCL check failed:\n{error}",
+            )
+            return
+
+        if not status.get("available"):
+            QMessageBox.warning(
+                self,
+                "OpenCL GPU",
+                "OpenCL GPU is not available.\n\n"
+                f"Reason: {status.get('reason', 'unknown')}\n\n"
+                "LED detection will use CPU fallback.",
+            )
+            return
+
+        QMessageBox.information(
+            self,
+            "OpenCL GPU",
+            "OpenCL GPU is available.\n\n"
+            f"Device: {status.get('device')}\n"
+            f"Vendor: {status.get('device_vendor')}\n"
+            f"Platform: {status.get('platform')}\n"
+            f"Selected by: {status.get('selected_reason')}\n"
+            f"Target batch: {status.get('target_batch_frames')} frames\n"
+            f"Target transfer limit: {status.get('target_batch_mb'):.0f} MB\n"
+            f"Device max allocation: {status.get('max_alloc_mb'):.0f} MB\n"
+            f"Device global memory: {status.get('global_mem_mb'):.0f} MB\n\n"
+            "Detected OpenCL GPUs:\n"
+            + "\n".join(
+                (
+                    f"- {device.get('name')} | {device.get('vendor')} | "
+                    f"{device.get('global_mem_mb'):.0f} MB"
+                )
+                for device in status.get("devices", [])
+            ),
+        )
 
     def create_layout(self):
         lfp_group = self.create_group("Waveform Area", self.lfp_panel)
@@ -376,6 +422,23 @@ class MainWindow(QMainWindow):
             f" | scan={stats.get('scan_elapsed_sec', 0.0):.1f}s"
             f" detect={stats.get('detect_elapsed_sec', 0.0):.1f}s"
         )
+        backend = stats.get("brightness_backend")
+        if backend == "opencl":
+            status += (
+                f" | brightness=OpenCL"
+                f" device={stats.get('opencl_device', 'GPU')}"
+                f" selected={stats.get('opencl_selected_reason', 'auto')}"
+                f" batches={stats.get('opencl_batches', 0)}"
+                f" max_batch={stats.get('opencl_max_batch_frames', 0)}"
+            )
+        elif backend == "cpu":
+            status += " | brightness=CPU"
+            if stats.get("opencl_fallback_reason"):
+                status += (
+                    f" (OpenCL fallback: {stats.get('opencl_fallback_reason')})"
+                )
+        elif backend == "cache":
+            status += " | brightness=cached"
         if cache_hit:
             status += " | cached scan"
         self.sync_panel.set_led_detection_status(status)
