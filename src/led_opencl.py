@@ -538,7 +538,6 @@ def compute_led_brightness_curve_opencl(
             batches_processed += 1
             frames_processed += batch_count
             max_batch_used = max(max_batch_used, batch_count)
-            emit_progress(batch_frame_indices[-1] + 1)
             batch_frame_indices.clear()
             batch_count = 0
 
@@ -578,6 +577,8 @@ def compute_led_brightness_curve_opencl(
                     break
                 frame_index += 1
                 skipped += 1
+
+            emit_progress(frame_index)
 
         if should_stop is None or not should_stop():
             flush_batch()
