@@ -21,11 +21,13 @@ class NoteEditor(QLineEdit):
 
 
 class EventTable(QTableWidget):
-    DISPLAY_HEADERS = ["event type", "video time", "frame", "note"]
-    DATA_KEYS = ["event_type", "video_time_sec", "frame_index", "note"]
+    DISPLAY_HEADERS = ["event type", "video time", "note"]
     events_changed = Signal()
 
-    NOTE_COLUMN = 3
+    EVENT_TYPE_COLUMN = 0
+    VIDEO_TIME_COLUMN = 1
+    NOTE_COLUMN = 2
+    FRAME_ROLE = Qt.UserRole + 1
 
     def __init__(self):
         super().__init__(0, len(self.DISPLAY_HEADERS))
@@ -45,12 +47,10 @@ class EventTable(QTableWidget):
         header = self.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.Fixed)
         header.setSectionResizeMode(1, QHeaderView.Fixed)
-        header.setSectionResizeMode(2, QHeaderView.Fixed)
-        header.setSectionResizeMode(3, QHeaderView.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.Stretch)
 
         self.setColumnWidth(0, 78)
         self.setColumnWidth(1, 78)
-        self.setColumnWidth(2, 58)
 
         self.setStyleSheet(
             """
@@ -68,12 +68,13 @@ class EventTable(QTableWidget):
         fixed_values = [
             event_type,
             f"{video_time_sec:.3f}",
-            str(frame_index),
         ]
 
         for column, value in enumerate(fixed_values):
             item = QTableWidgetItem(value)
             item.setFlags(Qt.ItemIsEnabled)
+            if column == self.EVENT_TYPE_COLUMN:
+                item.setData(self.FRAME_ROLE, int(frame_index))
             self.setItem(row, column, item)
 
         note_editor = NoteEditor(note)
@@ -91,18 +92,22 @@ class EventTable(QTableWidget):
         rows = []
 
         for row in range(self.rowCount()):
-            event = {}
+            event_item = self.item(row, self.EVENT_TYPE_COLUMN)
+            time_item = self.item(row, self.VIDEO_TIME_COLUMN)
+            note_widget = self.cellWidget(row, self.NOTE_COLUMN)
 
-            for column, key in enumerate(self.DATA_KEYS):
-                if column == self.NOTE_COLUMN:
-                    note_widget = self.cellWidget(row, column)
-                    event[key] = note_widget.text() if note_widget else ""
-                else:
-                    item = self.item(row, column)
-                    event[key] = item.text() if item else ""
+            frame_index = (
+                event_item.data(self.FRAME_ROLE)
+                if event_item is not None
+                else 0
+            )
 
-            event["video_time_sec"] = float(event["video_time_sec"] or 0)
-            event["frame_index"] = int(event["frame_index"] or 0)
+            event = {
+                "event_type": event_item.text() if event_item else "",
+                "video_time_sec": float(time_item.text() if time_item else 0),
+                "frame_index": int(frame_index or 0),
+                "note": note_widget.text() if note_widget else "",
+            }
 
             rows.append(event)
 

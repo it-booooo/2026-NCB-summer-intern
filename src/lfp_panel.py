@@ -71,15 +71,15 @@ class SharedTimelineSlider:
             full_xlim[0],
             0.5,
             "Time",
-            fontsize=8,
+            fontsize=7,
             ha="right",
             va="center",
         )
         self.valtext = self.ax.text(
             0.5,
-            1.05,
+            1.02,
             "",
-            fontsize=8,
+            fontsize=7,
             ha="center",
             va="bottom",
             transform=self.ax.transAxes,
@@ -187,7 +187,7 @@ class SharedTimelineSlider:
 class LfpPanel(QWidget):
     def __init__(self):
         super().__init__()
-        self.setMinimumHeight(380)
+        self.setMinimumHeight(270)
 
         self.lfp_path = None
         self.axis_path = None
@@ -220,7 +220,7 @@ class LfpPanel(QWidget):
         waveform_grid = QGridLayout()
         waveform_grid.setVerticalSpacing(8)
         waveform_grid.setColumnStretch(1, 1)
-        waveform_grid.setRowStretch(0, 2)
+        waveform_grid.setRowStretch(0, 1)
         waveform_grid.setRowStretch(1, 1)
 
         self.lfp_waveform_area = self.create_waveform_area(
@@ -369,8 +369,8 @@ class LfpPanel(QWidget):
             if widget is not None:
                 widget.setParent(None)
 
-        fig = Figure(figsize=(8, 0.7), constrained_layout=False)
-        slider_ax = fig.add_axes((0.12, 0.28, 0.76, 0.32))
+        fig = Figure(figsize=(8, 0.66), constrained_layout=False)
+        slider_ax = fig.add_axes((0.12, 0.36, 0.76, 0.28))
         slider = SharedTimelineSlider(
             slider_ax,
             full_xlim,
