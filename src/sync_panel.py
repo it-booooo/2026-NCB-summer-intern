@@ -339,7 +339,9 @@ class SyncPanel(QWidget):
                 f"{event_status}"
             )
             status += self.format_timing_status(stats)
+            status += self.format_acceleration_status(stats)
             self.led_detection_label.setText(status)
+            self.led_detection_label.setToolTip(status)
 
         from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
         from matplotlib.figure import Figure
@@ -432,12 +434,45 @@ class SyncPanel(QWidget):
 
     def set_led_detection_status(self, text):
         self.led_detection_label.setText(text)
+        self.led_detection_label.setToolTip(text)
 
     def format_timing_status(self, stats):
         return (
             f" | scan={stats.get('scan_elapsed_sec', 0.0):.1f}s"
             f" detect={stats.get('detect_elapsed_sec', 0.0):.1f}s"
         )
+
+    def format_acceleration_status(self, stats):
+        backend = stats.get("brightness_backend")
+        status = ""
+        if backend == "opencl":
+            status += (
+                f" | brightness=OpenCL"
+                f" device={stats.get('opencl_device', 'GPU')}"
+                f" selected={stats.get('opencl_selected_reason', 'auto')}"
+                f" batch={stats.get('opencl_batch_mode', 'fixed')}"
+                f" capacity={stats.get('opencl_batch_capacity', 0)}"
+                f" batches={stats.get('opencl_batches', 0)}"
+                f" max_batch={stats.get('opencl_max_batch_frames', 0)}"
+            )
+        elif backend == "cpu":
+            status += " | brightness=CPU"
+            if stats.get("opencl_fallback_reason"):
+                status += (
+                    f" (OpenCL fallback: {stats.get('opencl_fallback_reason')})"
+                )
+        elif backend == "cache":
+            status += " | brightness=cached"
+
+        if stats.get("video_decode_backend"):
+            status += f" | decode={stats.get('video_decode_backend')}"
+            if (
+                stats.get("video_decode_backend") == "opencv_cpu"
+                and stats.get("video_decode_fallback_reason")
+            ):
+                status += " (hw fallback)"
+
+        return status
 
     def set_offset(self, offset_sec):
         self.offset_label.setText(f"Time offset (video - TTL): {offset_sec:.6f} sec")

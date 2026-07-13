@@ -1,8 +1,13 @@
 import os
+import warnings
 from functools import lru_cache
+from pathlib import Path
 
 
 DEFAULT_BATCH_FRAMES = 20_000
+DEFAULT_COARSE_BATCH_FRAMES = 100
+DEFAULT_AUTO_COARSE_BATCHES = 500
+DEFAULT_AUTO_COARSE_BYTES = 64 * 1024 * 1024
 DEFAULT_BATCH_BYTES = 512 * 1024 * 1024
 KERNEL_SOURCE = r"""
 __kernel void roi_mean_brightness(
@@ -53,9 +58,28 @@ def _env_int(name, default):
         return default
 
 
+def _env_text(name, default):
+    return os.environ.get(name, default).strip().lower()
+
+
 def _opencl_disabled():
     value = os.environ.get("PIG_LED_OPENCL", "1").strip().lower()
     return value in {"0", "false", "no", "off"}
+
+
+def _configure_opencl_temp():
+    configured_path = os.environ.get("PIG_LED_OPENCL_TEMP", "").strip()
+    temp_path = Path(configured_path) if configured_path else Path.cwd() / ".opencl_temp"
+    try:
+        temp_path.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return ""
+
+    path_text = str(temp_path)
+    os.environ.setdefault("PYOPENCL_CACHE_DIR", path_text)
+    os.environ.setdefault("TMP", path_text)
+    os.environ.setdefault("TEMP", path_text)
+    return path_text
 
 
 def _power_of_two_at_most(value):
@@ -156,6 +180,7 @@ def _opencl_runtime():
         raise OpenClUnavailable("OpenCL disabled by PIG_LED_OPENCL")
 
     try:
+        _configure_opencl_temp()
         import pyopencl as cl
     except Exception as error:
         raise OpenClUnavailable("pyopencl is not installed") from error
@@ -181,7 +206,11 @@ def _opencl_runtime():
     platform, device, selected_reason = _choose_gpu_device(cl, gpu_devices)
     context = cl.Context([device])
     queue = cl.CommandQueue(context)
-    program = cl.Program(context, KERNEL_SOURCE).build()
+    warning_category = getattr(cl, "CompilerWarning", Warning)
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=warning_category)
+        program = cl.Program(context, KERNEL_SOURCE).build()
+    kernel = cl.Kernel(program, "roi_mean_brightness")
 
     max_work_group_size = int(
         device.get_info(cl.device_info.MAX_WORK_GROUP_SIZE) or 1
@@ -195,6 +224,7 @@ def _opencl_runtime():
         "context": context,
         "queue": queue,
         "program": program,
+        "kernel": kernel,
         "device": device,
         "device_name": str(device.name).strip(),
         "device_vendor": str(device.vendor).strip(),
@@ -236,8 +266,55 @@ def _normalise_roi(roi, frame_width, frame_height, rotate_180):
     return x0, y0, max(x1 - x0, 0), max(y1 - y0, 0)
 
 
-def _batch_capacity(runtime, frame_bytes):
+def _ceil_div(value, divisor):
+    return max((int(value) + int(divisor) - 1) // int(divisor), 1)
+
+
+def _manual_env_int(name):
+    value = os.environ.get(name)
+    if value is None:
+        return None
+    value = value.strip().lower()
+    if not value or value == "auto":
+        return None
+    try:
+        return max(int(value), 1)
+    except ValueError:
+        return None
+
+
+def _auto_coarse_batch_frames(frame_bytes, sample_count):
+    target_batches = _env_int(
+        "PIG_LED_OPENCL_AUTO_COARSE_BATCHES",
+        DEFAULT_AUTO_COARSE_BATCHES,
+    )
+    target_frames = max(
+        DEFAULT_COARSE_BATCH_FRAMES,
+        _ceil_div(sample_count, target_batches),
+    )
+
+    max_batch_bytes = _env_int(
+        "PIG_LED_OPENCL_AUTO_COARSE_BYTES",
+        DEFAULT_AUTO_COARSE_BYTES,
+    )
+    byte_limited_frames = max(max_batch_bytes // max(int(frame_bytes), 1), 1)
+    return max(min(target_frames, byte_limited_frames), 1)
+
+
+def _target_batch_frames(frame_step, frame_bytes, sample_count):
     target_frames = _env_int("PIG_LED_OPENCL_BATCH_FRAMES", DEFAULT_BATCH_FRAMES)
+    if int(frame_step) <= 1:
+        return target_frames
+
+    coarse_frames = _manual_env_int("PIG_LED_OPENCL_COARSE_BATCH_FRAMES")
+    if coarse_frames is None:
+        coarse_frames = _auto_coarse_batch_frames(frame_bytes, sample_count)
+
+    return min(target_frames, coarse_frames)
+
+
+def _batch_capacity(runtime, frame_bytes, frame_step, sample_count):
+    target_frames = _target_batch_frames(frame_step, frame_bytes, sample_count)
     configured_bytes = _env_int("PIG_LED_OPENCL_BATCH_BYTES", DEFAULT_BATCH_BYTES)
     device_alloc_bytes = max(int(runtime["max_alloc_size"] * 0.75), 1)
     device_working_bytes = max(int(runtime["global_mem_size"] * 0.25), 1)
@@ -273,6 +350,18 @@ def opencl_status():
             "PIG_LED_OPENCL_BATCH_FRAMES",
             DEFAULT_BATCH_FRAMES,
         ),
+        "target_coarse_batch_frames": _env_int(
+            "PIG_LED_OPENCL_COARSE_BATCH_FRAMES",
+            DEFAULT_COARSE_BATCH_FRAMES,
+        ),
+        "target_coarse_batch_mode": _env_text(
+            "PIG_LED_OPENCL_COARSE_BATCH_FRAMES",
+            "auto",
+        ),
+        "target_auto_coarse_batches": _env_int(
+            "PIG_LED_OPENCL_AUTO_COARSE_BATCHES",
+            DEFAULT_AUTO_COARSE_BATCHES,
+        ),
         "target_batch_mb": _env_int(
             "PIG_LED_OPENCL_BATCH_BYTES",
             DEFAULT_BATCH_BYTES,
@@ -287,7 +376,7 @@ def _run_opencl_batch(runtime, frames, frame_pixels):
     cl = runtime["cl"]
     context = runtime["context"]
     queue = runtime["queue"]
-    program = runtime["program"]
+    kernel = runtime["kernel"]
     batch_count = int(frames.shape[0])
     local_size = int(runtime["local_size"])
 
@@ -301,7 +390,7 @@ def _run_opencl_batch(runtime, frames, frame_pixels):
     )
     means_buffer = cl.Buffer(context, cl.mem_flags.WRITE_ONLY, means.nbytes)
 
-    program.roi_mean_brightness(
+    kernel(
         queue,
         (batch_count * local_size,),
         (local_size,),
@@ -327,9 +416,10 @@ def compute_led_brightness_curve_opencl(
 ):
     import cv2
     import numpy as np
+    from src.video_capture import open_video_capture
 
     runtime = _opencl_runtime()
-    cap = cv2.VideoCapture(video_path)
+    cap, decode_backend, decode_fallback_reason = open_video_capture(cv2, video_path)
 
     if not cap.isOpened():
         raise ValueError(f"Could not open video: {video_path}")
@@ -359,7 +449,13 @@ def compute_led_brightness_curve_opencl(
 
         frame_pixels = int(roi_width * roi_height)
         frame_bytes = int(frame_pixels * 3)
-        batch_capacity = _batch_capacity(runtime, frame_bytes)
+        sample_count = _ceil_div(end_frame - start_frame + 1, frame_step)
+        batch_capacity = _batch_capacity(
+            runtime,
+            frame_bytes,
+            frame_step,
+            sample_count,
+        )
         batch = np.empty(
             (batch_capacity, roi_height, roi_width, 3),
             dtype=np.uint8,
@@ -382,13 +478,31 @@ def compute_led_brightness_curve_opencl(
                     "opencl_platform": runtime["platform_name"],
                     "opencl_selected_reason": runtime["selected_reason"],
                     "opencl_batch_capacity": batch_capacity,
+                    "opencl_batch_mode": _env_text(
+                        "PIG_LED_OPENCL_COARSE_BATCH_FRAMES",
+                        "auto",
+                    )
+                    if frame_step > 1
+                    else "fixed",
                     "opencl_batch_target": _env_int(
                         "PIG_LED_OPENCL_BATCH_FRAMES",
                         DEFAULT_BATCH_FRAMES,
                     ),
+                    "opencl_coarse_batch_target": _manual_env_int(
+                        "PIG_LED_OPENCL_COARSE_BATCH_FRAMES",
+                    )
+                    or DEFAULT_COARSE_BATCH_FRAMES,
+                    "opencl_auto_coarse_batches": _env_int(
+                        "PIG_LED_OPENCL_AUTO_COARSE_BATCHES",
+                        DEFAULT_AUTO_COARSE_BATCHES,
+                    ),
+                    "opencl_batch_source_frames": batch_capacity * frame_step,
+                    "opencl_sample_count": sample_count,
                     "opencl_roi_width": roi_width,
                     "opencl_roi_height": roi_height,
                     "opencl_frame_bytes": frame_bytes,
+                    "video_decode_backend": decode_backend,
+                    "video_decode_fallback_reason": decode_fallback_reason,
                 }
             )
 

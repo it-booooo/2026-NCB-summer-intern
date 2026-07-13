@@ -172,7 +172,9 @@ class MainWindow(QMainWindow):
             f"Vendor: {status.get('device_vendor')}\n"
             f"Platform: {status.get('platform')}\n"
             f"Selected by: {status.get('selected_reason')}\n"
-            f"Target batch: {status.get('target_batch_frames')} frames\n"
+            f"Target refine batch: {status.get('target_batch_frames')} sampled frames\n"
+            f"Target coarse batch: {status.get('target_coarse_batch_mode')} "
+            f"({status.get('target_coarse_batch_frames')} sampled frames base)\n"
             f"Target transfer limit: {status.get('target_batch_mb'):.0f} MB\n"
             f"Device max allocation: {status.get('max_alloc_mb'):.0f} MB\n"
             f"Device global memory: {status.get('global_mem_mb'):.0f} MB\n\n"
@@ -428,6 +430,8 @@ class MainWindow(QMainWindow):
                 f" | brightness=OpenCL"
                 f" device={stats.get('opencl_device', 'GPU')}"
                 f" selected={stats.get('opencl_selected_reason', 'auto')}"
+                f" batch={stats.get('opencl_batch_mode', 'fixed')}"
+                f" capacity={stats.get('opencl_batch_capacity', 0)}"
                 f" batches={stats.get('opencl_batches', 0)}"
                 f" max_batch={stats.get('opencl_max_batch_frames', 0)}"
             )
@@ -439,6 +443,13 @@ class MainWindow(QMainWindow):
                 )
         elif backend == "cache":
             status += " | brightness=cached"
+        if stats.get("video_decode_backend"):
+            status += f" | decode={stats.get('video_decode_backend')}"
+            if (
+                stats.get("video_decode_backend") == "opencv_cpu"
+                and stats.get("video_decode_fallback_reason")
+            ):
+                status += " (hw fallback)"
         if cache_hit:
             status += " | cached scan"
         self.sync_panel.set_led_detection_status(status)

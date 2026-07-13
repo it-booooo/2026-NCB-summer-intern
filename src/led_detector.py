@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 import cv2
 import numpy as np
+from src.video_capture import open_video_capture
 
 
 DETECTION_MODE = "frame_delta_mean_brightness"
@@ -123,10 +124,17 @@ def compute_led_brightness_curve(
                 }
             )
 
-    cap = cv2.VideoCapture(video_path)
+    cap, decode_backend, decode_fallback_reason = open_video_capture(cv2, video_path)
 
     if not cap.isOpened():
         raise ValueError(f"Could not open video: {video_path}")
+    if acceleration_info is not None:
+        acceleration_info.update(
+            {
+                "video_decode_backend": decode_backend,
+                "video_decode_fallback_reason": decode_fallback_reason,
+            }
+        )
 
     fps = float(using_fps or cap.get(cv2.CAP_PROP_FPS) or 30.0)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
