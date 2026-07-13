@@ -1,5 +1,5 @@
 import draw_function as draw
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
@@ -185,6 +185,8 @@ class SharedTimelineSlider:
 
 
 class LfpPanel(QWidget):
+    record_time_selected = Signal(float)
+
     def __init__(self):
         super().__init__()
         self.setMinimumHeight(270)
@@ -208,6 +210,7 @@ class LfpPanel(QWidget):
         self.axis_callback_connected = False
         self.current_record_time_sec = None
         self.current_time_lines = {}
+        self.waveform_click_state = {}
 
         self.lfp_file_label = QLabel("LFP CSV: Not imported")
         self.axis_file_label = QLabel("3-axis CSV: Not imported")
@@ -293,7 +296,39 @@ class LfpPanel(QWidget):
         canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         layout.addWidget(canvas)
         setattr(self, canvas_attr, canvas)
+        self.install_waveform_click_handler(canvas)
         canvas.draw_idle()
+
+    def install_waveform_click_handler(self, canvas):
+        def on_press(event):
+            if event.button != 1 or event.inaxes is None or event.dblclick:
+                self.waveform_click_state.pop(canvas, None)
+                return
+
+            self.waveform_click_state[canvas] = {
+                "x": event.x,
+                "y": event.y,
+                "xdata": event.xdata,
+                "inaxes": event.inaxes,
+            }
+
+        def on_release(event):
+            state = self.waveform_click_state.pop(canvas, None)
+            if state is None:
+                return
+            if event.inaxes is not state["inaxes"] or state["xdata"] is None:
+                return
+            if event.x is None or event.y is None:
+                return
+
+            moved = ((event.x - state["x"]) ** 2 + (event.y - state["y"]) ** 2) ** 0.5
+            if moved > 4:
+                return
+
+            self.record_time_selected.emit(float(state["xdata"]))
+
+        canvas.mpl_connect("button_press_event", on_press)
+        canvas.mpl_connect("button_release_event", on_release)
 
     def timeline_limits(self):
         limits = []

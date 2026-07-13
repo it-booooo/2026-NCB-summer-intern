@@ -57,6 +57,7 @@ class MainWindow(QMainWindow):
         self.time_offset_sec = None
         self.video_player.roi_selected.connect(self.set_led_roi)
         self.video_player.frame_changed.connect(self.update_waveform_current_time)
+        self.lfp_panel.record_time_selected.connect(self.seek_video_record_time)
         self.ttl_panel.markers_changed.connect(self.set_ttl_markers)
         self.event_table.events_changed.connect(self.update_time_offset)
         self.event_table.video_time_selected.connect(self.seek_video_marker_time)
@@ -540,6 +541,15 @@ class MainWindow(QMainWindow):
         if not self.video_player.has_video():
             return
 
+        self.video_player.pause()
+        self.video_player.seek_time_sec(video_time_sec)
+        self.video_player.update_seek_inputs_from_current_frame()
+
+    def seek_video_record_time(self, record_time_sec):
+        if not self.video_player.has_video() or self.time_offset_sec is None:
+            return
+
+        video_time_sec = float(record_time_sec) + self.time_offset_sec
         self.video_player.pause()
         self.video_player.seek_time_sec(video_time_sec)
         self.video_player.update_seek_inputs_from_current_frame()
