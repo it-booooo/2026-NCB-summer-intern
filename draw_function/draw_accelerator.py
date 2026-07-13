@@ -76,7 +76,7 @@ def accelerator(
         ),
     )
     if compact:
-        ax = fig.add_axes((0.10, 0.30, 0.88, 0.60))
+        ax = fig.add_axes((0.08, 0.30, 0.90, 0.60))
     else:
         ax = fig.add_subplot(111)
 
@@ -100,22 +100,22 @@ def accelerator(
     ax.set_xlabel("")
     ax.set_ylabel("")
     ax.text(
-        -0.075,
-        1.00,
+        -0.040,
+        0.99,
         y_label,
         fontsize=7,
         ha="right",
-        va="center",
+        va="top",
         transform=ax.transAxes,
         clip_on=False,
     )
     ax.text(
-        -0.075,
-        -0.16,
+        -0.012,
+        -0.23,
         f"Time ({units['time_unit']})",
         fontsize=7,
         ha="right",
-        va="center",
+        va="top",
         transform=ax.transAxes,
         clip_on=False,
     )
