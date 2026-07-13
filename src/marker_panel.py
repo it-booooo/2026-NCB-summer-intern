@@ -26,9 +26,9 @@ class MarkerPanel(QWidget):
         led_on_button = QPushButton("LED On")
         led_off_button = QPushButton("LED Off")
         select_roi_button = QPushButton("Select LED")
-        behavior_start_button = QPushButton("Behavior Start")
-        behavior_end_button = QPushButton("Behavior End")
-        seizure_button = QPushButton("Seizure-like Event")
+        behavior_start_button = QPushButton("Action Start")
+        behavior_end_button = QPushButton("Action End")
+        seizure_button = QPushButton("Seizure-like")
         delete_button = QPushButton("Delete Selected")
 
         select_roi_button.setToolTip("Select LED area and run brightness detection")

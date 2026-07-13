@@ -23,6 +23,7 @@ class NoteEditor(QLineEdit):
 class EventTable(QTableWidget):
     DISPLAY_HEADERS = ["event type", "video time", "note"]
     events_changed = Signal()
+    video_time_selected = Signal(float)
 
     EVENT_TYPE_COLUMN = 0
     VIDEO_TIME_COLUMN = 1
@@ -60,6 +61,22 @@ class EventTable(QTableWidget):
             }
             """
         )
+        self.cellClicked.connect(self.handle_cell_clicked)
+
+    def handle_cell_clicked(self, row, column):
+        if column != self.VIDEO_TIME_COLUMN:
+            return
+
+        item = self.item(row, self.VIDEO_TIME_COLUMN)
+        if item is None:
+            return
+
+        try:
+            video_time_sec = float(item.text())
+        except ValueError:
+            return
+
+        self.video_time_selected.emit(video_time_sec)
 
     def add_event(self, event_type, video_time_sec, frame_index, note=""):
         row = self.rowCount()

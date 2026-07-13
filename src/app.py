@@ -58,6 +58,7 @@ class MainWindow(QMainWindow):
         self.video_player.frame_changed.connect(self.update_waveform_current_time)
         self.ttl_panel.markers_changed.connect(self.set_ttl_markers)
         self.event_table.events_changed.connect(self.update_time_offset)
+        self.event_table.video_time_selected.connect(self.seek_video_marker_time)
 
         self.create_menu()
         self.create_layout()
@@ -558,6 +559,14 @@ class MainWindow(QMainWindow):
             frame_index=self.video_player.current_frame,
             note="",
         )
+
+    def seek_video_marker_time(self, video_time_sec):
+        if not self.video_player.has_video():
+            return
+
+        self.video_player.pause()
+        self.video_player.seek_time_sec(video_time_sec)
+        self.video_player.update_seek_inputs_from_current_frame()
 
     def add_led_events(self, led_events):
         for event in led_events:

@@ -441,6 +441,12 @@ class VideoPlayer(QWidget):
     def seek_time_sec(self, time_sec):
         self.seek_frame(self.time_sec_to_frame(time_sec))
 
+    def update_seek_inputs_from_current_frame(self):
+        self.time_seek_input.setText(format_time(self.current_time_sec()))
+        self.frame_seek_input.setText(str(self.current_frame))
+        self.mark_seek_input_valid(self.time_seek_input, True)
+        self.mark_seek_input_valid(self.frame_seek_input, True)
+
     def mark_seek_input_valid(self, widget, is_valid):
         widget.setStyleSheet("" if is_valid else "border: 1px solid #c0392b;")
 
