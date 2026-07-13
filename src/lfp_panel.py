@@ -210,6 +210,8 @@ class LfpPanel(QWidget):
         self.axis_callback_connected = False
         self.current_record_time_sec = None
         self.current_time_lines = {}
+        self.event_intervals = []
+        self.event_interval_artists = []
         self.waveform_click_state = {}
 
         self.lfp_file_label = QLabel("LFP CSV: Not imported")
@@ -474,6 +476,54 @@ class LfpPanel(QWidget):
 
             canvas.draw_idle()
 
+    def set_event_intervals(self, intervals):
+        self.event_intervals = [dict(interval) for interval in intervals]
+        self.update_event_interval_artists()
+
+    def clear_event_interval_artists(self):
+        for artist in self.event_interval_artists:
+            try:
+                artist.remove()
+            except ValueError:
+                pass
+        self.event_interval_artists = []
+
+    def update_event_interval_artists(self):
+        self.clear_event_interval_artists()
+
+        figure_items = [
+            (self.lfp_fig, self.lfp_canvas),
+            (self.axis_fig, self.axis_canvas),
+            (self.timeline_fig, self.timeline_canvas),
+        ]
+
+        for fig, canvas in figure_items:
+            if fig is None or canvas is None or not fig.axes:
+                continue
+
+            ax = fig.axes[0]
+            for interval in self.event_intervals:
+                start_sec = float(interval["record_start_sec"])
+                end_sec = float(interval["record_end_sec"])
+                if end_sec <= start_sec:
+                    continue
+
+                event_type = interval.get("event_type", "behavior")
+                color = "#2eaf62" if event_type == "led" else "#f39c12"
+                alpha = 0.30 if event_type == "led" else 0.25
+
+                artist = ax.axvspan(
+                    start_sec,
+                    end_sec,
+                    color=color,
+                    alpha=alpha,
+                    linewidth=0,
+                    zorder=1,
+                )
+                self.event_interval_artists.append(artist)
+
+            canvas.draw_idle()
+
     def selected_channel(self, selector):
         channel = selector.currentData()
         if channel is None:
@@ -512,6 +562,7 @@ class LfpPanel(QWidget):
 
         self.create_or_update_timeline()
         self.update_current_time_marker()
+        self.update_event_interval_artists()
 
     def plot_axis(self):
         if not self.axis_path:
@@ -537,6 +588,7 @@ class LfpPanel(QWidget):
 
         self.create_or_update_timeline()
         self.update_current_time_marker()
+        self.update_event_interval_artists()
 
     def set_lfp_info(self, info):
         self.lfp_info = info

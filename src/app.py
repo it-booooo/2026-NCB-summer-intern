@@ -16,6 +16,7 @@ import check_function as check
 import csv_function as csv_func
 import draw_function as draw
 from .analysis import AnalysisMenuController
+from .event_intervals import pair_behavior_intervals, pair_led_intervals
 from .event_table import EventTable
 from .export import export_events_csv, export_events_excel
 from .lfp_panel import LfpPanel
@@ -589,6 +590,7 @@ class MainWindow(QMainWindow):
             )
             self.time_offset_sec = None
             self.lfp_panel.clear_current_time_marker()
+            self.update_event_intervals()
             return
 
         self.sync_panel.set_video_led_marker(video_led_sec)
@@ -599,6 +601,7 @@ class MainWindow(QMainWindow):
             )
             self.time_offset_sec = None
             self.lfp_panel.clear_current_time_marker()
+            self.update_event_intervals()
             return
 
         ttl_marker_sec = self.timeMarker_info.get("first_marker_sec")
@@ -608,6 +611,7 @@ class MainWindow(QMainWindow):
             )
             self.time_offset_sec = None
             self.lfp_panel.clear_current_time_marker()
+            self.update_event_intervals()
             return
 
         self.time_offset_sec = video_led_sec - ttl_marker_sec
@@ -616,6 +620,34 @@ class MainWindow(QMainWindow):
             self.video_player.current_frame,
             self.video_player.current_time_sec(),
         )
+        self.update_event_intervals()
+
+    def update_event_intervals(self):
+        if self.time_offset_sec is None:
+            self.lfp_panel.set_event_intervals([])
+            return
+
+        events = self.event_table.events()
+        video_intervals = [
+            *pair_behavior_intervals(events),
+            *pair_led_intervals(events),
+        ]
+
+        record_intervals = []
+        for interval in video_intervals:
+            record_intervals.append(
+                {
+                    **interval,
+                    "record_start_sec": (
+                        interval["video_start_sec"] - self.time_offset_sec
+                    ),
+                    "record_end_sec": (
+                        interval["video_end_sec"] - self.time_offset_sec
+                    ),
+                }
+            )
+
+        self.lfp_panel.set_event_intervals(record_intervals)
 
     def update_waveform_current_time(self, frame_index, video_time_sec):
         if self.time_offset_sec is None:
