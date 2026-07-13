@@ -54,8 +54,10 @@ class MainWindow(QMainWindow):
         self.led_worker = None
         self.led_brightness_cache = {}
         self.time_offset_sec = None
+        self.loading_video = False
         self.video_player.roi_selected.connect(self.set_led_roi)
         self.video_player.frame_changed.connect(self.update_waveform_current_time)
+        self.lfp_panel.time_selected.connect(self.seek_video_to_record_time)
         self.ttl_panel.markers_changed.connect(self.set_ttl_markers)
         self.event_table.events_changed.connect(self.update_time_offset)
 
@@ -493,9 +495,37 @@ class MainWindow(QMainWindow):
             )
             return
 
-        if self.video_player.load_video():
+        self.loading_video = True
+        try:
+            loaded = self.video_player.load_video()
+        finally:
+            self.loading_video = False
+
+        if loaded:
             self.led_brightness_cache.clear()
+            self.reset_sync_state_for_new_video()
             self.sync_panel.set_video_path(self.video_player.video_path)
+
+    def reset_sync_state_for_new_video(self):
+        self.timeMarker_info = None
+        self.led_roi = None
+        self.time_offset_sec = None
+
+        self.ttl_panel.set_markers(None)
+        self.event_table.clear_events(emit=False)
+        self.event_table.set_sync_time_origin(None)
+        self.video_player.set_sync_time_origin(None)
+        self.lfp_panel.set_sync_time_origin(None)
+        self.lfp_panel.clear_current_time_marker()
+
+        self.sync_panel.video_led_label.setText("Video LED marker: Not selected")
+        self.sync_panel.ttl_label.setText("TTL marker: Not loaded")
+        self.sync_panel.offset_label.setText(
+            "Time offset (video - TTL): Not calculated"
+        )
+        self.sync_panel.led_roi_label.setText("LED ROI: Not selected")
+        self.sync_panel.set_roi_plot_idle()
+        self.sync_panel.set_led_detection_status("LED detection: Not analyzed")
 
     def closeEvent(self, event):
         if self.stop_led_detection(wait=True):
@@ -595,6 +625,9 @@ class MainWindow(QMainWindow):
                 "Time offset (video - TTL): Not calculated"
             )
             self.time_offset_sec = None
+            self.video_player.set_sync_time_origin(None)
+            self.lfp_panel.set_sync_time_origin(None)
+            self.event_table.set_sync_time_origin(None)
             self.lfp_panel.clear_current_time_marker()
             return
 
@@ -605,6 +638,9 @@ class MainWindow(QMainWindow):
                 "Time offset (video - TTL): Not calculated"
             )
             self.time_offset_sec = None
+            self.video_player.set_sync_time_origin(None)
+            self.lfp_panel.set_sync_time_origin(None)
+            self.event_table.set_sync_time_origin(None)
             self.lfp_panel.clear_current_time_marker()
             return
 
@@ -614,17 +650,49 @@ class MainWindow(QMainWindow):
                 "Time offset (video - TTL): Not calculated"
             )
             self.time_offset_sec = None
+            self.video_player.set_sync_time_origin(None)
+            self.lfp_panel.set_sync_time_origin(None)
+            self.event_table.set_sync_time_origin(None)
             self.lfp_panel.clear_current_time_marker()
             return
 
+        previous_video_origin_sec = self.video_player.sync_time_origin_sec
         self.time_offset_sec = video_led_sec - ttl_marker_sec
+        self.video_player.set_sync_time_origin(video_led_sec)
+        self.lfp_panel.set_sync_time_origin(ttl_marker_sec)
+        self.event_table.set_sync_time_origin(video_led_sec)
         self.sync_panel.set_offset(self.time_offset_sec)
+        if (
+            previous_video_origin_sec is None
+            or abs(previous_video_origin_sec - video_led_sec) > 1e-6
+        ):
+            self.video_player.seek_time_sec(video_led_sec)
+
         self.update_waveform_current_time(
             self.video_player.current_frame,
             self.video_player.current_time_sec(),
         )
 
+    def seek_video_to_record_time(self, record_time_sec):
+        if not self.video_player.has_video():
+            QMessageBox.warning(self, "No video", "Please import a video first.")
+            return
+
+        if self.time_offset_sec is None:
+            QMessageBox.warning(
+                self,
+                "Not synchronized",
+                "Please calculate video-LFP synchronization before seeking from waveform time.",
+            )
+            return
+
+        video_time_sec = float(record_time_sec) + self.time_offset_sec
+        self.video_player.seek_time_sec(video_time_sec)
+
     def update_waveform_current_time(self, frame_index, video_time_sec):
+        if self.loading_video:
+            return
+
         if self.time_offset_sec is None:
             return
 

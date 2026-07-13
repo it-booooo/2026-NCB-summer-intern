@@ -1,5 +1,5 @@
 import draw_function as draw
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 )
 from matplotlib.figure import Figure
 from matplotlib.patches import Rectangle
+from matplotlib.ticker import FuncFormatter
 
 
 class PlaybackAwareComboBox(QComboBox):
@@ -35,6 +36,7 @@ class SharedTimelineSlider:
         self.val = valinit
         self.callbacks = []
         self.drag_state = None
+        self.time_origin_sec = None
         self.min_width = max((full_xlim[1] - full_xlim[0]) / 10000, 1e-6)
 
         self.ax.set_xlim(full_xlim)
@@ -111,6 +113,33 @@ class SharedTimelineSlider:
     def on_changed(self, callback):
         self.callbacks.append(callback)
 
+    def set_time_origin(self, origin_sec):
+        self.time_origin_sec = None if origin_sec is None else float(origin_sec)
+        self.ax.xaxis.set_major_formatter(
+            FuncFormatter(lambda value, pos: self.format_time_tick(value))
+        )
+        self.label.set_text("Sync t" if self.time_origin_sec is not None else "Time")
+        self.update_artists()
+        self.ax.figure.canvas.draw_idle()
+
+    def display_time(self, value):
+        if self.time_origin_sec is None:
+            return float(value)
+
+        return float(value) - self.time_origin_sec
+
+    def format_time_tick(self, value):
+        value = self.display_time(value)
+        if abs(value) < 0.0005:
+            value = 0.0
+
+        abs_value = abs(value)
+        if abs_value >= 100:
+            return f"{value:.0f}"
+        if abs_value >= 10:
+            return f"{value:.1f}"
+        return f"{value:.2f}"
+
     def clamp_xlim(self, left, right):
         full_left, full_right = self.full_xlim
         full_width = full_right - full_left
@@ -149,7 +178,9 @@ class SharedTimelineSlider:
         self.poly.set_width(right - left)
         self.left_handle.set_data([left], [0.5])
         self.right_handle.set_data([right], [0.5])
-        self.valtext.set_text(f"({left:.2f} s, {right:.2f} s)")
+        display_left = self.display_time(left)
+        display_right = self.display_time(right)
+        self.valtext.set_text(f"({display_left:.2f} s, {display_right:.2f} s)")
 
     def on_press(self, event):
         if event.inaxes != self.ax or event.button != 1 or event.xdata is None:
@@ -199,6 +230,8 @@ class SharedTimelineSlider:
 
 
 class LfpPanel(QWidget):
+    time_selected = Signal(float)
+
     DEFAULT_PLAYBACK_WINDOW_SEC = 30.0
     PLAYBACK_CURSOR_FRACTION = 0.35
     PLAYBACK_EDGE_MARGIN_FRACTION = 0.18
@@ -227,6 +260,8 @@ class LfpPanel(QWidget):
         self.current_record_time_sec = None
         self.current_time_lines = {}
         self.current_time_backgrounds = {}
+        self.sync_time_origin_sec = None
+        self.click_seek_state = None
 
         self.lfp_file_label = QLabel("LFP CSV: Not imported")
         self.axis_file_label = QLabel("3-axis CSV: Not imported")
@@ -328,10 +363,11 @@ class LfpPanel(QWidget):
 
         canvas = FigureCanvas(fig)
         canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        canvas.mpl_connect("draw_event", self.on_canvas_draw)
+        self.connect_canvas_events(canvas)
         layout.addWidget(canvas)
         setattr(self, canvas_attr, canvas)
         self.invalidate_current_time_backgrounds()
+        self.apply_sync_time_axis_formatters()
         canvas.draw_idle()
 
     def timeline_limits(self):
@@ -386,6 +422,102 @@ class LfpPanel(QWidget):
 
     def should_follow_video_playback(self):
         return self.follow_video_checkbox.isChecked()
+
+    def set_sync_time_origin(self, origin_sec):
+        next_origin = None if origin_sec is None else float(origin_sec)
+        if self.sync_time_origin_sec == next_origin:
+            return
+
+        self.sync_time_origin_sec = next_origin
+        self.apply_sync_time_axis_formatters()
+
+    def display_time(self, record_time_sec):
+        if self.sync_time_origin_sec is None:
+            return float(record_time_sec)
+
+        return float(record_time_sec) - self.sync_time_origin_sec
+
+    def format_sync_time_tick(self, value):
+        value = self.display_time(value)
+        if abs(value) < 0.0005:
+            value = 0.0
+
+        abs_value = abs(value)
+        if abs_value >= 100:
+            return f"{value:.0f}"
+        if abs_value >= 10:
+            return f"{value:.1f}"
+        return f"{value:.2f}"
+
+    def apply_sync_time_axis_formatters(self):
+        formatter = FuncFormatter(
+            lambda value, pos: self.format_sync_time_tick(value)
+        )
+
+        for _key, fig, canvas in self.figure_items():
+            if fig is None or canvas is None or not fig.axes:
+                continue
+
+            fig.axes[0].xaxis.set_major_formatter(formatter)
+            canvas.draw_idle()
+
+        if self.timeline_slider is not None:
+            self.timeline_slider.set_time_origin(self.sync_time_origin_sec)
+
+        self.invalidate_current_time_backgrounds()
+
+    def connect_canvas_events(self, canvas):
+        canvas.mpl_connect("draw_event", self.on_canvas_draw)
+        canvas.mpl_connect("button_press_event", self.on_canvas_press)
+        canvas.mpl_connect("button_release_event", self.on_canvas_release)
+
+    def is_seekable_axis(self, ax):
+        return any(
+            fig is not None and fig.axes and ax is fig.axes[0]
+            for _key, fig, _canvas in self.figure_items()
+        )
+
+    def on_canvas_press(self, event):
+        if (
+            event.button != 1
+            or event.inaxes is None
+            or event.xdata is None
+            or getattr(event, "dblclick", False)
+            or not self.is_seekable_axis(event.inaxes)
+        ):
+            self.click_seek_state = None
+            return
+
+        self.click_seek_state = {
+            "canvas": event.canvas,
+            "ax": event.inaxes,
+            "x": event.x,
+            "y": event.y,
+            "xdata": float(event.xdata),
+        }
+
+    def on_canvas_release(self, event):
+        state = self.click_seek_state
+        self.click_seek_state = None
+        if state is None:
+            return
+
+        if (
+            event.button != 1
+            or event.canvas is not state["canvas"]
+            or event.inaxes is not state["ax"]
+        ):
+            return
+
+        dx = abs(float(event.x or 0) - float(state["x"] or 0))
+        dy = abs(float(event.y or 0) - float(state["y"] or 0))
+        if dx > 5 or dy > 5:
+            return
+
+        record_time_sec = (
+            float(event.xdata) if event.xdata is not None else state["xdata"]
+        )
+        self.time_selected.emit(record_time_sec)
 
     def clamp_playback_xlim(self, left, right, full_xlim):
         full_left, full_right = full_xlim
@@ -565,12 +697,13 @@ class LfpPanel(QWidget):
             full_xlim,
             full_xlim,
         )
+        slider.set_time_origin(self.sync_time_origin_sec)
         slider.on_changed(self.on_timeline_changed)
 
         canvas = FigureCanvas(fig)
         canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         canvas.setFixedHeight(54)
-        canvas.mpl_connect("draw_event", self.on_canvas_draw)
+        self.connect_canvas_events(canvas)
         layout.addWidget(canvas)
 
         self.timeline_fig = fig

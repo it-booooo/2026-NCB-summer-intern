@@ -203,6 +203,7 @@ class VideoPlayer(QWidget):
         self.is_playing = False
         self.rotate_180_enabled = False
         self.current_pixmap = None
+        self.sync_time_origin_sec = None
 
         # 儲存目前 LED ROI，座標格式是影片原始 frame 座標：
         # (x, y, width, height)
@@ -335,6 +336,43 @@ class VideoPlayer(QWidget):
     def current_time_sec(self):
         return frame_to_time_sec(self.current_frame, self.fps)
 
+    def total_time_sec(self):
+        return self.total_frames / self.fps if self.fps else 0.0
+
+    def current_display_time_sec(self):
+        return self.video_time_to_display_time(self.current_time_sec())
+
+    def video_time_to_display_time(self, video_time_sec):
+        if self.sync_time_origin_sec is None:
+            return float(video_time_sec)
+
+        return float(video_time_sec) - self.sync_time_origin_sec
+
+    def display_time_to_video_time(self, display_time_sec):
+        if self.sync_time_origin_sec is None:
+            return float(display_time_sec)
+
+        return float(display_time_sec) + self.sync_time_origin_sec
+
+    def display_total_time_sec(self):
+        total_sec = self.total_time_sec()
+        if self.sync_time_origin_sec is None:
+            return total_sec
+
+        return max(total_sec - self.sync_time_origin_sec, 0.0)
+
+    def format_display_time(self, seconds):
+        sign = "-" if seconds < 0 else ""
+        return f"{sign}{format_time(abs(seconds))}"
+
+    def set_sync_time_origin(self, origin_sec):
+        next_origin = None if origin_sec is None else max(float(origin_sec), 0.0)
+        if self.sync_time_origin_sec == next_origin:
+            return
+
+        self.sync_time_origin_sec = next_origin
+        self.update_time_display()
+
     def frame_to_time_sec(self, frame_index):
         return frame_to_time_sec(frame_index, self.fps)
 
@@ -370,6 +408,7 @@ class VideoPlayer(QWidget):
         self.current_frame = 0
         self.is_playing = False
         self.rotate_180_enabled = False
+        self.sync_time_origin_sec = None
 
         # 換影片時清掉舊影片的 LED ROI，避免座標套到新影片。
         self.clear_led_roi()
@@ -395,6 +434,12 @@ class VideoPlayer(QWidget):
             self.pause()
             return
 
+        if (
+            self.sync_time_origin_sec is not None
+            and self.current_time_sec() < self.sync_time_origin_sec
+        ):
+            self.seek_time_sec(self.sync_time_origin_sec)
+
         self.is_playing = True
         self.play_button.setText("Pause")
 
@@ -409,7 +454,10 @@ class VideoPlayer(QWidget):
     def stop(self):
         if self.has_video():
             self.pause()
-            self.seek_frame(0)
+            if self.sync_time_origin_sec is None:
+                self.seek_frame(0)
+            else:
+                self.seek_time_sec(self.sync_time_origin_sec)
 
     def play_next_frame(self):
         if not self.has_video() or self.current_frame >= self.total_frames - 1:
@@ -475,8 +523,10 @@ class VideoPlayer(QWidget):
         self.mark_seek_input_valid(self.time_seek_input, True)
         self.mark_seek_input_valid(self.frame_seek_input, True)
         self.pause()
-        self.seek_time_sec(seconds)
-        self.time_seek_input.setText(format_time(self.current_time_sec()))
+        self.seek_time_sec(self.display_time_to_video_time(seconds))
+        self.time_seek_input.setText(
+            self.format_display_time(self.current_display_time_sec())
+        )
         self.frame_seek_input.clear()
 
     def seek_to_frame_input(self):
@@ -540,8 +590,6 @@ class VideoPlayer(QWidget):
         self.current_pixmap = QPixmap.fromImage(image)
         self.update_video_display()
 
-        current_sec = self.current_time_sec()
-        total_sec = self.total_frames / self.fps if self.fps else 0.0
         detected_fps = self.metadata.detected_fps if self.metadata else 0.0
 
         self.info_label.setText(
@@ -549,13 +597,30 @@ class VideoPlayer(QWidget):
             f"Detected FPS: {detected_fps:.2f} | Using FPS: {self.fps:.2f}"
         )
 
-        self.time_label.setText(
-            f"{format_time(current_sec)} / {format_time(total_sec)}"
-        )
-        self.time_seek_input.setPlaceholderText(format_time(current_sec))
+        self.update_time_display()
         self.frame_seek_input.setPlaceholderText(str(frame_index))
 
+        current_sec = self.current_time_sec()
         self.frame_changed.emit(frame_index, current_sec)
+
+    def update_time_display(self):
+        current_display_sec = self.current_display_time_sec()
+        total_display_sec = self.display_total_time_sec()
+
+        if self.sync_time_origin_sec is None:
+            self.time_label.setText(
+                f"{format_time(current_display_sec)} / {format_time(total_display_sec)}"
+            )
+        else:
+            self.time_label.setText(
+                "Sync t: "
+                f"{self.format_display_time(current_display_sec)} / "
+                f"{self.format_display_time(total_display_sec)}"
+            )
+
+        self.time_seek_input.setPlaceholderText(
+            self.format_display_time(current_display_sec)
+        )
 
     def update_video_display(self):
         if self.current_pixmap is None:
