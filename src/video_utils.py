@@ -28,7 +28,7 @@ def open_video(path):
     return cap
 
 
-def parse_video_metadata(path, using_fps=30.0):
+def parse_video_metadata(path, using_fps=None):
     import cv2
 
     cap = open_video(path)
@@ -51,6 +51,9 @@ def parse_video_metadata(path, using_fps=30.0):
         if detected_fps
         else 0.0
     )
+
+    if using_fps is None:
+        using_fps = round(detected_fps) if detected_fps else 30.0
 
     duration_sec = (
         total_frames / using_fps

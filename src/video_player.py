@@ -182,7 +182,7 @@ class VideoPlayer(QWidget):
     frame_changed = Signal(int, float)
     roi_selected = Signal(tuple)
 
-    FIXED_VIDEO_FPS = 30.0
+    FALLBACK_VIDEO_FPS = 30.0
     BUTTON_WIDTHS = {
         "Play": 64,
         "Stop": 64,
@@ -197,7 +197,7 @@ class VideoPlayer(QWidget):
         self.cap = None
         self.video_path = ""
         self.metadata = None
-        self.fps = self.FIXED_VIDEO_FPS
+        self.fps = self.FALLBACK_VIDEO_FPS
         self.total_frames = 0
         self.current_frame = 0
         self.is_playing = False
@@ -357,7 +357,7 @@ class VideoPlayer(QWidget):
         if self.cap is not None:
             self.cap.release()
 
-        self.metadata = parse_video_metadata(path, using_fps=self.FIXED_VIDEO_FPS)
+        self.metadata = parse_video_metadata(path)
         self.cap = cv2.VideoCapture(path)
 
         if not self.cap.isOpened():

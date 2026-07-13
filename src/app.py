@@ -19,7 +19,7 @@ from .analysis import AnalysisMenuController
 from .event_table import EventTable
 from .export import export_events_csv, export_events_excel
 from .lfp_panel import LfpPanel
-from .led_worker import LedDetectionWorker
+from .led_worker import LedDetectionWorker, coarse_scan_step_for_fps
 from .led_status import format_led_detection_status
 from .marker_panel import MarkerPanel
 from .sync_panel import SyncPanel
@@ -389,7 +389,7 @@ class MainWindow(QMainWindow):
             float(self.video_player.fps or 0.0),
             int(scan_start_frame),
             int(scan_end_frame),
-            20,
+            coarse_scan_step_for_fps(self.video_player.fps),
         )
 
     def stop_led_detection(self, wait=False):

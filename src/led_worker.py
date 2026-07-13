@@ -2,6 +2,10 @@ from PySide6.QtCore import QThread, Signal
 from time import perf_counter
 
 
+def coarse_scan_step_for_fps(fps):
+    return max(int(round(float(fps or 30.0) * 2.0 / 3.0)), 1)
+
+
 class LedDetectionWorker(QThread):
     result_ready = Signal(object, float, object, object)
     progress_changed = Signal(int, int)
@@ -41,7 +45,7 @@ class LedDetectionWorker(QThread):
             )
 
             started_at = perf_counter()
-            coarse_step = 20
+            coarse_step = coarse_scan_step_for_fps(self.fps)
             refine_window_sec = 1.0
             max_events = (
                 max(int(self.max_events or 0), 0)
