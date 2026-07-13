@@ -9,6 +9,22 @@ DEFAULT_COARSE_BATCH_FRAMES = 100
 DEFAULT_AUTO_COARSE_BATCHES = 500
 DEFAULT_AUTO_COARSE_BYTES = 64 * 1024 * 1024
 DEFAULT_BATCH_BYTES = 512 * 1024 * 1024
+GPU_VENDOR_ALIASES = {
+    "nvidia": ("nvidia",),
+    "amd": (
+        "amd",
+        "advanced micro devices",
+        "radeon",
+        "ati technologies",
+    ),
+    "intel": ("intel",),
+}
+GPU_VENDOR_PRIORITY = ("nvidia", "amd", "intel")
+GPU_VENDOR_LABELS = {
+    "nvidia": "NVIDIA",
+    "amd": "AMD/Radeon",
+    "intel": "Intel",
+}
 KERNEL_SOURCE = r"""
 __kernel void roi_mean_brightness(
     __global const uchar *frames,
@@ -127,50 +143,93 @@ def _device_search_text(platform, device):
     ).lower()
 
 
-def _choose_gpu_device(cl, gpu_devices):
-    requested_device = os.environ.get("PIG_LED_OPENCL_DEVICE", "").strip().lower()
-    if requested_device:
-        matches = [
-            item
-            for item in gpu_devices
-            if requested_device in _device_search_text(item[0], item[1])
-        ]
-        if not matches:
-            raise OpenClUnavailable(
-                f"requested OpenCL GPU not found: {requested_device}"
-            )
-        platform, device = max(
-            matches,
-            key=lambda item: _device_memory(
-                cl,
-                item[1],
-                cl.device_info.GLOBAL_MEM_SIZE,
-            ),
-        )
-        return platform, device, f"PIG_LED_OPENCL_DEVICE={requested_device}"
+def _request_terms(value):
+    value = value.strip().lower()
+    return GPU_VENDOR_ALIASES.get(value, (value,))
 
-    nvidia_devices = [
-        item for item in gpu_devices if "nvidia" in _device_search_text(item[0], item[1])
-    ]
-    if nvidia_devices:
-        platform, device = max(
-            nvidia_devices,
-            key=lambda item: _device_memory(
-                cl,
-                item[1],
-                cl.device_info.GLOBAL_MEM_SIZE,
-            ),
-        )
-        return platform, device, "preferred NVIDIA OpenCL GPU"
 
-    platform, device = max(
-        gpu_devices,
+def _matches_device_request(platform, device, requested_text):
+    search_text = _device_search_text(platform, device)
+    return any(term and term in search_text for term in _request_terms(requested_text))
+
+
+def _matches_vendor(platform, device, vendor):
+    search_text = _device_search_text(platform, device)
+    return any(term in search_text for term in GPU_VENDOR_ALIASES[vendor])
+
+
+def _normalise_vendor(value):
+    value = value.strip().lower()
+    if value in GPU_VENDOR_ALIASES:
+        return value
+
+    for vendor, aliases in GPU_VENDOR_ALIASES.items():
+        if value in aliases:
+            return vendor
+
+    return None
+
+
+def _largest_memory_device(cl, devices):
+    return max(
+        devices,
         key=lambda item: _device_memory(
             cl,
             item[1],
             cl.device_info.GLOBAL_MEM_SIZE,
         ),
     )
+
+
+def _choose_gpu_device(cl, gpu_devices):
+    requested_device = os.environ.get("PIG_LED_OPENCL_DEVICE", "").strip().lower()
+    if requested_device:
+        matches = [
+            item
+            for item in gpu_devices
+            if _matches_device_request(item[0], item[1], requested_device)
+        ]
+        if not matches:
+            raise OpenClUnavailable(
+                f"requested OpenCL GPU not found: {requested_device}"
+            )
+        platform, device = _largest_memory_device(cl, matches)
+        return platform, device, f"PIG_LED_OPENCL_DEVICE={requested_device}"
+
+    requested_vendor = os.environ.get("PIG_LED_OPENCL_VENDOR", "").strip().lower()
+    if requested_vendor:
+        normalised_vendor = _normalise_vendor(requested_vendor)
+        if normalised_vendor is None:
+            supported = ", ".join(GPU_VENDOR_ALIASES)
+            raise OpenClUnavailable(
+                f"unsupported OpenCL GPU vendor '{requested_vendor}'. "
+                f"Supported vendors: {supported}"
+            )
+
+        vendor_devices = [
+            item
+            for item in gpu_devices
+            if _matches_vendor(item[0], item[1], normalised_vendor)
+        ]
+        if not vendor_devices:
+            raise OpenClUnavailable(
+                f"requested OpenCL GPU vendor not found: {requested_vendor}"
+            )
+
+        platform, device = _largest_memory_device(cl, vendor_devices)
+        vendor_label = GPU_VENDOR_LABELS[normalised_vendor]
+        return platform, device, f"PIG_LED_OPENCL_VENDOR={vendor_label}"
+
+    for vendor in GPU_VENDOR_PRIORITY:
+        vendor_devices = [
+            item for item in gpu_devices if _matches_vendor(item[0], item[1], vendor)
+        ]
+        if vendor_devices:
+            platform, device = _largest_memory_device(cl, vendor_devices)
+            vendor_label = GPU_VENDOR_LABELS[vendor]
+            return platform, device, f"preferred {vendor_label} OpenCL GPU"
+
+    platform, device = _largest_memory_device(cl, gpu_devices)
     return platform, device, "largest available OpenCL GPU"
 
 
@@ -367,6 +426,9 @@ def opencl_status():
             DEFAULT_BATCH_BYTES,
         )
         / (1024 * 1024),
+        "supported_vendors": [
+            GPU_VENDOR_LABELS[vendor] for vendor in GPU_VENDOR_PRIORITY
+        ],
     }
 
 

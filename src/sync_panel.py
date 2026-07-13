@@ -449,6 +449,7 @@ class SyncPanel(QWidget):
             status += (
                 f" | brightness=OpenCL"
                 f" device={stats.get('opencl_device', 'GPU')}"
+                f" vendor={stats.get('opencl_device_vendor', 'unknown')}"
                 f" selected={stats.get('opencl_selected_reason', 'auto')}"
                 f" batch={stats.get('opencl_batch_mode', 'fixed')}"
                 f" capacity={stats.get('opencl_batch_capacity', 0)}"

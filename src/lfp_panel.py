@@ -1,9 +1,11 @@
 import draw_function as draw
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QFrame,
     QGridLayout,
+    QHBoxLayout,
     QLabel,
     QMessageBox,
     QSizePolicy,
@@ -12,6 +14,18 @@ from PySide6.QtWidgets import (
 )
 from matplotlib.figure import Figure
 from matplotlib.patches import Rectangle
+
+
+class PlaybackAwareComboBox(QComboBox):
+    def showPopup(self):
+        view = self.view()
+        if view is not None:
+            contents_width = view.sizeHintForColumn(0)
+            scrollbar_width = view.verticalScrollBar().sizeHint().width()
+            view.setMinimumWidth(
+                max(self.width(), contents_width + scrollbar_width + 24)
+            )
+        super().showPopup()
 
 
 class SharedTimelineSlider:
@@ -185,6 +199,10 @@ class SharedTimelineSlider:
 
 
 class LfpPanel(QWidget):
+    DEFAULT_PLAYBACK_WINDOW_SEC = 30.0
+    PLAYBACK_CURSOR_FRACTION = 0.35
+    PLAYBACK_EDGE_MARGIN_FRACTION = 0.18
+
     def __init__(self):
         super().__init__()
         self.setMinimumHeight(270)
@@ -208,14 +226,26 @@ class LfpPanel(QWidget):
         self.axis_callback_connected = False
         self.current_record_time_sec = None
         self.current_time_lines = {}
+        self.current_time_backgrounds = {}
 
         self.lfp_file_label = QLabel("LFP CSV: Not imported")
         self.axis_file_label = QLabel("3-axis CSV: Not imported")
 
-        self.lfp_channel_selector = QComboBox()
+        self.lfp_channel_selector = PlaybackAwareComboBox()
         self.lfp_channel_selector.addItem("No LFP channel")
         self.lfp_channel_selector.setEnabled(False)
+        self.lfp_channel_selector.setMinimumContentsLength(12)
+        self.lfp_channel_selector.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToContents
+        )
+        self.lfp_channel_selector.setMaxVisibleItems(20)
         self.lfp_channel_selector.currentIndexChanged.connect(self.plot_lfp)
+
+        self.follow_video_checkbox = QCheckBox("Follow video playback")
+        self.follow_video_checkbox.setChecked(True)
+        self.follow_video_checkbox.setToolTip(
+            "Auto-pan the waveform time window while the video is playing."
+        )
 
         waveform_grid = QGridLayout()
         waveform_grid.setVerticalSpacing(8)
@@ -244,7 +274,14 @@ class LfpPanel(QWidget):
         layout.setSpacing(4)
 
         layout.addWidget(self.lfp_file_label)
-        layout.addWidget(self.lfp_channel_selector)
+
+        channel_layout = QHBoxLayout()
+        channel_layout.setContentsMargins(0, 0, 0, 0)
+        channel_layout.setSpacing(8)
+        channel_layout.addWidget(self.lfp_channel_selector)
+        channel_layout.addStretch()
+        channel_layout.addWidget(self.follow_video_checkbox)
+        layout.addLayout(channel_layout)
 
         layout.addWidget(self.axis_file_label)
         layout.addLayout(waveform_grid, stretch=1)
@@ -291,8 +328,10 @@ class LfpPanel(QWidget):
 
         canvas = FigureCanvas(fig)
         canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        canvas.mpl_connect("draw_event", self.on_canvas_draw)
         layout.addWidget(canvas)
         setattr(self, canvas_attr, canvas)
+        self.invalidate_current_time_backgrounds()
         canvas.draw_idle()
 
     def timeline_limits(self):
@@ -324,6 +363,7 @@ class LfpPanel(QWidget):
         if self.timeline_slider is not None and source != "timeline":
             self.timeline_slider.set_val((left, right), emit=False)
 
+        self.invalidate_current_time_backgrounds()
         self.updating_timeline = False
 
     def on_plot_xlim_changed(self, value, source):
@@ -343,6 +383,155 @@ class LfpPanel(QWidget):
 
         left, right = self.timeline_slider.val
         return float(left), float(right)
+
+    def should_follow_video_playback(self):
+        return self.follow_video_checkbox.isChecked()
+
+    def clamp_playback_xlim(self, left, right, full_xlim):
+        full_left, full_right = full_xlim
+        full_width = full_right - full_left
+        width = right - left
+
+        if full_width <= 0 or width >= full_width:
+            return full_left, full_right
+
+        if left < full_left:
+            right += full_left - left
+            left = full_left
+
+        if right > full_right:
+            left -= right - full_right
+            right = full_right
+
+        return max(left, full_left), min(right, full_right)
+
+    def follow_current_time_marker(self):
+        if (
+            self.current_record_time_sec is None
+            or not self.should_follow_video_playback()
+        ):
+            return
+
+        full_xlim = self.timeline_full_xlim or self.timeline_limits()
+        if full_xlim is None:
+            return
+
+        full_left, full_right = full_xlim
+        full_width = full_right - full_left
+        if full_width <= 0:
+            return
+
+        current_xlim = self.current_timeline_xlim() or full_xlim
+        left, right = current_xlim
+        current_width = max(right - left, 1e-6)
+        default_width = min(self.DEFAULT_PLAYBACK_WINDOW_SEC, full_width)
+
+        if current_width >= full_width * 0.98:
+            target_width = default_width
+            force_recenter = target_width < current_width
+        else:
+            target_width = min(current_width, full_width)
+            force_recenter = False
+
+        if target_width >= full_width:
+            next_left, next_right = full_left, full_right
+        else:
+            cursor_time = min(
+                max(float(self.current_record_time_sec), full_left),
+                full_right,
+            )
+            margin = target_width * self.PLAYBACK_EDGE_MARGIN_FRACTION
+            needs_follow = (
+                force_recenter
+                or cursor_time < left + margin
+                or cursor_time > right - margin
+            )
+            if not needs_follow:
+                return
+
+            next_left = cursor_time - target_width * self.PLAYBACK_CURSOR_FRACTION
+            next_right = next_left + target_width
+            next_left, next_right = self.clamp_playback_xlim(
+                next_left,
+                next_right,
+                full_xlim,
+            )
+
+        if abs(next_left - left) < 1e-9 and abs(next_right - right) < 1e-9:
+            return
+
+        self.set_shared_xlim(next_left, next_right, source="playback")
+
+    def figure_items(self):
+        return [
+            ("lfp", self.lfp_fig, self.lfp_canvas),
+            ("axis", self.axis_fig, self.axis_canvas),
+            ("timeline", self.timeline_fig, self.timeline_canvas),
+        ]
+
+    def invalidate_current_time_backgrounds(self, key=None):
+        if key is None:
+            self.current_time_backgrounds = {}
+            return
+
+        self.current_time_backgrounds.pop(key, None)
+
+    def background_signature(self, canvas, ax):
+        return (
+            canvas.get_width_height(),
+            tuple(round(value, 6) for value in ax.bbox.bounds),
+            tuple(round(value, 9) for value in ax.get_xlim()),
+            tuple(round(value, 9) for value in ax.get_ylim()),
+        )
+
+    def supports_marker_blit(self, canvas):
+        return all(
+            hasattr(canvas, name)
+            for name in ("copy_from_bbox", "restore_region", "blit")
+        )
+
+    def on_canvas_draw(self, event):
+        for key, fig, canvas in self.figure_items():
+            if canvas is not event.canvas:
+                continue
+
+            line = self.current_time_lines.get(key)
+            if fig is None or canvas is None or line is None or not fig.axes:
+                return
+
+            ax = fig.axes[0]
+            if line.axes is not ax or not self.supports_marker_blit(canvas):
+                return
+
+            try:
+                self.current_time_backgrounds[key] = (
+                    self.background_signature(canvas, ax),
+                    canvas.copy_from_bbox(ax.bbox),
+                )
+                ax.draw_artist(line)
+                canvas.blit(ax.bbox)
+            except Exception:
+                self.invalidate_current_time_backgrounds(key)
+            return
+
+    def draw_marker_line(self, key, canvas, ax, line):
+        if not self.supports_marker_blit(canvas):
+            canvas.draw_idle()
+            return
+
+        signature = self.background_signature(canvas, ax)
+        cached = self.current_time_backgrounds.get(key)
+        if cached is None or cached[0] != signature:
+            canvas.draw_idle()
+            return
+
+        try:
+            canvas.restore_region(cached[1])
+            ax.draw_artist(line)
+            canvas.blit(ax.bbox)
+        except Exception:
+            self.invalidate_current_time_backgrounds(key)
+            canvas.draw_idle()
 
     def create_or_update_timeline(self):
         from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
@@ -381,19 +570,25 @@ class LfpPanel(QWidget):
         canvas = FigureCanvas(fig)
         canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         canvas.setFixedHeight(54)
+        canvas.mpl_connect("draw_event", self.on_canvas_draw)
         layout.addWidget(canvas)
 
         self.timeline_fig = fig
         self.timeline_slider = slider
         self.timeline_canvas = canvas
         self.timeline_full_xlim = full_xlim
+        self.invalidate_current_time_backgrounds()
         canvas.draw_idle()
 
         self.set_shared_xlim(*full_xlim, source="timeline")
         self.update_current_time_marker()
 
-    def set_current_time_marker(self, record_time_sec):
+    def set_current_time_marker(self, record_time_sec, follow_playback=False):
         self.current_record_time_sec = record_time_sec
+
+        if follow_playback:
+            self.follow_current_time_marker()
+
         self.update_current_time_marker()
 
     def clear_current_time_marker(self):
@@ -401,6 +596,7 @@ class LfpPanel(QWidget):
         for line in self.current_time_lines.values():
             line.remove()
         self.current_time_lines = {}
+        self.invalidate_current_time_backgrounds()
 
         for canvas in [self.lfp_canvas, self.axis_canvas, self.timeline_canvas]:
             if canvas is not None:
@@ -410,13 +606,7 @@ class LfpPanel(QWidget):
         if self.current_record_time_sec is None:
             return
 
-        figure_items = [
-            ("lfp", self.lfp_fig, self.lfp_canvas),
-            ("axis", self.axis_fig, self.axis_canvas),
-            ("timeline", self.timeline_fig, self.timeline_canvas),
-        ]
-
-        for key, fig, canvas in figure_items:
+        for key, fig, canvas in self.figure_items():
             if fig is None or canvas is None or not fig.axes:
                 continue
 
@@ -429,15 +619,17 @@ class LfpPanel(QWidget):
                     linestyle="--",
                     linewidth=1.0,
                     zorder=10,
+                    animated=True,
                 )
                 self.current_time_lines[key] = line
+                self.invalidate_current_time_backgrounds(key)
             else:
                 line.set_xdata([
                     self.current_record_time_sec,
                     self.current_record_time_sec,
                 ])
 
-            canvas.draw_idle()
+            self.draw_marker_line(key, canvas, ax, line)
 
     def selected_channel(self, selector):
         channel = selector.currentData()
@@ -454,6 +646,7 @@ class LfpPanel(QWidget):
             return
 
         channel = self.selected_channel(self.lfp_channel_selector)
+        created_figure = False
         try:
             if self.lfp_fig is None:
                 self.lfp_fig = draw.LFP(
@@ -461,13 +654,16 @@ class LfpPanel(QWidget):
                     channels=channel,
                     step=self.lfp_step,
                 )
+                created_figure = True
             elif self.lfp_fig is not None and channel is not None:
                 self.lfp_fig.set_lfp_channel(channel)
+                self.invalidate_current_time_backgrounds("lfp")
         except Exception as error:
             QMessageBox.warning(self, "LFP plot failed", str(error))
             return
 
-        self.set_figure(self.lfp_waveform_area, "lfp_canvas", self.lfp_fig)
+        if created_figure or self.lfp_canvas is None:
+            self.set_figure(self.lfp_waveform_area, "lfp_canvas", self.lfp_fig)
 
         if not self.lfp_callback_connected:
             self.lfp_fig.add_lfp_xlim_callback(

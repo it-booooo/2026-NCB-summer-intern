@@ -172,6 +172,7 @@ class MainWindow(QMainWindow):
             f"Vendor: {status.get('device_vendor')}\n"
             f"Platform: {status.get('platform')}\n"
             f"Selected by: {status.get('selected_reason')}\n"
+            f"Supported GPU vendors: {', '.join(status.get('supported_vendors', []))}\n"
             f"Target refine batch: {status.get('target_batch_frames')} sampled frames\n"
             f"Target coarse batch: {status.get('target_coarse_batch_mode')} "
             f"({status.get('target_coarse_batch_frames')} sampled frames base)\n"
@@ -429,6 +430,7 @@ class MainWindow(QMainWindow):
             status += (
                 f" | brightness=OpenCL"
                 f" device={stats.get('opencl_device', 'GPU')}"
+                f" vendor={stats.get('opencl_device_vendor', 'unknown')}"
                 f" selected={stats.get('opencl_selected_reason', 'auto')}"
                 f" batch={stats.get('opencl_batch_mode', 'fixed')}"
                 f" capacity={stats.get('opencl_batch_capacity', 0)}"
@@ -627,7 +629,10 @@ class MainWindow(QMainWindow):
             return
 
         record_time_sec = video_time_sec - self.time_offset_sec
-        self.lfp_panel.set_current_time_marker(record_time_sec)
+        self.lfp_panel.set_current_time_marker(
+            record_time_sec,
+            follow_playback=self.video_player.is_playing,
+        )
 
     def export_markers_csv(self):
         self.export_markers("csv")
