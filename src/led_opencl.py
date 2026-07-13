@@ -506,7 +506,7 @@ def compute_led_brightness_curve_opencl(
                 }
             )
 
-        def emit_progress(frame_index, force=False):
+        def emit_progress(frame_index):
             if progress_callback is None:
                 return
 
@@ -582,7 +582,7 @@ def compute_led_brightness_curve_opencl(
         if should_stop is None or not should_stop():
             flush_batch()
 
-        emit_progress(frame_index, force=True)
+        emit_progress(frame_index)
 
         if acceleration_info is not None:
             acceleration_info.update(
