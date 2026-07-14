@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 import cv2
 import numpy as np
-from src.video_capture import open_video_capture
+from src.video_utils import open_video_capture
 
 
 DETECTION_MODE = "frame_delta_mean_brightness"

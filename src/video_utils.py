@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import os
 from pathlib import Path
 
 
@@ -15,6 +16,36 @@ class VideoMetadata:
     total_frames: int
     detected_duration_sec: float
     duration_sec: float
+
+
+def open_video_capture(cv2, video_path):
+    """Open a capture with hardware decoding when supported, then fall back to CPU."""
+    disabled = os.environ.get("PIG_LED_HW_DECODE", "1").strip().lower()
+    if disabled in {"0", "false", "no", "off"}:
+        return cv2.VideoCapture(video_path), "opencv_cpu", "disabled"
+
+    hw_names = ("CAP_FFMPEG", "CAP_PROP_HW_ACCELERATION", "VIDEO_ACCELERATION_ANY")
+    if all(hasattr(cv2, name) for name in hw_names):
+        try:
+            cap = cv2.VideoCapture(
+                video_path,
+                cv2.CAP_FFMPEG,
+                [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_ANY],
+            )
+            if cap.isOpened():
+                return cap, "opencv_hw", ""
+            cap.release()
+            fallback_reason = "hardware decode capture did not open"
+        except Exception as error:
+            fallback_reason = str(error)
+
+        return cv2.VideoCapture(video_path), "opencv_cpu", fallback_reason
+
+    return (
+        cv2.VideoCapture(video_path),
+        "opencv_cpu",
+        "OpenCV hardware decode API is unavailable",
+    )
 
 
 def open_video(path):

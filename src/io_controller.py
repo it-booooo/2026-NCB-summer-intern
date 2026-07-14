@@ -1,10 +1,46 @@
+import csv
+
 from PySide6.QtWidgets import QFileDialog, QInputDialog, QMessageBox
 
 import check_function as check
 import csv_function as csv_func
 import draw_function as draw
 
-from .export import export_events_csv, export_events_excel
+
+
+def export_events_csv(path, events):
+    fields = ["event_type", "video_time_sec", "frame_index", "note"]
+    with open(path, "w", newline="", encoding="utf-8-sig") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=fields)
+        writer.writeheader()
+        for event in events:
+            writer.writerow(
+                {
+                    "event_type": event.get("event_type", ""),
+                    "video_time_sec": f"{float(event.get('video_time_sec', 0)):.6f}",
+                    "frame_index": int(event.get("frame_index", 0)),
+                    "note": event.get("note", ""),
+                }
+            )
+
+
+def export_events_excel(path, events):
+    from openpyxl import Workbook
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Markers"
+    sheet.append(["event_type", "video_time_sec", "frame_index", "note"])
+    for event in events:
+        sheet.append(
+            [
+                event.get("event_type", ""),
+                float(event.get("video_time_sec", 0)),
+                int(event.get("frame_index", 0)),
+                event.get("note", ""),
+            ]
+        )
+    workbook.save(path)
 
 
 class IoControllerMixin:

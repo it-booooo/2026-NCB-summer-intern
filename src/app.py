@@ -12,7 +12,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .analysis import AnalysisMenuController
 from .event_table import EventTable
 from .io_controller import IoControllerMixin
 from .led_controller import LedControllerMixin
@@ -51,7 +50,6 @@ class MainWindow(
             self.add_event,
             self.select_led_roi,
         )
-        self.analysis_controller = AnalysisMenuController(self)
         self.lfp_info = None
         self.axis_info = None
         self.timeMarker_info = None
@@ -117,7 +115,18 @@ class MainWindow(
         self.add_action(settings_menu, "Set 3-axis step", self.set_axis_step)
         self.add_action(settings_menu, "Check OpenCL GPU", self.show_opencl_status)
 
-        self.analysis_controller.populate_menu(analysis_menu)
+        self.add_action(
+            analysis_menu,
+            "Export Selected Segment",
+            self.export_selected_segment,
+        )
+
+    def export_selected_segment(self):
+        QMessageBox.information(
+            self,
+            "Analysis",
+            "Export selected segment is not implemented yet.",
+        )
 
     def ask_step(self, title, current_step):
         step, accepted = QInputDialog.getInt(

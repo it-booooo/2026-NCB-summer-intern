@@ -1,6 +1,29 @@
 from PySide6.QtWidgets import QMessageBox
 
-from .event_intervals import pair_behavior_intervals, pair_led_intervals
+
+def pair_event_intervals(events, start_type, end_type, interval_type):
+    """Pair matching start/end point markers in table order."""
+    intervals = []
+    pending_start = None
+    for event in events:
+        event_type = event.get("event_type")
+        if event_type == start_type:
+            pending_start = event
+        elif event_type == end_type and pending_start is not None:
+            start_sec = float(pending_start.get("video_time_sec", 0.0))
+            end_sec = float(event.get("video_time_sec", 0.0))
+            if end_sec > start_sec:
+                intervals.append(
+                    {
+                        "event_type": interval_type,
+                        "video_start_sec": start_sec,
+                        "video_end_sec": end_sec,
+                        "start_frame": int(pending_start.get("frame_index", 0)),
+                        "end_frame": int(event.get("frame_index", 0)),
+                    }
+                )
+                pending_start = None
+    return intervals
 
 
 class SyncControllerMixin:
@@ -113,8 +136,8 @@ class SyncControllerMixin:
 
         events = self.event_table.events()
         video_intervals = [
-            *pair_behavior_intervals(events),
-            *pair_led_intervals(events),
+            *pair_event_intervals(events, "behavior_start", "behavior_end", "behavior"),
+            *pair_event_intervals(events, "LED_on", "LED_off", "led"),
         ]
 
         record_intervals = []

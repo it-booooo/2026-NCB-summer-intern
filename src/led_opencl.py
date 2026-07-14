@@ -416,7 +416,7 @@ def compute_led_brightness_curve_opencl(
 ):
     import cv2
     import numpy as np
-    from src.video_capture import open_video_capture
+    from src.video_utils import open_video_capture
 
     runtime = _opencl_runtime()
     cap, decode_backend, decode_fallback_reason = open_video_capture(cv2, video_path)

@@ -55,7 +55,10 @@ class LedControllerMixin:
         )
 
     def select_led_roi(self):
-        self.analysis_controller.select_led_roi()
+        if not self.video_player.has_video():
+            QMessageBox.warning(self, "No video", "Please import a video first.")
+            return
+        self.video_player.start_roi_selection()
 
     def set_led_roi(self, roi):
         self.led_roi = roi
