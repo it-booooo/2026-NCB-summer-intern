@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.led_status import format_led_detection_status
-from src.video_utils import format_time
+from src.video_utils import format_time, parse_time_input as parse_time_text
 
 
 class RoiPlotIndicator(QWidget):
@@ -202,26 +202,7 @@ class SyncPanel(QWidget):
         )
 
     def parse_time_input(self, text):
-        text = text.strip()
-        if not text:
-            return None
-
-        try:
-            if ":" not in text:
-                return float(text)
-
-            parts = [float(part) for part in text.split(":")]
-            if len(parts) == 2:
-                minutes, seconds = parts
-                return minutes * 60 + seconds
-
-            if len(parts) == 3:
-                hours, minutes, seconds = parts
-                return hours * 3600 + minutes * 60 + seconds
-        except ValueError:
-            return None
-
-        return None
+        return parse_time_text(text)
 
     def format_scan_input(self, widget):
         text = widget.text().strip()

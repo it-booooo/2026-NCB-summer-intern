@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 from src.video_utils import (
     format_time,
     frame_to_time_sec,
+    parse_time_input as parse_time_text,
     parse_video_metadata,
     read_frame,
     time_sec_to_frame,
@@ -472,26 +473,7 @@ class VideoPlayer(QWidget):
         widget.setStyleSheet("" if is_valid else "border: 1px solid #c0392b;")
 
     def parse_time_input(self, text):
-        text = text.strip()
-        if not text:
-            return None
-
-        try:
-            if ":" not in text:
-                return float(text)
-
-            parts = [float(part) for part in text.split(":")]
-            if len(parts) == 2:
-                minutes, seconds = parts
-                return minutes * 60 + seconds
-
-            if len(parts) == 3:
-                hours, minutes, seconds = parts
-                return hours * 3600 + minutes * 60 + seconds
-        except ValueError:
-            return None
-
-        return None
+        return parse_time_text(text)
 
     def seek_to_time_input(self):
         seconds = self.parse_time_input(self.time_seek_input.text())

@@ -121,6 +121,30 @@ def time_sec_to_frame(time_sec, fps, total_frames=None):
     return frame_index
 
 
+def parse_time_input(text):
+    """Parse seconds, MM:SS, or HH:MM:SS text into seconds."""
+    text = text.strip()
+    if not text:
+        return None
+
+    try:
+        if ":" not in text:
+            return float(text)
+
+        parts = [float(part) for part in text.split(":")]
+        if len(parts) == 2:
+            minutes, seconds = parts
+            return minutes * 60 + seconds
+
+        if len(parts) == 3:
+            hours, minutes, seconds = parts
+            return hours * 3600 + minutes * 60 + seconds
+    except ValueError:
+        return None
+
+    return None
+
+
 def format_time(seconds):
     total_ms = int(round(seconds * 1000))
 
