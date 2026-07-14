@@ -187,15 +187,21 @@ def filter_description(settings: LfpFilterSettings | None) -> str:
     if settings is None or not settings.show_filtered:
         return "Raw"
 
-    parts = []
+    low_hz = f"{settings.bandpass_low_hz:g}"
+    high_hz = f"{settings.bandpass_high_hz:g}"
     if settings.bandpass_enabled:
-        parts.append(
-            f"bandpass {settings.bandpass_low_hz:g}-{settings.bandpass_high_hz:g} Hz"
+        bandpass_description = f"bandpass {low_hz}-{high_hz} Hz"
+    else:
+        bandpass_description = (
+            f"bandpass off (low {low_hz} Hz, high {high_hz} Hz)"
         )
-    if settings.line_noise_hz is not None:
-        parts.append(f"notch {settings.line_noise_hz:g} Hz")
 
-    return "Filtered: " + (", ".join(parts) if parts else "no filters enabled")
+    if settings.line_noise_hz is not None:
+        notch_description = f"notch {settings.line_noise_hz:g} Hz"
+    else:
+        notch_description = "notch off"
+
+    return f"Filtered: {bandpass_description}, {notch_description}"
 
 
 def _finite_signal(values) -> np.ndarray:

@@ -53,7 +53,7 @@ class SharedTimelineSlider:
         self.ax.set_xlim(full_xlim)
         self.ax.set_ylim(0, 1)
         self.ax.set_yticks([])
-        self.ax.tick_params(axis="x", labelsize=7, pad=1)
+        self.ax.tick_params(axis="x", labelsize=6, pad=0)
         for spine in self.ax.spines.values():
             spine.set_visible(False)
 
@@ -76,7 +76,7 @@ class SharedTimelineSlider:
             [valinit[0]],
             [0.5],
             marker="o",
-            markersize=7,
+            markersize=6,
             markerfacecolor="#ffffff",
             markeredgecolor="#c0c0c0",
             markeredgewidth=1.0,
@@ -87,7 +87,7 @@ class SharedTimelineSlider:
             [valinit[1]],
             [0.5],
             marker="o",
-            markersize=7,
+            markersize=6,
             markerfacecolor="#ffffff",
             markeredgecolor="#c0c0c0",
             markeredgewidth=1.0,
@@ -98,7 +98,7 @@ class SharedTimelineSlider:
             full_xlim[0],
             0.5,
             "Time",
-            fontsize=7,
+            fontsize=6,
             ha="right",
             va="center",
         )
@@ -106,7 +106,7 @@ class SharedTimelineSlider:
             0.5,
             1.02,
             "",
-            fontsize=7,
+            fontsize=6,
             ha="center",
             va="bottom",
             transform=self.ax.transAxes,
@@ -345,15 +345,17 @@ class LfpPanel(QWidget):
         waveform_grid = QGridLayout()
         waveform_grid.setVerticalSpacing(8)
         waveform_grid.setColumnStretch(1, 1)
-        waveform_grid.setRowStretch(0, 1)
-        waveform_grid.setRowStretch(1, 1)
+        waveform_grid.setRowStretch(0, 3)
+        waveform_grid.setRowStretch(1, 2)
 
         self.lfp_waveform_area = self.create_waveform_area(
             "Import LFP CSV to show waveform"
         )
+        self.lfp_waveform_area.setFixedHeight(110)
         self.axis_waveform_area = self.create_waveform_area(
             "Import 3-axis CSV to show waveform"
         )
+        self.axis_waveform_area.setFixedHeight(88)
 
         waveform_grid.addWidget(QLabel("LFP"), 0, 0)
         waveform_grid.addWidget(self.lfp_waveform_area, 0, 1)
@@ -362,10 +364,11 @@ class LfpPanel(QWidget):
         waveform_grid.addWidget(self.axis_waveform_area, 1, 1)
 
         self.timeline_area = self.create_waveform_area("Shared time range")
-        self.timeline_area.setFixedHeight(58)
+        self.timeline_area.setFixedHeight(44)
+        self.timeline_area.layout().setContentsMargins(1, 0, 1, 2)
 
         layout = QVBoxLayout()
-        layout.setContentsMargins(8, 4, 8, 6)
+        layout.setContentsMargins(8, 4, 8, 3)
         layout.setSpacing(4)
 
         layout.addWidget(self.lfp_file_label)
@@ -808,8 +811,8 @@ class LfpPanel(QWidget):
             if widget is not None:
                 widget.setParent(None)
 
-        fig = Figure(figsize=(8, 0.66), constrained_layout=False)
-        slider_ax = fig.add_axes((0.12, 0.36, 0.76, 0.28))
+        fig = Figure(figsize=(8, 0.50), constrained_layout=False)
+        slider_ax = fig.add_axes((0.12, 0.34, 0.76, 0.34))
         slider = SharedTimelineSlider(
             slider_ax,
             full_xlim,
@@ -820,7 +823,7 @@ class LfpPanel(QWidget):
 
         canvas = FigureCanvas(fig)
         canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        canvas.setFixedHeight(54)
+        canvas.setFixedHeight(40)
         self.connect_canvas_events(canvas)
         layout.addWidget(canvas)
 

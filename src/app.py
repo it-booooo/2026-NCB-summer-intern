@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QSplitter,
     QVBoxLayout,
     QWidget,
@@ -153,8 +154,16 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
             self.lfp_panel.set_line_noise_hz(values[items.index(text)])
 
     def create_layout(self):
-        lfp_group = self.create_group("Waveform Area", self.lfp_panel)
-        lfp_group.setFixedHeight(self.WAVEFORM_AREA_HEIGHT)
+        lfp_group = self.create_group(
+            "Waveform Area",
+            self.lfp_panel,
+            margins=(6, 6, 6, 4),
+        )
+        lfp_group.setMinimumHeight(self.WAVEFORM_AREA_HEIGHT)
+        lfp_group.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Minimum,
+        )
         sync_group = self.create_group("Synchronization Area", self.sync_panel)
         ttl_group = self.create_group("TTL", self.ttl_panel, margins=(6, 10, 6, 6))
         marker_group = self.create_group("Video Marker", self.marker_panel)
