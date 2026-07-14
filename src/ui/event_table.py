@@ -28,9 +28,11 @@ DEFAULT_EVENT_TYPES = [
 class EventEditDialog(QDialog):
     """Edit all user-facing fields of one event marker."""
 
-    def __init__(self, event, parent=None):
+    def __init__(self, event, fps=None, total_frames=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Edit Event")
+        self.fps = float(fps or 0.0)
+        self.updating_video_position = False
 
         self.event_type_input = QComboBox()
         self.event_type_input.setEditable(True)
@@ -44,8 +46,23 @@ class EventEditDialog(QDialog):
         self.video_time_input.setValue(float(event.get("video_time_sec", 0.0)))
 
         self.frame_input = QSpinBox()
-        self.frame_input.setRange(0, 2_147_483_647)
+        maximum_frame = (
+            max(int(total_frames) - 1, 0)
+            if total_frames is not None and int(total_frames) > 0
+            else 2_147_483_647
+        )
+        self.frame_input.setRange(0, maximum_frame)
         self.frame_input.setValue(int(event.get("frame_index", 0)))
+
+        if self.fps > 0:
+            self.video_time_input.valueChanged.connect(self.sync_frame_from_time)
+            self.frame_input.valueChanged.connect(self.sync_time_from_frame)
+        else:
+            unavailable_message = (
+                "Load a video with valid FPS metadata to link time and frame."
+            )
+            self.video_time_input.setToolTip(unavailable_message)
+            self.frame_input.setToolTip(unavailable_message)
 
         self.note_input = QLineEdit(str(event.get("note", "")))
         self.note_input.setPlaceholderText("Add note...")
@@ -66,6 +83,32 @@ class EventEditDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.addLayout(form)
         layout.addWidget(buttons)
+
+    def sync_frame_from_time(self, video_time_sec):
+        if self.updating_video_position or self.fps <= 0:
+            return
+
+        self.updating_video_position = True
+        try:
+            frame_index = int(round(float(video_time_sec) * self.fps))
+            frame_index = max(
+                self.frame_input.minimum(),
+                min(frame_index, self.frame_input.maximum()),
+            )
+            self.frame_input.setValue(frame_index)
+            self.video_time_input.setValue(frame_index / self.fps)
+        finally:
+            self.updating_video_position = False
+
+    def sync_time_from_frame(self, frame_index):
+        if self.updating_video_position or self.fps <= 0:
+            return
+
+        self.updating_video_position = True
+        try:
+            self.video_time_input.setValue(float(frame_index) / self.fps)
+        finally:
+            self.updating_video_position = False
 
     def accept(self):
         if not self.event_type_input.currentText().strip():
@@ -129,6 +172,8 @@ class EventTable(QTableWidget):
     def __init__(self):
         super().__init__(0, len(self.DISPLAY_HEADERS))
         self.sync_time_origin_sec = None
+        self.video_fps = None
+        self.video_total_frames = None
 
         self.setHorizontalHeaderLabels(self.DISPLAY_HEADERS)
 
@@ -161,6 +206,12 @@ class EventTable(QTableWidget):
         )
         self.cellClicked.connect(self.handle_cell_clicked)
         self.itemSelectionChanged.connect(self.update_note_selection_styles)
+
+    def set_video_timing(self, fps, total_frames=None):
+        self.video_fps = float(fps) if fps else None
+        self.video_total_frames = (
+            int(total_frames) if total_frames is not None else None
+        )
 
     def set_sync_time_origin(self, origin_sec):
         next_origin = None if origin_sec is None else float(origin_sec)
@@ -290,11 +341,18 @@ class EventTable(QTableWidget):
             )
             return
 
-        dialog = EventEditDialog(self.event_at(row), self)
+        dialog = EventEditDialog(
+            self.event_at(row),
+            fps=self.video_fps,
+            total_frames=self.video_total_frames,
+            parent=self,
+        )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
 
-        self.update_event(row, **dialog.values())
+        updated_event = dialog.values()
+        self.update_event(row, **updated_event)
+        self.video_time_selected.emit(updated_event["video_time_sec"])
 
     def update_event(
         self,
