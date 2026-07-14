@@ -86,7 +86,6 @@ class MainWindow(
         menu_bar = self.menuBar()
         file_menu = menu_bar.addMenu("File")
         settings_menu = menu_bar.addMenu("Settings")
-        analysis_menu = menu_bar.addMenu("Analysis")
         import_menu = file_menu.addMenu("Import")
         export_menu = file_menu.addMenu("Export")
 
@@ -114,19 +113,6 @@ class MainWindow(
         self.add_action(settings_menu, "Set LFP step", self.set_lfp_step)
         self.add_action(settings_menu, "Set 3-axis step", self.set_axis_step)
         self.add_action(settings_menu, "Check OpenCL GPU", self.show_opencl_status)
-
-        self.add_action(
-            analysis_menu,
-            "Export Selected Segment",
-            self.export_selected_segment,
-        )
-
-    def export_selected_segment(self):
-        QMessageBox.information(
-            self,
-            "Analysis",
-            "Export selected segment is not implemented yet.",
-        )
 
     def ask_step(self, title, current_step):
         step, accepted = QInputDialog.getInt(
