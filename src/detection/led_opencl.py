@@ -478,7 +478,7 @@ def compute_led_brightness_curve_opencl(
 ):
     import cv2
     import numpy as np
-    from ..video.video_capture import open_video_capture
+    from ..video.video_utils import open_video_capture
 
     runtime = _opencl_runtime()
     cap, decode_backend, decode_fallback_reason = open_video_capture(cv2, video_path)
@@ -568,7 +568,7 @@ def compute_led_brightness_curve_opencl(
                 }
             )
 
-        def emit_progress(frame_index, force=False):
+        def emit_progress(frame_index):
             if progress_callback is None:
                 return
 
@@ -600,7 +600,6 @@ def compute_led_brightness_curve_opencl(
             batches_processed += 1
             frames_processed += batch_count
             max_batch_used = max(max_batch_used, batch_count)
-            emit_progress(batch_frame_indices[-1] + 1)
             batch_frame_indices.clear()
             batch_count = 0
 
@@ -641,10 +640,12 @@ def compute_led_brightness_curve_opencl(
                 frame_index += 1
                 skipped += 1
 
+            emit_progress(frame_index)
+
         if should_stop is None or not should_stop():
             flush_batch()
 
-        emit_progress(frame_index, force=True)
+        emit_progress(frame_index)
 
         if acceleration_info is not None:
             acceleration_info.update(

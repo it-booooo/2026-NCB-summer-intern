@@ -11,17 +11,20 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from .controllers import AnalysisMenuController
-from .detection import LedDetectionWorker
+
 from .exporters import ExportController
 from .importers import ImportController
+from .led_controller import LedControllerMixin
+from .sync_controller import SyncControllerMixin
 from .ui import EventTable, LfpPanel, MarkerPanel, SyncPanel, TtlPanel
 from .video import VideoPlayer
 
 
-class MainWindow(QMainWindow):
+class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
+    """Compose the application widgets and connect feature controllers."""
+
     MARKER_PANEL_WIDTH = 300
-    WAVEFORM_AREA_HEIGHT = 380
+    WAVEFORM_AREA_HEIGHT = 340
 
     def __init__(self):
         super().__init__()
@@ -39,7 +42,6 @@ class MainWindow(QMainWindow):
             self.add_event,
             self.select_led_roi,
         )
-        self.analysis_controller = AnalysisMenuController(self)
         self.import_controller = ImportController(self)
         self.export_controller = ExportController(self)
         self.lfp_info = None
@@ -50,17 +52,18 @@ class MainWindow(QMainWindow):
         self.led_brightness_cache = {}
         self.time_offset_sec = None
         self.loading_video = False
+
         self.video_player.roi_selected.connect(self.set_led_roi)
         self.video_player.frame_changed.connect(self.update_waveform_current_time)
-        self.lfp_panel.time_selected.connect(self.seek_video_to_record_time)
+        self.lfp_panel.time_selected.connect(self.seek_video_record_time)
         self.ttl_panel.markers_changed.connect(self.set_ttl_markers)
         self.event_table.events_changed.connect(self.update_time_offset)
+        self.event_table.video_time_selected.connect(self.seek_video_marker_time)
 
         self.create_menu()
         self.create_layout()
 
     def add_action(self, menu, text, callback, description=""):
-        # description 是顯示給使用者的英文提示，同時用於 tooltip 與狀態列。
         action = QAction(text, self)
         action.triggered.connect(callback)
         if description:
@@ -79,40 +82,36 @@ class MainWindow(QMainWindow):
 
     def create_menu(self):
         menu_bar = self.menuBar()
-        self.file_menu = menu_bar.addMenu("File")
-        self.settings_menu = menu_bar.addMenu("Settings")
-        self.analysis_menu = menu_bar.addMenu("Analysis")
-        self.import_menu = self.file_menu.addMenu("Import")
-        self.export_menu = self.file_menu.addMenu("Export")
-        self.import_menu.setToolTipsVisible(True)
-        self.export_menu.setToolTipsVisible(True)
+        file_menu = menu_bar.addMenu("File")
+        settings_menu = menu_bar.addMenu("Settings")
+        import_menu = file_menu.addMenu("Import")
+        export_menu = file_menu.addMenu("Export")
+        import_menu.setToolTipsVisible(True)
+        export_menu.setToolTipsVisible(True)
 
-        # Import／Export 的選單內容由各自的 controller 統一管理，避免流程散落於 app.py。
         import_actions = self.import_controller.actions()
         export_actions = self.export_controller.actions()
 
-        self.add_action(self.import_menu, *import_actions[0])
-        self.import_menu.addSeparator()
+        self.add_action(import_menu, *import_actions[0])
+        import_menu.addSeparator()
         for text, callback, description in import_actions[1:]:
-            self.add_action(self.import_menu, text, callback, description)
+            self.add_action(import_menu, text, callback, description)
 
         for text, callback, description in export_actions:
-            self.add_action(self.export_menu, text, callback, description)
+            self.add_action(export_menu, text, callback, description)
 
-        self.add_action(self.settings_menu, "Set LFP step", self.set_lfp_step)
-        self.add_action(self.settings_menu, "Set 3-axis step", self.set_axis_step)
+        self.add_action(settings_menu, "Set LFP step", self.set_lfp_step)
+        self.add_action(settings_menu, "Set 3-axis step", self.set_axis_step)
         self.add_action(
-            self.settings_menu,
+            settings_menu,
             "Set power noise frequency",
             self.set_power_noise_frequency,
         )
         self.add_action(
-            self.settings_menu,
+            settings_menu,
             "Check OpenCL GPU",
             self.show_opencl_status,
         )
-
-        self.analysis_controller.populate_menu(self.analysis_menu)
 
     def ask_step(self, title, current_step):
         step, accepted = QInputDialog.getInt(
@@ -141,11 +140,7 @@ class MainWindow(QMainWindow):
     def set_power_noise_frequency(self):
         items = ["60 Hz", "50 Hz"]
         values = [60.0, 50.0]
-        current_value = self.lfp_panel.line_noise_hz
-        current_index = 0
-        if current_value == 50.0:
-            current_index = 1
-
+        current_index = 1 if self.lfp_panel.line_noise_hz == 50.0 else 0
         text, accepted = QInputDialog.getItem(
             self,
             "Set power noise frequency",
@@ -154,58 +149,8 @@ class MainWindow(QMainWindow):
             current_index,
             False,
         )
-        if not accepted:
-            return
-
-        self.lfp_panel.set_line_noise_hz(values[items.index(text)])
-
-    def show_opencl_status(self):
-        try:
-            from .detection.led_opencl import opencl_status
-
-            status = opencl_status()
-        except Exception as error:
-            QMessageBox.warning(
-                self,
-                "OpenCL GPU",
-                f"OpenCL check failed:\n{error}",
-            )
-            return
-
-        if not status.get("available"):
-            QMessageBox.warning(
-                self,
-                "OpenCL GPU",
-                "OpenCL GPU is not available.\n\n"
-                f"Reason: {status.get('reason', 'unknown')}\n\n"
-                "LED detection will use CPU fallback.",
-            )
-            return
-
-        QMessageBox.information(
-            self,
-            "OpenCL GPU",
-            "OpenCL GPU is available.\n\n"
-            f"Device: {status.get('device')}\n"
-            f"Vendor: {status.get('device_vendor')}\n"
-            f"Platform: {status.get('platform')}\n"
-            f"Selected by: {status.get('selected_reason')}\n"
-            f"Supported GPU vendors: {', '.join(status.get('supported_vendors', []))}\n"
-            f"Target refine batch: {status.get('target_batch_frames')} sampled frames\n"
-            f"Target coarse batch: {status.get('target_coarse_batch_mode')} "
-            f"({status.get('target_coarse_batch_frames')} sampled frames base)\n"
-            f"Target transfer limit: {status.get('target_batch_mb'):.0f} MB\n"
-            f"Device max allocation: {status.get('max_alloc_mb'):.0f} MB\n"
-            f"Device global memory: {status.get('global_mem_mb'):.0f} MB\n\n"
-            "Detected OpenCL GPUs:\n"
-            + "\n".join(
-                (
-                    f"- {device.get('name')} | {device.get('vendor')} | "
-                    f"{device.get('global_mem_mb'):.0f} MB"
-                )
-                for device in status.get("devices", [])
-            ),
-        )
+        if accepted:
+            self.lfp_panel.set_line_noise_hz(values[items.index(text)])
 
     def create_layout(self):
         lfp_group = self.create_group("Waveform Area", self.lfp_panel)
@@ -283,246 +228,6 @@ class MainWindow(QMainWindow):
     def hide_marker_panel(self):
         self.side_panel.hide()
 
-    def select_led_roi(self):
-        self.analysis_controller.select_led_roi()
-
-    def set_led_roi(self, roi):
-        self.led_roi = roi
-        self.sync_panel.set_led_roi(roi)
-        self.start_led_detection()
-
-    def start_led_detection(self):
-        if not self.video_player.has_video() or self.led_roi is None:
-            return
-
-        try:
-            scan_start_sec, scan_end_sec = self.sync_panel.led_scan_range_sec()
-        except ValueError as error:
-            self.sync_panel.mark_scan_range_valid(False)
-            QMessageBox.warning(self, "Invalid LED scan range", str(error))
-            return
-
-        scan_start_frame = (
-            self.video_player.time_sec_to_frame(scan_start_sec)
-            if scan_start_sec is not None
-            else 0
-        )
-        scan_end_frame = (
-            self.video_player.time_sec_to_frame(scan_end_sec)
-            if scan_end_sec is not None
-            else max(self.video_player.total_frames - 1, 0)
-        )
-        if scan_start_frame >= scan_end_frame:
-            self.sync_panel.mark_scan_range_valid(False)
-            QMessageBox.warning(
-                self,
-                "Invalid LED scan range",
-                "LED scan range is too short after converting to frames.",
-            )
-            return
-
-        if self.led_worker is not None and self.led_worker.isRunning():
-            if not self.stop_led_detection(wait=True):
-                QMessageBox.information(
-                    self,
-                    "LED detection",
-                    "LED detection is still stopping. Please try again in a moment.",
-                )
-                return
-
-        cache_key = self.led_cache_key(scan_start_frame, scan_end_frame)
-        cached_points = self.led_brightness_cache.get(cache_key)
-
-        self.sync_panel.set_led_detection_status(
-            "LED detection: using cached ROI brightness data."
-            if cached_points is not None
-            else "LED detection: analyzing ROI frame changes. You can wait here; video playback is not required."
-        )
-        self.sync_panel.begin_led_detection_progress()
-        self.led_worker = LedDetectionWorker(
-            video_path=self.video_player.video_path,
-            roi=self.led_roi,
-            rotate_180=self.video_player.rotate_180_enabled,
-            fps=self.video_player.fps,
-            scan_start_frame=scan_start_frame,
-            scan_end_frame=scan_end_frame,
-            detect_multiple=self.sync_panel.detect_multiple_led_events(),
-            cached_points=cached_points,
-        )
-        worker = self.led_worker
-        worker.result_ready.connect(
-            lambda points, threshold, events, stats, worker=worker: (
-                self.finish_led_detection(
-                    worker,
-                    points,
-                    threshold,
-                    events,
-                    stats,
-                    cache_key,
-                )
-            )
-        )
-        worker.progress_changed.connect(
-            lambda current_frame, total_frames, worker=worker: (
-                self.update_led_detection_progress(worker, current_frame, total_frames)
-            )
-        )
-        worker.stage_changed.connect(
-            lambda text, worker=worker: self.update_led_detection_stage(worker, text)
-        )
-        worker.failed.connect(
-            lambda message, worker=worker: self.fail_led_detection(worker, message)
-        )
-        self.led_worker.finished.connect(self.cleanup_led_worker)
-        self.led_worker.start()
-
-    def led_cache_key(self, scan_start_frame, scan_end_frame):
-        return (
-            self.video_player.video_path,
-            tuple(self.led_roi) if self.led_roi is not None else None,
-            bool(self.video_player.rotate_180_enabled),
-            float(self.video_player.fps or 0.0),
-            int(scan_start_frame),
-            int(scan_end_frame),
-            20,
-        )
-
-    def stop_led_detection(self, wait=False):
-        if self.led_worker is None:
-            return True
-
-        if self.led_worker.isRunning():
-            self.led_worker.requestInterruption()
-            if wait:
-                self.led_worker.wait(3000)
-
-        return not self.led_worker.isRunning()
-
-    def finish_led_detection(
-        self,
-        worker,
-        points,
-        threshold,
-        events,
-        stats,
-        cache_key,
-    ):
-        if self.led_worker is not None and worker is not self.led_worker:
-            return
-
-        cache_hit = worker.cached_points is not None
-        if points and cache_key is not None and not cache_hit:
-            self.led_brightness_cache[cache_key] = points
-
-        self.sync_panel.finish_led_detection_progress()
-        self.sync_panel.set_led_analysis(
-            points,
-            threshold,
-            events,
-            stats=stats,
-        )
-        interval_count = stats.get("event_count", len(events) // 2)
-        mode_label = stats.get("mode_label", "Frame delta (ROI mean brightness)")
-        self.add_led_events(events)
-        event_status = (
-            f"event pairs={interval_count}" if events else "no LED event selected"
-        )
-        status = (
-            f"LED detection: {mode_label} | {interval_count} intervals | "
-            f"scan frames={stats.get('scan_start_frame', 0)}-{stats.get('scan_end_frame', 0)} | "
-            f"coarse step={stats.get('coarse_step', 20)} frames | "
-            f"refine window={stats.get('refine_window_sec', 1.0):.1f}s | "
-            f"points={stats.get('points_count', len(points or []))} | "
-            f"{'multiple' if stats.get('detect_multiple') else 'single'} | "
-            f"threshold={stats.get('threshold', threshold):.6f} | "
-            f"duration={stats.get('min_duration_sec', 0.6):.1f}-{stats.get('max_duration_sec', 1.5):.1f}s "
-            f"target={stats.get('expected_duration_sec', 1.0):.1f}s | "
-            f"{event_status}"
-        )
-        status += (
-            f" | scan={stats.get('scan_elapsed_sec', 0.0):.1f}s"
-            f" detect={stats.get('detect_elapsed_sec', 0.0):.1f}s"
-        )
-        backend = stats.get("brightness_backend")
-        if backend == "opencl":
-            status += (
-                f" | brightness=OpenCL"
-                f" device={stats.get('opencl_device', 'GPU')}"
-                f" vendor={stats.get('opencl_device_vendor', 'unknown')}"
-                f" selected={stats.get('opencl_selected_reason', 'auto')}"
-                f" batch={stats.get('opencl_batch_mode', 'fixed')}"
-                f" capacity={stats.get('opencl_batch_capacity', 0)}"
-                f" batches={stats.get('opencl_batches', 0)}"
-                f" max_batch={stats.get('opencl_max_batch_frames', 0)}"
-            )
-        elif backend == "cpu":
-            status += " | brightness=CPU"
-            if stats.get("opencl_fallback_reason"):
-                status += (
-                    f" (OpenCL fallback: {stats.get('opencl_fallback_reason')})"
-                )
-        elif backend == "cache":
-            status += " | brightness=cached"
-        if stats.get("video_decode_backend"):
-            status += f" | decode={stats.get('video_decode_backend')}"
-            if (
-                stats.get("video_decode_backend") == "opencv_cpu"
-                and stats.get("video_decode_fallback_reason")
-            ):
-                status += " (hw fallback)"
-        if cache_hit:
-            status += " | cached scan"
-        self.sync_panel.set_led_detection_status(status)
-
-    def update_led_detection_progress(self, worker, current_frame, total_frames):
-        if self.led_worker is not None and worker is not self.led_worker:
-            return
-
-        self.sync_panel.update_led_detection_progress(current_frame, total_frames)
-
-    def update_led_detection_stage(self, worker, text):
-        if self.led_worker is not None and worker is not self.led_worker:
-            return
-
-        self.sync_panel.set_led_detection_stage(text)
-
-    def fail_led_detection(self, worker, message):
-        if self.led_worker is not None and worker is not self.led_worker:
-            return
-
-        self.sync_panel.fail_led_detection_progress()
-        self.sync_panel.set_led_detection_status("LED detection: failed")
-        QMessageBox.warning(self, "LED detection failed", message)
-
-    def cleanup_led_worker(self):
-        worker = self.sender()
-        if worker is not None:
-            worker.deleteLater()
-
-        if worker is self.led_worker:
-            self.led_worker = None
-
-    def reset_sync_state_for_new_video(self):
-        self.timeMarker_info = None
-        self.led_roi = None
-        self.time_offset_sec = None
-
-        self.ttl_panel.set_markers(None)
-        self.event_table.clear_events(emit=False)
-        self.event_table.set_sync_time_origin(None)
-        self.video_player.set_sync_time_origin(None)
-        self.lfp_panel.set_sync_time_origin(None)
-        self.lfp_panel.clear_current_time_marker()
-
-        self.sync_panel.video_led_label.setText("Video LED marker: Not selected")
-        self.sync_panel.ttl_label.setText("TTL marker: Not loaded")
-        self.sync_panel.offset_label.setText(
-            "Time offset (video - TTL): Not calculated"
-        )
-        self.sync_panel.led_roi_label.setText("LED ROI: Not selected")
-        self.sync_panel.set_roi_plot_idle()
-        self.sync_panel.set_led_detection_status("LED detection: Not analyzed")
-
     def closeEvent(self, event):
         if self.stop_led_detection(wait=True):
             event.accept()
@@ -534,136 +239,3 @@ class MainWindow(QMainWindow):
             "LED detection is still stopping. Please close the window again in a moment.",
         )
         event.ignore()
-
-    def set_ttl_markers(self, info):
-        self.timeMarker_info = info
-        first_marker_sec = self.timeMarker_info.get("first_marker_sec")
-        if first_marker_sec is not None:
-            self.sync_panel.set_ttl_marker(first_marker_sec)
-        else:
-            self.sync_panel.ttl_label.setText("TTL marker: Not loaded")
-        self.update_time_offset()
-
-    def add_event(self, event_type):
-        if not self.video_player.has_video():
-            QMessageBox.warning(self, "No video", "Please import a video first.")
-            return
-
-        self.event_table.add_event(
-            event_type=event_type,
-            video_time_sec=self.video_player.current_time_sec(),
-            frame_index=self.video_player.current_frame,
-            note="",
-        )
-
-    def add_led_events(self, led_events):
-        for event in led_events:
-            self.event_table.add_event(
-                event_type=event.event_type,
-                video_time_sec=event.video_time_sec,
-                frame_index=event.frame_index,
-                note=f"brightness={event.brightness:.4f}",
-            )
-
-        if led_events:
-            self.show_marker_panel()
-
-    def first_video_led_time_sec(self):
-        led_events = [
-            event for event in self.event_table.events()
-            if event["event_type"] == "LED_on"
-        ]
-        if not led_events:
-            return None
-
-        first_led_event = min(led_events, key=lambda event: event["frame_index"])
-        if self.video_player.has_video() and self.video_player.fps:
-            return self.video_player.frame_to_time_sec(first_led_event["frame_index"])
-
-        return first_led_event["video_time_sec"]
-
-    def update_time_offset(self):
-        video_led_sec = self.first_video_led_time_sec()
-        if video_led_sec is None:
-            self.sync_panel.video_led_label.setText("Video LED marker: Not selected")
-            self.sync_panel.offset_label.setText(
-                "Time offset (video - TTL): Not calculated"
-            )
-            self.time_offset_sec = None
-            self.video_player.set_sync_time_origin(None)
-            self.lfp_panel.set_sync_time_origin(None)
-            self.event_table.set_sync_time_origin(None)
-            self.lfp_panel.clear_current_time_marker()
-            return
-
-        self.sync_panel.set_video_led_marker(video_led_sec)
-
-        if self.timeMarker_info is None:
-            self.sync_panel.offset_label.setText(
-                "Time offset (video - TTL): Not calculated"
-            )
-            self.time_offset_sec = None
-            self.video_player.set_sync_time_origin(None)
-            self.lfp_panel.set_sync_time_origin(None)
-            self.event_table.set_sync_time_origin(None)
-            self.lfp_panel.clear_current_time_marker()
-            return
-
-        ttl_marker_sec = self.timeMarker_info.get("first_marker_sec")
-        if ttl_marker_sec is None:
-            self.sync_panel.offset_label.setText(
-                "Time offset (video - TTL): Not calculated"
-            )
-            self.time_offset_sec = None
-            self.video_player.set_sync_time_origin(None)
-            self.lfp_panel.set_sync_time_origin(None)
-            self.event_table.set_sync_time_origin(None)
-            self.lfp_panel.clear_current_time_marker()
-            return
-
-        previous_video_origin_sec = self.video_player.sync_time_origin_sec
-        self.time_offset_sec = video_led_sec - ttl_marker_sec
-        self.video_player.set_sync_time_origin(video_led_sec)
-        self.lfp_panel.set_sync_time_origin(ttl_marker_sec)
-        self.event_table.set_sync_time_origin(video_led_sec)
-        self.sync_panel.set_offset(self.time_offset_sec)
-        if (
-            previous_video_origin_sec is None
-            or abs(previous_video_origin_sec - video_led_sec) > 1e-6
-        ):
-            self.video_player.seek_time_sec(video_led_sec)
-
-        self.update_waveform_current_time(
-            self.video_player.current_frame,
-            self.video_player.current_time_sec(),
-        )
-
-    def seek_video_to_record_time(self, record_time_sec):
-        if not self.video_player.has_video():
-            QMessageBox.warning(self, "No video", "Please import a video first.")
-            return
-
-        if self.time_offset_sec is None:
-            QMessageBox.warning(
-                self,
-                "Not synchronized",
-                "Please calculate video-LFP synchronization before seeking from waveform time.",
-            )
-            return
-
-        video_time_sec = float(record_time_sec) + self.time_offset_sec
-        self.video_player.seek_time_sec(video_time_sec)
-
-    def update_waveform_current_time(self, frame_index, video_time_sec):
-        if self.loading_video:
-            return
-
-        if self.time_offset_sec is None:
-            return
-
-        record_time_sec = video_time_sec - self.time_offset_sec
-        self.lfp_panel.set_current_time_marker(
-            record_time_sec,
-            follow_playback=self.video_player.is_playing,
-        )
-

@@ -1,7 +1,6 @@
 from dataclasses import dataclass
+import os
 from pathlib import Path
-
-from numpy.linalg import det
 
 
 @dataclass
@@ -17,6 +16,36 @@ class VideoMetadata:
     total_frames: int
     detected_duration_sec: float
     duration_sec: float
+
+
+def open_video_capture(cv2, video_path):
+    """Open a capture with hardware decoding when supported, then fall back to CPU."""
+    disabled = os.environ.get("PIG_LED_HW_DECODE", "1").strip().lower()
+    if disabled in {"0", "false", "no", "off"}:
+        return cv2.VideoCapture(video_path), "opencv_cpu", "disabled"
+
+    hw_names = ("CAP_FFMPEG", "CAP_PROP_HW_ACCELERATION", "VIDEO_ACCELERATION_ANY")
+    if all(hasattr(cv2, name) for name in hw_names):
+        try:
+            cap = cv2.VideoCapture(
+                video_path,
+                cv2.CAP_FFMPEG,
+                [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_ANY],
+            )
+            if cap.isOpened():
+                return cap, "opencv_hw", ""
+            cap.release()
+            fallback_reason = "hardware decode capture did not open"
+        except Exception as error:
+            fallback_reason = str(error)
+
+        return cv2.VideoCapture(video_path), "opencv_cpu", fallback_reason
+
+    return (
+        cv2.VideoCapture(video_path),
+        "opencv_cpu",
+        "OpenCV hardware decode API is unavailable",
+    )
 
 
 def open_video(path):
@@ -43,8 +72,6 @@ def parse_video_metadata(path, using_fps=None):
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
     detected_fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
-    if not using_fps:
-        using_fps = detected_fps
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
 
     fourcc_value = int(cap.get(cv2.CAP_PROP_FOURCC) or 0)
@@ -55,6 +82,9 @@ def parse_video_metadata(path, using_fps=None):
         if detected_fps
         else 0.0
     )
+
+    if using_fps is None:
+        using_fps = detected_fps if detected_fps > 0 else 30.0
 
     duration_sec = (
         total_frames / using_fps
@@ -120,6 +150,30 @@ def time_sec_to_frame(time_sec, fps, total_frames=None):
         frame_index = max(0, min(frame_index, total_frames - 1))
 
     return frame_index
+
+
+def parse_time_input(text):
+    """Parse seconds, MM:SS, or HH:MM:SS text into seconds."""
+    text = text.strip()
+    if not text:
+        return None
+
+    try:
+        if ":" not in text:
+            return float(text)
+
+        parts = [float(part) for part in text.split(":")]
+        if len(parts) == 2:
+            minutes, seconds = parts
+            return minutes * 60 + seconds
+
+        if len(parts) == 3:
+            hours, minutes, seconds = parts
+            return hours * 3600 + minutes * 60 + seconds
+    except ValueError:
+        return None
+
+    return None
 
 
 def format_time(seconds):

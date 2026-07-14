@@ -14,7 +14,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..video.video_utils import format_time
+from ..led_status import format_led_detection_status
+from ..video.video_utils import format_time, parse_time_input as parse_time_text
 
 
 class RoiPlotIndicator(QWidget):
@@ -201,26 +202,7 @@ class SyncPanel(QWidget):
         )
 
     def parse_time_input(self, text):
-        text = text.strip()
-        if not text:
-            return None
-
-        try:
-            if ":" not in text:
-                return float(text)
-
-            parts = [float(part) for part in text.split(":")]
-            if len(parts) == 2:
-                minutes, seconds = parts
-                return minutes * 60 + seconds
-
-            if len(parts) == 3:
-                hours, minutes, seconds = parts
-                return hours * 3600 + minutes * 60 + seconds
-        except ValueError:
-            return None
-
-        return None
+        return parse_time_text(text)
 
     def format_scan_input(self, widget):
         text = widget.text().strip()
@@ -319,27 +301,7 @@ class SyncPanel(QWidget):
         if not points:
             self.led_detection_label.setText("LED detection: No brightness data")
         else:
-            interval_count = stats.get("event_count", len(events) // 2)
-            mode_label = stats.get("mode_label", "Frame delta (ROI mean brightness)")
-            event_status = (
-                f"event pairs={interval_count}"
-                if interval_count
-                else "no LED event selected"
-            )
-            status = (
-                f"LED detection: {mode_label} | {interval_count} intervals | "
-                f"scan frames={stats.get('scan_start_frame', 0)}-{stats.get('scan_end_frame', 0)} | "
-                f"coarse step={stats.get('coarse_step', 20)} frames | "
-                f"refine window={stats.get('refine_window_sec', 1.0):.1f}s | "
-                f"points={stats.get('points_count', len(points))} | "
-                f"{'multiple' if stats.get('detect_multiple') else 'single'} | "
-                f"threshold={stats.get('threshold', threshold):.6f} | "
-                f"duration={stats.get('min_duration_sec', 0.6):.1f}-{stats.get('max_duration_sec', 1.5):.1f}s "
-                f"target={stats.get('expected_duration_sec', 1.0):.1f}s | "
-                f"{event_status}"
-            )
-            status += self.format_timing_status(stats)
-            status += self.format_acceleration_status(stats)
+            status = format_led_detection_status(points, threshold, events, stats)
             self.led_detection_label.setText(status)
             self.led_detection_label.setToolTip(status)
 
@@ -413,10 +375,14 @@ class SyncPanel(QWidget):
         )
         self.led_progress_bar.show()
 
-    def finish_led_detection_progress(self):
+    def finish_led_detection_progress(self, has_events=True):
         self.led_progress_bar.setRange(0, 100)
         self.led_progress_bar.setValue(100)
-        self.led_progress_bar.setFormat("LED analysis complete")
+        self.led_progress_bar.setFormat(
+            "LED analysis complete"
+            if has_events
+            else "LED scan complete: no events found"
+        )
         self.led_progress_bar.show()
 
     def set_led_detection_stage(self, text):

@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QSizePolicy,
     QSlider,
@@ -14,6 +15,7 @@ from PySide6.QtWidgets import (
 from .video_utils import (
     format_time,
     frame_to_time_sec,
+    parse_time_input as parse_time_text,
     parse_video_metadata,
     read_frame,
     time_sec_to_frame,
@@ -380,15 +382,34 @@ class VideoPlayer(QWidget):
     def load_video(self, path):
         import cv2
 
+        new_cap = None
+        try:
+            metadata = parse_video_metadata(path)
+            new_cap = cv2.VideoCapture(path)
+            if not new_cap.isOpened():
+                raise ValueError("The video stream could not be opened.")
+
+            success, first_frame = read_frame(new_cap, 0)
+            if not success or first_frame is None:
+                raise ValueError("The first video frame could not be decoded.")
+        except Exception as error:
+            if new_cap is not None:
+                new_cap.release()
+            if not self.has_video():
+                self.info_label.setText("Failed to open video")
+            QMessageBox.warning(
+                self,
+                "Video load failed",
+                "Could not open or decode the selected video.\n\n"
+                f"Reason: {error}",
+            )
+            return False
+
         if self.cap is not None:
             self.cap.release()
 
-        self.metadata = parse_video_metadata(path)
-        self.cap = cv2.VideoCapture(path)
-
-        if not self.cap.isOpened():
-            self.info_label.setText("Failed to open video")
-            return False
+        self.metadata = metadata
+        self.cap = new_cap
 
         self.video_path = path
         self.fps = self.metadata.using_fps
@@ -412,7 +433,8 @@ class VideoPlayer(QWidget):
         self.play_button.setText("Play")
         self.rotate_button.setText("Rotate 180°")
 
-        return self.show_frame(0)
+        self.display_frame(first_frame, 0)
+        return True
 
     def toggle_play(self):
         if not self.has_video():
@@ -477,30 +499,17 @@ class VideoPlayer(QWidget):
     def seek_time_sec(self, time_sec):
         self.seek_frame(self.time_sec_to_frame(time_sec))
 
+    def update_seek_inputs_from_current_frame(self):
+        self.time_seek_input.setText(format_time(self.current_time_sec()))
+        self.frame_seek_input.setText(str(self.current_frame))
+        self.mark_seek_input_valid(self.time_seek_input, True)
+        self.mark_seek_input_valid(self.frame_seek_input, True)
+
     def mark_seek_input_valid(self, widget, is_valid):
         widget.setStyleSheet("" if is_valid else "border: 1px solid #c0392b;")
 
     def parse_time_input(self, text):
-        text = text.strip()
-        if not text:
-            return None
-
-        try:
-            if ":" not in text:
-                return float(text)
-
-            parts = [float(part) for part in text.split(":")]
-            if len(parts) == 2:
-                minutes, seconds = parts
-                return minutes * 60 + seconds
-
-            if len(parts) == 3:
-                hours, minutes, seconds = parts
-                return hours * 3600 + minutes * 60 + seconds
-        except ValueError:
-            return None
-
-        return None
+        return parse_time_text(text)
 
     def seek_to_time_input(self):
         seconds = self.parse_time_input(self.time_seek_input.text())

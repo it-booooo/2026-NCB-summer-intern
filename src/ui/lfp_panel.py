@@ -1,3 +1,5 @@
+import csv
+
 from .. import plotting as draw
 import numpy as np
 from .. import signal_processing as signal_func
@@ -269,6 +271,8 @@ class LfpPanel(QWidget):
         self.current_record_time_sec = None
         self.current_time_lines = {}
         self.current_time_backgrounds = {}
+        self.event_intervals = []
+        self.event_interval_artists = []
         self.sync_time_origin_sec = None
         self.click_seek_state = None
         self.spectrum_dialogs = []
@@ -828,6 +832,7 @@ class LfpPanel(QWidget):
         canvas.draw_idle()
 
         self.set_shared_xlim(*full_xlim, source="timeline")
+        self.update_event_interval_artists()
         self.update_current_time_marker()
 
     def set_current_time_marker(self, record_time_sec, follow_playback=False):
@@ -848,6 +853,49 @@ class LfpPanel(QWidget):
         for canvas in [self.lfp_canvas, self.axis_canvas, self.timeline_canvas]:
             if canvas is not None:
                 canvas.draw_idle()
+
+    def set_event_intervals(self, intervals):
+        self.event_intervals = [dict(interval) for interval in intervals]
+        self.update_event_interval_artists()
+
+    def clear_event_interval_artists(self):
+        for artist in self.event_interval_artists:
+            try:
+                artist.remove()
+            except (RuntimeError, ValueError):
+                pass
+        self.event_interval_artists = []
+
+    def update_event_interval_artists(self):
+        self.clear_event_interval_artists()
+
+        for key, fig, canvas in self.figure_items():
+            if fig is None or canvas is None or not fig.axes:
+                continue
+
+            ax = fig.axes[0]
+            for interval in self.event_intervals:
+                start_sec = float(interval["record_start_sec"])
+                end_sec = float(interval["record_end_sec"])
+                if end_sec <= start_sec:
+                    continue
+
+                event_type = interval.get("event_type", "behavior")
+                color = "#2eaf62" if event_type == "led" else "#f39c12"
+                alpha = 0.30 if event_type == "led" else 0.25
+                self.event_interval_artists.append(
+                    ax.axvspan(
+                        start_sec,
+                        end_sec,
+                        color=color,
+                        alpha=alpha,
+                        linewidth=0,
+                        zorder=1,
+                    )
+                )
+
+            self.invalidate_current_time_backgrounds(key)
+            canvas.draw_idle()
 
     def update_current_time_marker(self):
         if self.current_record_time_sec is None:
@@ -1643,6 +1691,7 @@ class LfpPanel(QWidget):
             self.lfp_callback_connected = True
 
         self.create_or_update_timeline()
+        self.update_event_interval_artists()
         self.update_current_time_marker()
 
     def plot_axis(self):
@@ -1668,6 +1717,7 @@ class LfpPanel(QWidget):
             self.axis_callback_connected = True
 
         self.create_or_update_timeline()
+        self.update_event_interval_artists()
         self.update_current_time_marker()
 
     def set_lfp_info(self, info):
