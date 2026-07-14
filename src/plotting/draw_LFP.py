@@ -12,11 +12,12 @@ from ..data_io import readers as read
 
 class LfpFigure(Figure):
     set_lfp_channel: Callable[[int], None]
+    set_lfp_signal_view: Callable[[bool], None]
     set_lfp_xlim: Callable[[float, float], None]
     reset_lfp_x_zoom: Callable[[], None]
     add_lfp_xlim_callback: Callable[[Callable[[tuple[float, float]], None]], None]
     lfp_full_xlim: tuple[float, float]
-    lfp_lines: dict[int, Line2D]
+    lfp_lines: dict[tuple[int, bool], Line2D]
     lfp_channel_numbers: list[int]
     lfp_plot_step: int
 
@@ -88,7 +89,8 @@ def LFP(
     )
     ax = fig.add_axes((0.08, 0.30, 0.90, 0.60))
 
-    lines: dict[int, Line2D] = {}
+    lines: dict[tuple[int, bool], Line2D] = {}
+    show_filtered = bool(filter_settings and filter_settings.show_filtered)
 
     for channel in channel_numbers:
         sample_rate_hz = signal_func.sample_rate_for_channel(
@@ -96,19 +98,29 @@ def LFP(
             data["time_us"],
             channel,
         )
-        signal_values = signal_func.prepare_lfp_signal(
-            data[f"channel_{channel}"].to_numpy(dtype=float),
-            sample_rate_hz,
-            filter_settings,
+        raw_values = data[f"channel_{channel}"].to_numpy(dtype=float)
+        filtered_settings = signal_func.LfpFilterSettings(
+            show_filtered=True,
+            bandpass_enabled=bool(filter_settings and filter_settings.bandpass_enabled),
+            bandpass_low_hz=(filter_settings.bandpass_low_hz if filter_settings else 1.0),
+            bandpass_high_hz=(filter_settings.bandpass_high_hz if filter_settings else 100.0),
+            line_noise_hz=(filter_settings.line_noise_hz if filter_settings else None),
+            notch_quality=(filter_settings.notch_quality if filter_settings else 30.0),
         )
-        line = ax.plot(
-            x,
-            signal_values[plot_index],
-            linewidth=0.5,
-            color="blue",
-            visible=(channel == selected_channel),
-        )[0]
-        lines[channel] = line
+        filtered_values = signal_func.prepare_lfp_signal(
+            raw_values,
+            sample_rate_hz,
+            filtered_settings,
+        )
+        for filtered, signal_values in ((False, raw_values), (True, filtered_values)):
+            line = ax.plot(
+                x,
+                signal_values[plot_index],
+                linewidth=0.5,
+                color="blue",
+                visible=(channel == selected_channel and filtered == show_filtered),
+            )[0]
+            lines[(channel, filtered)] = line
 
     ax.set_xlabel("")
     ax.set_ylabel("")
@@ -122,17 +134,7 @@ def LFP(
         transform=ax.transAxes,
         clip_on=False,
     )
-    ax.text(
-        -0.012,
-        -0.23,
-        "Time (s)",
-        fontsize=7,
-        ha="right",
-        va="top",
-        transform=ax.transAxes,
-        clip_on=False,
-    )
-    ax.text(
+    filter_label = ax.text(
         0.99,
         0.99,
         signal_func.filter_description(filter_settings),
@@ -272,9 +274,31 @@ def LFP(
 
         selected_channel = channel
 
-        for item_channel, line in lines.items():
-            line.set_visible(item_channel == selected_channel)
+        for (item_channel, filtered), line in lines.items():
+            line.set_visible(
+                item_channel == selected_channel and filtered == show_filtered
+            )
 
+        ax.relim(visible_only=True)
+        ax.autoscale_view(scalex=False, scaley=True)
+        fig.canvas.draw_idle()
+
+    def set_lfp_signal_view(filtered: bool) -> None:
+        nonlocal show_filtered
+        show_filtered = bool(filtered)
+        for (item_channel, item_filtered), line in lines.items():
+            line.set_visible(
+                item_channel == selected_channel and item_filtered == show_filtered
+            )
+        label_settings = signal_func.LfpFilterSettings(
+            show_filtered=show_filtered,
+            bandpass_enabled=bool(filter_settings and filter_settings.bandpass_enabled),
+            bandpass_low_hz=(filter_settings.bandpass_low_hz if filter_settings else 1.0),
+            bandpass_high_hz=(filter_settings.bandpass_high_hz if filter_settings else 100.0),
+            line_noise_hz=(filter_settings.line_noise_hz if filter_settings else None),
+            notch_quality=(filter_settings.notch_quality if filter_settings else 30.0),
+        )
+        filter_label.set_text(signal_func.filter_description(label_settings))
         ax.relim(visible_only=True)
         ax.autoscale_view(scalex=False, scaley=True)
         fig.canvas.draw_idle()
@@ -282,6 +306,7 @@ def LFP(
     set_lfp_channel(selected_channel)
 
     fig.set_lfp_channel = set_lfp_channel
+    fig.set_lfp_signal_view = set_lfp_signal_view
     fig.set_lfp_xlim = set_lfp_xlim
     fig.reset_lfp_x_zoom = reset_lfp_x_zoom
     fig.add_lfp_xlim_callback = add_lfp_xlim_callback

@@ -314,6 +314,12 @@ class LfpPanel(QWidget):
         self.notch_checkbox.stateChanged.connect(self.refresh_lfp_processing)
         self.update_notch_control_text()
 
+        self.apply_filter_button = QPushButton("confirm")
+        self.apply_filter_button.setToolTip(
+            "Apply the current filter settings and redraw the LFP waveform."
+        )
+        self.apply_filter_button.clicked.connect(self.apply_lfp_filter_settings)
+
         self.spectrum_button = QPushButton("Power spectrum")
         self.spectrum_button.setEnabled(False)
         self.spectrum_button.setToolTip(
@@ -382,6 +388,7 @@ class LfpPanel(QWidget):
         filter_layout.addWidget(QLabel("High"))
         filter_layout.addWidget(self.bandpass_high_spin)
         filter_layout.addWidget(self.notch_checkbox)
+        filter_layout.addWidget(self.apply_filter_button)
         filter_layout.addStretch()
         filter_layout.addWidget(self.spectrum_button)
         filter_layout.addWidget(self.spectrogram_button)
@@ -392,6 +399,26 @@ class LfpPanel(QWidget):
         layout.addWidget(self.timeline_area)
 
         self.setLayout(layout)
+
+        self._applied_lfp_filter_settings = self.pending_lfp_filter_settings()
+        for control, signal in (
+            (self.bandpass_checkbox, self.bandpass_checkbox.stateChanged),
+            (self.bandpass_low_spin, self.bandpass_low_spin.valueChanged),
+            (self.bandpass_high_spin, self.bandpass_high_spin.valueChanged),
+            (self.notch_checkbox, self.notch_checkbox.stateChanged),
+        ):
+            try:
+                signal.disconnect(self.refresh_lfp_processing)
+            except (RuntimeError, TypeError):
+                pass
+            signal.connect(self.mark_lfp_filter_settings_pending)
+        self.signal_view_selector.currentIndexChanged.disconnect(
+            self.refresh_lfp_processing
+        )
+        self.signal_view_selector.currentIndexChanged.connect(
+            self.switch_lfp_signal_view
+        )
+        self.apply_filter_button.setEnabled(False)
 
     def create_frequency_spinbox(self, value):
         spinbox = QDoubleSpinBox()
@@ -864,6 +891,9 @@ class LfpPanel(QWidget):
             return None
 
     def current_lfp_filter_settings(self):
+        return self._applied_lfp_filter_settings
+
+    def pending_lfp_filter_settings(self):
         line_noise_hz = self.line_noise_hz if self.notch_checkbox.isChecked() else None
         if line_noise_hz is not None:
             line_noise_hz = float(line_noise_hz)
@@ -876,6 +906,46 @@ class LfpPanel(QWidget):
             line_noise_hz=line_noise_hz,
         )
 
+    def mark_lfp_filter_settings_pending(self, *_args):
+        self.apply_filter_button.setEnabled(
+            self.pending_lfp_filter_settings() != self._applied_lfp_filter_settings
+        )
+
+    def apply_lfp_filter_settings(self):
+        settings = self.pending_lfp_filter_settings()
+        if settings.bandpass_enabled and settings.bandpass_low_hz >= settings.bandpass_high_hz:
+            QMessageBox.warning(
+                self,
+                "Invalid bandpass range",
+                "Bandpass low cutoff must be lower than the high cutoff.",
+            )
+            return
+
+        if settings == self._applied_lfp_filter_settings:
+            self.apply_filter_button.setEnabled(False)
+            return
+
+        self._applied_lfp_filter_settings = settings
+        self.apply_filter_button.setEnabled(False)
+        self.refresh_lfp_processing()
+
+    def switch_lfp_signal_view(self, *_args):
+        current = self._applied_lfp_filter_settings
+        show_filtered = bool(self.signal_view_selector.currentData())
+        self._applied_lfp_filter_settings = signal_func.LfpFilterSettings(
+            show_filtered=show_filtered,
+            bandpass_enabled=current.bandpass_enabled,
+            bandpass_low_hz=current.bandpass_low_hz,
+            bandpass_high_hz=current.bandpass_high_hz,
+            line_noise_hz=current.line_noise_hz,
+            notch_quality=current.notch_quality,
+        )
+        self.mark_lfp_filter_settings_pending()
+        if self.lfp_fig is None:
+            return
+        self.lfp_fig.set_lfp_signal_view(show_filtered)
+        self.invalidate_current_time_backgrounds("lfp")
+
     def set_line_noise_hz(self, line_noise_hz):
         next_value = 60.0 if line_noise_hz is None else float(line_noise_hz)
         if self.line_noise_hz == next_value:
@@ -883,7 +953,18 @@ class LfpPanel(QWidget):
 
         self.line_noise_hz = next_value
         self.update_notch_control_text()
-        self.refresh_lfp_processing()
+        if self._applied_lfp_filter_settings.line_noise_hz is not None:
+            current = self._applied_lfp_filter_settings
+            self._applied_lfp_filter_settings = signal_func.LfpFilterSettings(
+                show_filtered=current.show_filtered,
+                bandpass_enabled=current.bandpass_enabled,
+                bandpass_low_hz=current.bandpass_low_hz,
+                bandpass_high_hz=current.bandpass_high_hz,
+                line_noise_hz=next_value,
+                notch_quality=current.notch_quality,
+            )
+            self.refresh_lfp_processing()
+        self.mark_lfp_filter_settings_pending()
 
     def refresh_lfp_processing(self, *_args):
         if not self.lfp_path:
