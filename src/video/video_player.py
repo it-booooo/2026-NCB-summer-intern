@@ -1,7 +1,6 @@
 from PySide6.QtCore import QPoint, QRect, Qt, QTimer, Signal
 from PySide6.QtGui import QImage, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
-    QFileDialog,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -378,18 +377,8 @@ class VideoPlayer(QWidget):
     def time_sec_to_frame(self, time_sec):
         return time_sec_to_frame(time_sec, self.fps, self.total_frames)
 
-    def load_video(self):
+    def load_video(self, path):
         import cv2
-
-        path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Open MP4",
-            "",
-            "Video Files (*.mp4)",
-        )
-
-        if not path:
-            return False
 
         if self.cap is not None:
             self.cap.release()

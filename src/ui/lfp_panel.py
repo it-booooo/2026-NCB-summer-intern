@@ -1,17 +1,15 @@
-import csv
-
 from .. import plotting as draw
 import numpy as np
 from .. import signal_processing as signal_func
 from ..data_io import readers as read
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QFileDialog,
     QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
-    QFileDialog,
     QFormLayout,
     QFrame,
     QGridLayout,

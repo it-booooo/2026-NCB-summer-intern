@@ -1,7 +1,6 @@
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
-    QFileDialog,
     QGroupBox,
     QHBoxLayout,
     QInputDialog,
@@ -12,12 +11,10 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from . import data_io as csv_func
-from . import plotting as draw
-from . import validation as check
 from .controllers import AnalysisMenuController
 from .detection import LedDetectionWorker
-from .io import export_events_csv, export_events_excel
+from .exporters import ExportController
+from .importers import ImportController
 from .ui import EventTable, LfpPanel, MarkerPanel, SyncPanel, TtlPanel
 from .video import VideoPlayer
 
@@ -43,6 +40,8 @@ class MainWindow(QMainWindow):
             self.select_led_roi,
         )
         self.analysis_controller = AnalysisMenuController(self)
+        self.import_controller = ImportController(self)
+        self.export_controller = ExportController(self)
         self.lfp_info = None
         self.axis_info = None
         self.timeMarker_info = None
@@ -60,17 +59,15 @@ class MainWindow(QMainWindow):
         self.create_menu()
         self.create_layout()
 
-    def add_action(self, menu, text, callback):
+    def add_action(self, menu, text, callback, description=""):
+        # description 是顯示給使用者的英文提示，同時用於 tooltip 與狀態列。
         action = QAction(text, self)
         action.triggered.connect(callback)
+        if description:
+            action.setToolTip(description)
+            action.setStatusTip(description)
         menu.addAction(action)
         return action
-
-    def open_csv_file(self, title):
-        path, _ = QFileDialog.getOpenFileName(
-            self, title, "", "CSV Files (*.csv);;All Files (*)"
-        )
-        return path
 
     def create_group(self, title, widget, margins=(6, 6, 6, 6)):
         group = QGroupBox(title)
@@ -87,30 +84,20 @@ class MainWindow(QMainWindow):
         self.analysis_menu = menu_bar.addMenu("Analysis")
         self.import_menu = self.file_menu.addMenu("Import")
         self.export_menu = self.file_menu.addMenu("Export")
+        self.import_menu.setToolTipsVisible(True)
+        self.export_menu.setToolTipsVisible(True)
 
-        import_actions = [
-            ("Import Video (.mp4)", self.import_video),
-            ("Import LFP (.csv)", self.import_lfp),
-            ("Import 3-axis (.csv)", self.import_axis),
-            ("Import Time Marker (.csv)", self.import_time_marker),
-        ]
-        export_actions = [
-            ("Export Markers as CSV", self.export_markers_csv),
-            ("Export Markers as Excel", self.export_markers_excel),
-            ("Export Check Results", self.export_check_results),
-            ("Export 3-axis Waveform Image", self.export_waveform_image),
-            ("Export LFP Waveform Image", self.export_lfp_segment),
-            ("Export Power Spectrum Image", self.export_power_spectrum_image),
-            ("Export Spectrogram Image", self.export_spectrogram_image),
-        ]
+        # Import／Export 的選單內容由各自的 controller 統一管理，避免流程散落於 app.py。
+        import_actions = self.import_controller.actions()
+        export_actions = self.export_controller.actions()
 
         self.add_action(self.import_menu, *import_actions[0])
         self.import_menu.addSeparator()
-        for text, callback in import_actions[1:]:
-            self.add_action(self.import_menu, text, callback)
+        for text, callback, description in import_actions[1:]:
+            self.add_action(self.import_menu, text, callback, description)
 
-        for text, callback in export_actions:
-            self.add_action(self.export_menu, text, callback)
+        for text, callback, description in export_actions:
+            self.add_action(self.export_menu, text, callback, description)
 
         self.add_action(self.settings_menu, "Set LFP step", self.set_lfp_step)
         self.add_action(self.settings_menu, "Set 3-axis step", self.set_axis_step)
@@ -515,26 +502,6 @@ class MainWindow(QMainWindow):
         if worker is self.led_worker:
             self.led_worker = None
 
-    def import_video(self):
-        if not self.stop_led_detection(wait=True):
-            QMessageBox.information(
-                self,
-                "LED detection",
-                "LED detection is still stopping. Please try again in a moment.",
-            )
-            return
-
-        self.loading_video = True
-        try:
-            loaded = self.video_player.load_video()
-        finally:
-            self.loading_video = False
-
-        if loaded:
-            self.led_brightness_cache.clear()
-            self.reset_sync_state_for_new_video()
-            self.sync_panel.set_video_path(self.video_player.video_path)
-
     def reset_sync_state_for_new_video(self):
         self.timeMarker_info = None
         self.led_roi = None
@@ -567,37 +534,6 @@ class MainWindow(QMainWindow):
             "LED detection is still stopping. Please close the window again in a moment.",
         )
         event.ignore()
-
-    def import_lfp(self):
-        path = self.open_csv_file("Import LFP (.csv)")
-        if path:
-            self.lfp_info = csv_func.parse_lfp_csv_info(path)
-            self.lfp_panel.set_lfp_info(self.lfp_info)
-            self.sync_panel.set_lfp_status(f"LFP file: {self.lfp_info['filename']}")
-            self.update_waveform_current_time(
-                self.video_player.current_frame,
-                self.video_player.current_time_sec(),
-            )
-
-    def import_axis(self):
-        path = self.open_csv_file("Import 3-axis (.csv)")
-        if path:
-            self.axis_info = csv_func.parse_lfp_csv_info(path)
-            self.lfp_panel.set_axis_info(self.axis_info)
-            self.update_waveform_current_time(
-                self.video_player.current_frame,
-                self.video_player.current_time_sec(),
-            )
-
-    def import_time_marker(self):
-        path = self.open_csv_file("Import Time Marker (.csv)")
-        if not path:
-            return
-
-        self.timeMarker_info = csv_func.parse_time_marker_csv_info(path)
-        self.set_ttl_markers(self.timeMarker_info)
-        self.ttl_panel.set_markers(self.timeMarker_info)
-        self.show_marker_panel()
 
     def set_ttl_markers(self, info):
         self.timeMarker_info = info
@@ -731,147 +667,3 @@ class MainWindow(QMainWindow):
             follow_playback=self.video_player.is_playing,
         )
 
-    def export_markers_csv(self):
-        self.export_markers("csv")
-
-    def export_markers_excel(self):
-        self.export_markers("xlsx")
-
-    def export_markers(self, file_type):
-        events = self.event_table.events()
-        if not events:
-            QMessageBox.information(
-                self, "No markers", "There are no markers to export."
-            )
-            return
-
-        if file_type == "csv":
-            title = "Export Markers as CSV"
-            default_name = "video_markers.csv"
-            file_filter = "CSV Files (*.csv)"
-            export_func = export_events_csv
-        else:
-            title = "Export Markers as Excel"
-            default_name = "video_markers.xlsx"
-            file_filter = "Excel Files (*.xlsx)"
-            export_func = export_events_excel
-
-        path, _ = QFileDialog.getSaveFileName(self, title, default_name, file_filter)
-
-        if path:
-            export_func(path, events)
-
-    def signal_exports(self):
-        exports = []
-        if self.lfp_info is not None:
-            exports.append(("LFP", self.lfp_info))
-        if self.axis_info is not None:
-            exports.append(("3-axis", self.axis_info))
-        return exports
-
-    def choose_signal_export(self, title):
-        exports = self.signal_exports()
-        if not exports:
-            QMessageBox.information(
-                self,
-                "No signal data",
-                "Please import LFP or 3-axis CSV data first.",
-            )
-            return None
-
-        if len(exports) == 1:
-            return exports[0]
-
-        items = [label for label, _ in exports]
-        label, accepted = QInputDialog.getItem(
-            self,
-            title,
-            "Data:",
-            items,
-            0,
-            False,
-        )
-        if not accepted:
-            return None
-
-        return exports[items.index(label)]
-
-    def export_check_results(self):
-        selected = self.choose_signal_export("Export Check Results")
-        if selected is None:
-            return
-
-        label, info = selected
-        filename = info.get("filename", label).rsplit(".", 1)[0]
-        default_name = f"{filename}_check_report.csv"
-        path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Export Check Results",
-            default_name,
-            "CSV Files (*.csv)",
-        )
-        if not path:
-            return
-
-        try:
-            output_path = check.check(info=info, output_path=path)
-        except Exception as error:
-            QMessageBox.warning(self, "Export check results failed", str(error))
-            return
-
-        QMessageBox.information(
-            self,
-            "Check Results Exported",
-            f"Check results exported to:\n{output_path}",
-        )
-
-    def export_lfp_segment(self):
-        self.lfp_panel.export_lfp_segment()
-
-    def export_power_spectrum_image(self):
-        self.lfp_panel.export_lfp_power_spectrum_image()
-
-    def export_spectrogram_image(self):
-        self.lfp_panel.export_lfp_spectrogram_image()
-
-    def export_waveform_image(self):
-        if self.axis_info is None:
-            QMessageBox.information(
-                self,
-                "No 3-axis data",
-                "Please import 3-axis CSV data first.",
-            )
-            return
-
-        filename = self.axis_info.get("filename", "axis").rsplit(".", 1)[0]
-        default_name = f"{filename}_waveform.png"
-
-        path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Export 3-axis Waveform Image",
-            default_name,
-            "PNG Images (*.png);;PDF Files (*.pdf);;SVG Files (*.svg);;All Files (*)",
-        )
-        if not path:
-            return
-
-        try:
-            fig = draw.accelerator(
-                info=self.axis_info,
-                compact=False,
-                step=self.lfp_panel.axis_step,
-            )
-            fig.savefig(path, dpi=300)
-        except Exception as error:
-            QMessageBox.warning(
-                self,
-                "Export 3-axis waveform image failed",
-                str(error),
-            )
-            return
-
-        QMessageBox.information(
-            self,
-            "3-axis Waveform Image Exported",
-            f"3-axis waveform image exported to:\n{path}",
-        )

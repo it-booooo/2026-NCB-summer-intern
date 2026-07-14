@@ -8,7 +8,9 @@ class AnalysisMenuController:
 
     def populate_menu(self, analysis_menu):
         export_segment_action = QAction("Export Selected Segment", self.parent)
-        export_segment_action.triggered.connect(self.export_selected_segment)
+        export_segment_action.triggered.connect(
+            self.parent.export_controller.export_selected_segment
+        )
         analysis_menu.addAction(export_segment_action)
 
     def select_led_roi(self):
@@ -18,9 +20,3 @@ class AnalysisMenuController:
 
         self.parent.video_player.start_roi_selection()
 
-    def export_selected_segment(self):
-        QMessageBox.information(
-            self.parent,
-            "Analysis",
-            "Export selected segment is not implemented yet.",
-        )
