@@ -48,23 +48,11 @@ def open_video_capture(cv2, video_path):
     )
 
 
-def open_video(path):
-    import cv2
-
-    cap = cv2.VideoCapture(path)
-
-    if not cap.isOpened():
-        return None
-
-    return cap
-
-
 def parse_video_metadata(path, using_fps=None):
     import cv2
 
-    cap = open_video(path)
-
-    if cap is None:
+    cap = cv2.VideoCapture(path)
+    if not cap.isOpened():
         raise ValueError(f"Could not open video: {path}")
 
     video_path = Path(path)

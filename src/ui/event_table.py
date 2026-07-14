@@ -15,6 +15,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from ..time_utils import absolute_time, relative_time
+
 
 DEFAULT_EVENT_TYPES = [
     "LED_on",
@@ -176,14 +178,8 @@ class EventTable(QTableWidget):
         )
         self.refresh_time_display()
 
-    def display_time(self, video_time_sec):
-        if self.sync_time_origin_sec is None:
-            return float(video_time_sec)
-
-        return float(video_time_sec) - self.sync_time_origin_sec
-
     def format_display_time(self, video_time_sec):
-        return f"{self.display_time(video_time_sec):.3f}"
+        return f"{relative_time(video_time_sec, self.sync_time_origin_sec):.3f}"
 
     def refresh_time_display(self):
         for row in range(self.rowCount()):
@@ -210,10 +206,7 @@ class EventTable(QTableWidget):
         except (TypeError, ValueError):
             return 0.0
 
-        if self.sync_time_origin_sec is None:
-            return display_time
-
-        return display_time + self.sync_time_origin_sec
+        return absolute_time(display_time, self.sync_time_origin_sec)
 
     def handle_cell_clicked(self, row, column):
         if column != self.VIDEO_TIME_COLUMN:

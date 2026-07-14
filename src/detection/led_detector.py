@@ -223,6 +223,13 @@ def point_for_frame(points, frame_index):
     return min(points, key=lambda point: abs(point.frame_index - frame_index))
 
 
+def _overlaps_ranges(start_frame, end_frame, ranges):
+    return any(
+        start_frame <= range_end and end_frame >= range_start
+        for range_start, range_end in ranges
+    )
+
+
 def event_pair_from_deltas(points, on_delta, off_delta):
     on_point = point_for_frame(points, on_delta.frame_index)
     off_point = point_for_frame(points, off_delta.frame_index)
@@ -298,12 +305,6 @@ def detect_led_event_pairs_from_frame_deltas(
     excluded_ranges = []
     selected_pairs = []
 
-    def overlaps_excluded(start_frame, end_frame):
-        return any(
-            start_frame <= excluded_end and end_frame >= excluded_start
-            for excluded_start, excluded_end in excluded_ranges
-        )
-
     while len(selected_pairs) < max_events:
         best_pair = None
         best_score = None
@@ -313,7 +314,9 @@ def detect_led_event_pairs_from_frame_deltas(
                 if off_delta.frame_index <= on_delta.frame_index:
                     continue
 
-                if overlaps_excluded(on_delta.frame_index, off_delta.frame_index):
+                if _overlaps_ranges(
+                    on_delta.frame_index, off_delta.frame_index, excluded_ranges
+                ):
                     continue
 
                 duration_sec = off_delta.video_time_sec - on_delta.video_time_sec
@@ -394,12 +397,6 @@ def refine_led_event_pairs_from_frame_deltas(
     thresholds = []
     excluded_ranges = []
 
-    def overlaps_refined_event(start_frame, end_frame):
-        return any(
-            start_frame <= excluded_end and end_frame >= excluded_start
-            for excluded_start, excluded_end in excluded_ranges
-        )
-
     for index in range(0, len(coarse_events), 2):
         if len(refined_events) // 2 >= max_events:
             break
@@ -445,7 +442,7 @@ def refine_led_event_pairs_from_frame_deltas(
 
         refined_start = events[0].frame_index
         refined_end = events[1].frame_index
-        if overlaps_refined_event(refined_start, refined_end):
+        if _overlaps_ranges(refined_start, refined_end, excluded_ranges):
             continue
 
         refined_events.extend(events[:2])

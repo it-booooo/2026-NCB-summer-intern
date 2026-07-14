@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..signal_processing import LfpFilterSettings
+from ..time_utils import absolute_time, relative_time
 
 
 @dataclass(frozen=True)
@@ -45,8 +46,8 @@ class LfpImageExportDialog(QDialog):
             raise ValueError("The imported LFP CSV does not list available channels.")
 
         full_left, full_right = panel.full_lfp_record_xlim()
-        display_full_left = panel.display_time(full_left)
-        display_full_right = panel.display_time(full_right)
+        display_full_left = relative_time(full_left, panel.sync_time_origin_sec)
+        display_full_right = relative_time(full_right, panel.sync_time_origin_sec)
         display_min, display_max = sorted((display_full_left, display_full_right))
 
         self.channel_selector = QComboBox()
@@ -229,8 +230,10 @@ class LfpImageExportDialog(QDialog):
         self.accept()
 
     def options(self):
-        start = self.panel.record_time_from_display(self.start_spin.value())
-        end = self.panel.record_time_from_display(self.end_spin.value())
+        start = absolute_time(
+            self.start_spin.value(), self.panel.sync_time_origin_sec
+        )
+        end = absolute_time(self.end_spin.value(), self.panel.sync_time_origin_sec)
         left, right = sorted((start, end))
         settings = self.panel.settings_from_processing_controls(
             self.signal_selector,

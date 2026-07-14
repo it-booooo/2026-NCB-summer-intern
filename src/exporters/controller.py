@@ -44,11 +44,6 @@ class ExportController:
             ),
         ]
 
-    def export_selected_segment(self):
-        QMessageBox.information(
-            self.window, "Analysis", "Export selected segment is not implemented yet."
-        )
-
     def export_markers(self, file_type):
         # UI 流程只負責選擇格式與路徑；實際寫檔由 writers 模組處理。
         events = self.window.event_table.events()

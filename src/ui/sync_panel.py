@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..led_status import format_led_detection_status
-from ..video.video_utils import format_time, parse_time_input as parse_time_text
+from ..video.video_utils import format_time, parse_time_input
 
 
 class RoiPlotIndicator(QWidget):
@@ -201,16 +201,13 @@ class SyncPanel(QWidget):
             f"LED ROI: x={x}, y={y}, width={width}, height={height}"
         )
 
-    def parse_time_input(self, text):
-        return parse_time_text(text)
-
     def format_scan_input(self, widget):
         text = widget.text().strip()
         if not text:
             widget.setStyleSheet("")
             return True
 
-        seconds = self.parse_time_input(text)
+        seconds = parse_time_input(text)
         if seconds is None or seconds < 0:
             widget.setStyleSheet("border: 1px solid #c0392b;")
             return False
@@ -234,8 +231,8 @@ class SyncPanel(QWidget):
         start_text = self.led_scan_start_input.text().strip()
         end_text = self.led_scan_end_input.text().strip()
 
-        start_sec = self.parse_time_input(start_text)
-        end_sec = self.parse_time_input(end_text)
+        start_sec = parse_time_input(start_text)
+        end_sec = parse_time_input(end_text)
 
         if start_text and start_sec is None:
             raise ValueError("Invalid LED scan start time.")
@@ -401,45 +398,6 @@ class SyncPanel(QWidget):
     def set_led_detection_status(self, text):
         self.led_detection_label.setText(text)
         self.led_detection_label.setToolTip(text)
-
-    def format_timing_status(self, stats):
-        return (
-            f" | scan={stats.get('scan_elapsed_sec', 0.0):.1f}s"
-            f" detect={stats.get('detect_elapsed_sec', 0.0):.1f}s"
-        )
-
-    def format_acceleration_status(self, stats):
-        backend = stats.get("brightness_backend")
-        status = ""
-        if backend == "opencl":
-            status += (
-                f" | brightness=OpenCL"
-                f" device={stats.get('opencl_device', 'GPU')}"
-                f" vendor={stats.get('opencl_device_vendor', 'unknown')}"
-                f" selected={stats.get('opencl_selected_reason', 'auto')}"
-                f" batch={stats.get('opencl_batch_mode', 'fixed')}"
-                f" capacity={stats.get('opencl_batch_capacity', 0)}"
-                f" batches={stats.get('opencl_batches', 0)}"
-                f" max_batch={stats.get('opencl_max_batch_frames', 0)}"
-            )
-        elif backend == "cpu":
-            status += " | brightness=CPU"
-            if stats.get("opencl_fallback_reason"):
-                status += (
-                    f" (OpenCL fallback: {stats.get('opencl_fallback_reason')})"
-                )
-        elif backend == "cache":
-            status += " | brightness=cached"
-
-        if stats.get("video_decode_backend"):
-            status += f" | decode={stats.get('video_decode_backend')}"
-            if (
-                stats.get("video_decode_backend") == "opencv_cpu"
-                and stats.get("video_decode_fallback_reason")
-            ):
-                status += " (hw fallback)"
-
-        return status
 
     def set_offset(self, offset_sec):
         self.offset_label.setText(f"Time offset (video - TTL): {offset_sec:.6f} sec")

@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import Callable
 
+from ..time_utils import relative_time
+
 
 TARGET_PLOT_POINTS = 5000
 
@@ -13,6 +15,39 @@ def resolve_plot_step(data_length: int, step: int | None) -> int:
 
 def format_signal_label(unit):
     return f"Signal ({unit})" if unit else "Signal"
+
+
+def format_time_tick(value, origin_sec=None):
+    value = relative_time(value, origin_sec)
+    if abs(value) < 0.0005:
+        value = 0.0
+
+    abs_value = abs(value)
+    if abs_value >= 100:
+        return f"{value:.0f}"
+    if abs_value >= 10:
+        return f"{value:.1f}"
+    return f"{value:.2f}"
+
+
+def clamp_xlim(left, right, full_xlim):
+    """Keep an x-axis window inside the available range without resizing it."""
+    full_left, full_right = full_xlim
+    full_width = full_right - full_left
+    width = right - left
+
+    if full_width <= 0 or width >= full_width:
+        return full_left, full_right
+
+    if left < full_left:
+        right += full_left - left
+        left = full_left
+
+    if right > full_right:
+        left -= right - full_right
+        right = full_right
+
+    return max(left, full_left), min(right, full_right)
 
 
 @dataclass
@@ -29,26 +64,8 @@ def install_x_navigation(fig, ax, full_xlim) -> XNavigation:
     pan_state: dict[str, float] = {}
     xlim_callbacks: list[Callable[[tuple[float, float]], None]] = []
 
-    def clamp_xlim(left: float, right: float) -> tuple[float, float]:
-        full_left, full_right = full_xlim
-        full_width = full_right - full_left
-        width = right - left
-
-        if width >= full_width:
-            return full_xlim
-
-        if left < full_left:
-            right += full_left - left
-            left = full_left
-
-        if right > full_right:
-            left -= right - full_right
-            right = full_right
-
-        return max(left, full_left), min(right, full_right)
-
     def set_xlim(left: float, right: float, *, emit: bool = True) -> None:
-        next_xlim = clamp_xlim(left, right)
+        next_xlim = clamp_xlim(left, right, full_xlim)
         ax.set_xlim(next_xlim)
 
         if emit:

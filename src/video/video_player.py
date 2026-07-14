@@ -12,10 +12,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..time_utils import absolute_time, relative_time
 from .video_utils import (
     format_time,
     frame_to_time_sec,
-    parse_time_input as parse_time_text,
+    parse_time_input,
     parse_video_metadata,
     read_frame,
     time_sec_to_frame,
@@ -340,26 +341,11 @@ class VideoPlayer(QWidget):
         return self.total_frames / self.fps if self.fps else 0.0
 
     def current_display_time_sec(self):
-        return self.video_time_to_display_time(self.current_time_sec())
-
-    def video_time_to_display_time(self, video_time_sec):
-        if self.sync_time_origin_sec is None:
-            return float(video_time_sec)
-
-        return float(video_time_sec) - self.sync_time_origin_sec
-
-    def display_time_to_video_time(self, display_time_sec):
-        if self.sync_time_origin_sec is None:
-            return float(display_time_sec)
-
-        return float(display_time_sec) + self.sync_time_origin_sec
+        return relative_time(self.current_time_sec(), self.sync_time_origin_sec)
 
     def display_total_time_sec(self):
         total_sec = self.total_time_sec()
-        if self.sync_time_origin_sec is None:
-            return total_sec
-
-        return max(total_sec - self.sync_time_origin_sec, 0.0)
+        return max(relative_time(total_sec, self.sync_time_origin_sec), 0.0)
 
     def format_display_time(self, seconds):
         sign = "-" if seconds < 0 else ""
@@ -508,11 +494,8 @@ class VideoPlayer(QWidget):
     def mark_seek_input_valid(self, widget, is_valid):
         widget.setStyleSheet("" if is_valid else "border: 1px solid #c0392b;")
 
-    def parse_time_input(self, text):
-        return parse_time_text(text)
-
     def seek_to_time_input(self):
-        seconds = self.parse_time_input(self.time_seek_input.text())
+        seconds = parse_time_input(self.time_seek_input.text())
         if seconds is None:
             self.mark_seek_input_valid(self.time_seek_input, False)
             return
@@ -520,7 +503,7 @@ class VideoPlayer(QWidget):
         self.mark_seek_input_valid(self.time_seek_input, True)
         self.mark_seek_input_valid(self.frame_seek_input, True)
         self.pause()
-        self.seek_time_sec(self.display_time_to_video_time(seconds))
+        self.seek_time_sec(absolute_time(seconds, self.sync_time_origin_sec))
         self.time_seek_input.setText(
             self.format_display_time(self.current_display_time_sec())
         )

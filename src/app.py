@@ -100,8 +100,16 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
         for text, callback, description in export_actions:
             self.add_action(export_menu, text, callback, description)
 
-        self.add_action(settings_menu, "Set LFP step", self.set_lfp_step)
-        self.add_action(settings_menu, "Set 3-axis step", self.set_axis_step)
+        self.add_action(
+            settings_menu,
+            "Set LFP step",
+            lambda: self.set_plot_step("lfp"),
+        )
+        self.add_action(
+            settings_menu,
+            "Set 3-axis step",
+            lambda: self.set_plot_step("axis"),
+        )
         self.add_action(
             settings_menu,
             "Set power noise frequency",
@@ -127,15 +135,16 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
             return False, None
         return True, None if step == -1 else step
 
-    def set_lfp_step(self):
-        accepted, step = self.ask_step("Set LFP step", self.lfp_panel.lfp_step)
+    def set_plot_step(self, plot_name):
+        title, step_attribute = {
+            "lfp": ("Set LFP step", "lfp_step"),
+            "axis": ("Set 3-axis step", "axis_step"),
+        }[plot_name]
+        accepted, step = self.ask_step(
+            title, getattr(self.lfp_panel, step_attribute)
+        )
         if accepted:
-            self.lfp_panel.set_lfp_step(step)
-
-    def set_axis_step(self):
-        accepted, step = self.ask_step("Set 3-axis step", self.lfp_panel.axis_step)
-        if accepted:
-            self.lfp_panel.set_axis_step(step)
+            self.lfp_panel.set_plot_step(plot_name, step)
 
     def set_power_noise_frequency(self):
         items = ["60 Hz", "50 Hz"]
