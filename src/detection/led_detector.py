@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 import cv2
 import numpy as np
-from src.video_capture import open_video_capture
+from ..video.video_capture import open_video_capture
 
 
 DETECTION_MODE = "frame_delta_mean_brightness"
@@ -82,7 +82,7 @@ def compute_led_brightness_curve(
         acceleration_info.clear()
 
     try:
-        from src.led_opencl import (
+        from .led_opencl import (
             OpenClUnavailable,
             compute_led_brightness_curve_opencl,
         )

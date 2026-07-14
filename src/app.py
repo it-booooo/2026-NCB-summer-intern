@@ -12,18 +12,14 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-import check_function as check
-import csv_function as csv_func
-import draw_function as draw
-from .analysis import AnalysisMenuController
-from .event_table import EventTable
-from .export import export_events_csv, export_events_excel
-from .lfp_panel import LfpPanel
-from .led_worker import LedDetectionWorker
-from .marker_panel import MarkerPanel
-from .sync_panel import SyncPanel
-from src.ttl_panel import TtlPanel
-from .video_player import VideoPlayer
+from . import data_io as csv_func
+from . import plotting as draw
+from . import validation as check
+from .controllers import AnalysisMenuController
+from .detection import LedDetectionWorker
+from .io import export_events_csv, export_events_excel
+from .ui import EventTable, LfpPanel, MarkerPanel, SyncPanel, TtlPanel
+from .video import VideoPlayer
 
 
 class MainWindow(QMainWindow):
@@ -178,7 +174,7 @@ class MainWindow(QMainWindow):
 
     def show_opencl_status(self):
         try:
-            from src.led_opencl import opencl_status
+            from .detection.led_opencl import opencl_status
 
             status = opencl_status()
         except Exception as error:

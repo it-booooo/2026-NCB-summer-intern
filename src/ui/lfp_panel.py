@@ -1,9 +1,9 @@
 import csv
 
-import draw_function as draw
+from .. import plotting as draw
 import numpy as np
-import read_function as read
-import signal_function as signal_func
+from .. import signal_processing as signal_func
+from ..data_io import readers as read
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,

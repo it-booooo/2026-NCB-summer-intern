@@ -33,7 +33,7 @@ class LedDetectionWorker(QThread):
 
     def run(self):
         try:
-            from src.led_detector import (
+            from .led_detector import (
                 compute_led_brightness_curve,
                 detect_led_event_pairs_from_frame_deltas,
                 refine_led_event_pairs_from_frame_deltas,

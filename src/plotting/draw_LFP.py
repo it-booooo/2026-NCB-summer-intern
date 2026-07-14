@@ -1,4 +1,3 @@
-import sys
 from pathlib import Path
 from typing import Callable, cast
 
@@ -6,11 +5,9 @@ import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-import read_function as read
-import csv_function as csv_func
-import signal_function as signal_func
+from .. import signal_processing as signal_func
+from ..data_io import csv_loader as csv_func
+from ..data_io import readers as read
 
 
 class LfpFigure(Figure):

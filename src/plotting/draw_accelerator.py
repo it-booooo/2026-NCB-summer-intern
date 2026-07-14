@@ -1,15 +1,11 @@
-import sys
 from pathlib import Path
-from pathlib import Path as PathlibPath
 from typing import Callable, cast
 
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 
-sys.path.insert(0, str(PathlibPath(__file__).parent.parent))
-
-import csv_function as csv_func
-import read_function as read
+from ..data_io import csv_loader as csv_func
+from ..data_io import readers as read
 
 
 class AcceleratorFigure(Figure):
@@ -37,7 +33,7 @@ def accelerator(
     """Read accelerator data and draw waveform.
 
     Args:
-        info: CSV metadata returned by csv_function.parse_lfp_csv_info().
+        info: CSV metadata returned by data_io.parse_lfp_csv_info().
             Required keys:
             - path: CSV file path selected from the GUI import action.
             - sample_rates: Sample rate values used when exporting check results.

@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.video_utils import format_time
+from ..video.video_utils import format_time
 
 
 class RoiPlotIndicator(QWidget):

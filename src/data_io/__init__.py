@@ -1,3 +1,5 @@
+"""Signal CSV metadata parsing and data readers."""
+
 from .csv_loader import (
     parse_lfp_csv_info,
     parse_signal_csv_metadata,
@@ -7,7 +9,6 @@ from .csv_loader import (
 )
 
 __all__ = [
-    "csv_loader",
     "parse_lfp_csv_info",
     "parse_signal_csv_metadata",
     "parse_signal_csv_units",

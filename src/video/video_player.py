@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.video_utils import (
+from .video_utils import (
     format_time,
     frame_to_time_sec,
     parse_video_metadata,

@@ -1,3 +1,5 @@
+"""LFP filtering and frequency-domain processing."""
+
 from .lfp_processing import (
     LfpFilterSettings,
     LfpSegment,
