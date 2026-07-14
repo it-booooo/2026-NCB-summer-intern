@@ -28,7 +28,7 @@ from .video_player import VideoPlayer
 
 class MainWindow(QMainWindow):
     MARKER_PANEL_WIDTH = 300
-    WAVEFORM_AREA_HEIGHT = 340
+    WAVEFORM_AREA_HEIGHT = 380
 
     def __init__(self):
         super().__init__()
@@ -86,11 +86,11 @@ class MainWindow(QMainWindow):
 
     def create_menu(self):
         menu_bar = self.menuBar()
-        file_menu = menu_bar.addMenu("File")
-        settings_menu = menu_bar.addMenu("Settings")
-        analysis_menu = menu_bar.addMenu("Analysis")
-        import_menu = file_menu.addMenu("Import")
-        export_menu = file_menu.addMenu("Export")
+        self.file_menu = menu_bar.addMenu("File")
+        self.settings_menu = menu_bar.addMenu("Settings")
+        self.analysis_menu = menu_bar.addMenu("Analysis")
+        self.import_menu = self.file_menu.addMenu("Import")
+        self.export_menu = self.file_menu.addMenu("Export")
 
         import_actions = [
             ("Import Video (.mp4)", self.import_video),
@@ -102,22 +102,34 @@ class MainWindow(QMainWindow):
             ("Export Markers as CSV", self.export_markers_csv),
             ("Export Markers as Excel", self.export_markers_excel),
             ("Export Check Results", self.export_check_results),
-            ("Export Waveform Image", self.export_waveform_image),
+            ("Export 3-axis Waveform Image", self.export_waveform_image),
+            ("Export LFP Waveform Image", self.export_lfp_segment),
+            ("Export Power Spectrum Image", self.export_power_spectrum_image),
+            ("Export Spectrogram Image", self.export_spectrogram_image),
         ]
 
-        self.add_action(import_menu, *import_actions[0])
-        import_menu.addSeparator()
+        self.add_action(self.import_menu, *import_actions[0])
+        self.import_menu.addSeparator()
         for text, callback in import_actions[1:]:
-            self.add_action(import_menu, text, callback)
+            self.add_action(self.import_menu, text, callback)
 
         for text, callback in export_actions:
-            self.add_action(export_menu, text, callback)
+            self.add_action(self.export_menu, text, callback)
 
-        self.add_action(settings_menu, "Set LFP step", self.set_lfp_step)
-        self.add_action(settings_menu, "Set 3-axis step", self.set_axis_step)
-        self.add_action(settings_menu, "Check OpenCL GPU", self.show_opencl_status)
+        self.add_action(self.settings_menu, "Set LFP step", self.set_lfp_step)
+        self.add_action(self.settings_menu, "Set 3-axis step", self.set_axis_step)
+        self.add_action(
+            self.settings_menu,
+            "Set power noise frequency",
+            self.set_power_noise_frequency,
+        )
+        self.add_action(
+            self.settings_menu,
+            "Check OpenCL GPU",
+            self.show_opencl_status,
+        )
 
-        self.analysis_controller.populate_menu(analysis_menu)
+        self.analysis_controller.populate_menu(self.analysis_menu)
 
     def ask_step(self, title, current_step):
         step, accepted = QInputDialog.getInt(
@@ -142,6 +154,27 @@ class MainWindow(QMainWindow):
         accepted, step = self.ask_step("Set 3-axis step", self.lfp_panel.axis_step)
         if accepted:
             self.lfp_panel.set_axis_step(step)
+
+    def set_power_noise_frequency(self):
+        items = ["60 Hz", "50 Hz"]
+        values = [60.0, 50.0]
+        current_value = self.lfp_panel.line_noise_hz
+        current_index = 0
+        if current_value == 50.0:
+            current_index = 1
+
+        text, accepted = QInputDialog.getItem(
+            self,
+            "Set power noise frequency",
+            "Power noise filter:",
+            items,
+            current_index,
+            False,
+        )
+        if not accepted:
+            return
+
+        self.lfp_panel.set_line_noise_hz(values[items.index(text)])
 
     def show_opencl_status(self):
         try:
@@ -796,45 +829,30 @@ class MainWindow(QMainWindow):
             f"Check results exported to:\n{output_path}",
         )
 
+    def export_lfp_segment(self):
+        self.lfp_panel.export_lfp_segment()
+
+    def export_power_spectrum_image(self):
+        self.lfp_panel.export_lfp_power_spectrum_image()
+
+    def export_spectrogram_image(self):
+        self.lfp_panel.export_lfp_spectrogram_image()
+
     def export_waveform_image(self):
-        selected = self.choose_signal_export("Export Waveform Image")
-        if selected is None:
+        if self.axis_info is None:
+            QMessageBox.information(
+                self,
+                "No 3-axis data",
+                "Please import 3-axis CSV data first.",
+            )
             return
 
-        label, info = selected
-        channel = None
-        if label == "LFP":
-            channels = [int(channel) for channel in info.get("channels", [])]
-            if not channels:
-                QMessageBox.warning(
-                    self,
-                    "No LFP channels",
-                    "The imported LFP CSV does not list available channels.",
-                )
-                return
-
-            channel_items = [f"Channel {channel}" for channel in channels]
-            channel_text, accepted = QInputDialog.getItem(
-                self,
-                "Export LFP Waveform Image",
-                "Channel:",
-                channel_items,
-                0,
-                False,
-            )
-            if not accepted:
-                return
-
-            channel = channels[channel_items.index(channel_text)]
-            filename = info.get("filename", "lfp").rsplit(".", 1)[0]
-            default_name = f"{filename}_channel_{channel}.png"
-        else:
-            filename = info.get("filename", "axis").rsplit(".", 1)[0]
-            default_name = f"{filename}_waveform.png"
+        filename = self.axis_info.get("filename", "axis").rsplit(".", 1)[0]
+        default_name = f"{filename}_waveform.png"
 
         path, _ = QFileDialog.getSaveFileName(
             self,
-            "Export Waveform Image",
+            "Export 3-axis Waveform Image",
             default_name,
             "PNG Images (*.png);;PDF Files (*.pdf);;SVG Files (*.svg);;All Files (*)",
         )
@@ -842,25 +860,22 @@ class MainWindow(QMainWindow):
             return
 
         try:
-            if label == "LFP":
-                fig = draw.LFP(
-                    info=info,
-                    channels=channel,
-                    step=self.lfp_panel.lfp_step,
-                )
-            else:
-                fig = draw.accelerator(
-                    info=info,
-                    compact=False,
-                    step=self.lfp_panel.axis_step,
-                )
+            fig = draw.accelerator(
+                info=self.axis_info,
+                compact=False,
+                step=self.lfp_panel.axis_step,
+            )
             fig.savefig(path, dpi=300)
         except Exception as error:
-            QMessageBox.warning(self, "Export waveform image failed", str(error))
+            QMessageBox.warning(
+                self,
+                "Export 3-axis waveform image failed",
+                str(error),
+            )
             return
 
         QMessageBox.information(
             self,
-            "Waveform Image Exported",
-            f"Waveform image exported to:\n{path}",
+            "3-axis Waveform Image Exported",
+            f"3-axis waveform image exported to:\n{path}",
         )

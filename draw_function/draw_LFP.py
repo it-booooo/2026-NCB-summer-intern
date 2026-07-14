@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import read_function as read
 import csv_function as csv_func
+import signal_function as signal_func
 
 
 class LfpFigure(Figure):
@@ -36,6 +37,7 @@ def LFP(
     channels: int | list[int] | tuple[int, ...] | None = 1,
     step: int | None = None,
     info: dict | None = None,
+    filter_settings: signal_func.LfpFilterSettings | None = None,
 ) -> LfpFigure:
     if info is None:
         raise ValueError("Please provide LFP data information.")
@@ -51,14 +53,14 @@ def LFP(
     data = read.LFP(str(input_file))
     units = csv_func.parse_signal_csv_units(input_file)
 
-    data["time_s"] = data["time_us"] / 1e6
+    time_s = data["time_us"].to_numpy(dtype=float) / 1e6
 
     plot_step = resolve_plot_step(len(data), step)
     if plot_step == 0 or len(data) <= plot_step:
-        plot_data = data
+        plot_index = slice(None)
     else:
-        plot_data = data.iloc[::plot_step]
-    x = plot_data["time_s"]
+        plot_index = slice(None, None, plot_step)
+    x = time_s[plot_index]
 
     channel_numbers = info.get("channels") or [
         int(column.removeprefix("channel_"))
@@ -92,15 +94,25 @@ def LFP(
     lines: dict[int, Line2D] = {}
 
     for channel in channel_numbers:
+        sample_rate_hz = signal_func.sample_rate_for_channel(
+            info,
+            data["time_us"],
+            channel,
+        )
+        signal_values = signal_func.prepare_lfp_signal(
+            data[f"channel_{channel}"].to_numpy(dtype=float),
+            sample_rate_hz,
+            filter_settings,
+        )
         line = ax.plot(
             x,
-            plot_data[f"channel_{channel}"],
+            signal_values[plot_index],
             linewidth=0.5,
             color="blue",
             visible=(channel == selected_channel),
         )[0]
         lines[channel] = line
-    
+
     ax.set_xlabel("")
     ax.set_ylabel("")
     ax.text(
@@ -123,10 +135,20 @@ def LFP(
         transform=ax.transAxes,
         clip_on=False,
     )
+    ax.text(
+        0.99,
+        0.99,
+        signal_func.filter_description(filter_settings),
+        fontsize=7,
+        ha="right",
+        va="top",
+        transform=ax.transAxes,
+        clip_on=False,
+    )
     ax.grid(True, linewidth=0.4, alpha=0.35)
     ax.tick_params(axis="both", labelsize=7, pad=1)
 
-    full_xlim = (float(data["time_s"].iloc[0]), float(data["time_s"].iloc[-1]))
+    full_xlim = (float(time_s[0]), float(time_s[-1]))
     if full_xlim[0] == full_xlim[1]:
         full_xlim = (full_xlim[0] - 0.5, full_xlim[1] + 0.5)
 

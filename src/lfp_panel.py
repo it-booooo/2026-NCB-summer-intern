@@ -1,13 +1,24 @@
+import csv
+
 import draw_function as draw
+import numpy as np
+import read_function as read
+import signal_function as signal_func
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QDoubleSpinBox,
+    QFileDialog,
+    QFormLayout,
     QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
     QMessageBox,
+    QPushButton,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -262,6 +273,8 @@ class LfpPanel(QWidget):
         self.current_time_backgrounds = {}
         self.sync_time_origin_sec = None
         self.click_seek_state = None
+        self.spectrum_dialogs = []
+        self.line_noise_hz = 60.0
 
         self.lfp_file_label = QLabel("LFP CSV: Not imported")
         self.axis_file_label = QLabel("3-axis CSV: Not imported")
@@ -275,6 +288,45 @@ class LfpPanel(QWidget):
         )
         self.lfp_channel_selector.setMaxVisibleItems(20)
         self.lfp_channel_selector.currentIndexChanged.connect(self.plot_lfp)
+
+        self.signal_view_selector = PlaybackAwareComboBox()
+        self.signal_view_selector.addItem("Raw", False)
+        self.signal_view_selector.addItem("Filtered", True)
+        self.signal_view_selector.setToolTip("Switch between raw and filtered LFP.")
+        self.signal_view_selector.currentIndexChanged.connect(
+            self.refresh_lfp_processing
+        )
+
+        self.bandpass_checkbox = QCheckBox("Bandpass")
+        self.bandpass_checkbox.setToolTip("Apply a basic LFP bandpass filter.")
+        self.bandpass_checkbox.stateChanged.connect(self.refresh_lfp_processing)
+
+        self.bandpass_low_spin = self.create_frequency_spinbox(1.0)
+        self.bandpass_low_spin.setToolTip("Bandpass low cutoff frequency.")
+        self.bandpass_low_spin.valueChanged.connect(self.refresh_lfp_processing)
+
+        self.bandpass_high_spin = self.create_frequency_spinbox(100.0)
+        self.bandpass_high_spin.setToolTip("Bandpass high cutoff frequency.")
+        self.bandpass_high_spin.valueChanged.connect(self.refresh_lfp_processing)
+
+        self.notch_checkbox = QCheckBox()
+        self.notch_checkbox.setChecked(True)
+        self.notch_checkbox.stateChanged.connect(self.refresh_lfp_processing)
+        self.update_notch_control_text()
+
+        self.spectrum_button = QPushButton("Power spectrum")
+        self.spectrum_button.setEnabled(False)
+        self.spectrum_button.setToolTip(
+            "Calculate the power spectrum of the selected LFP time range."
+        )
+        self.spectrum_button.clicked.connect(self.show_lfp_power_spectrum)
+
+        self.spectrogram_button = QPushButton("Spectrogram")
+        self.spectrogram_button.setEnabled(False)
+        self.spectrogram_button.setToolTip(
+            "Calculate the time-frequency map of the selected LFP time range."
+        )
+        self.spectrogram_button.clicked.connect(self.show_lfp_spectrogram)
 
         self.follow_video_checkbox = QCheckBox("Follow video playback")
         self.follow_video_checkbox.setChecked(True)
@@ -313,16 +365,53 @@ class LfpPanel(QWidget):
         channel_layout = QHBoxLayout()
         channel_layout.setContentsMargins(0, 0, 0, 0)
         channel_layout.setSpacing(8)
+        channel_layout.addWidget(QLabel("Channel"))
         channel_layout.addWidget(self.lfp_channel_selector)
+        channel_layout.addWidget(QLabel("Signal"))
+        channel_layout.addWidget(self.signal_view_selector)
         channel_layout.addStretch()
         channel_layout.addWidget(self.follow_video_checkbox)
         layout.addLayout(channel_layout)
+
+        filter_layout = QHBoxLayout()
+        filter_layout.setContentsMargins(0, 0, 0, 0)
+        filter_layout.setSpacing(6)
+        filter_layout.addWidget(self.bandpass_checkbox)
+        filter_layout.addWidget(QLabel("Low"))
+        filter_layout.addWidget(self.bandpass_low_spin)
+        filter_layout.addWidget(QLabel("High"))
+        filter_layout.addWidget(self.bandpass_high_spin)
+        filter_layout.addWidget(self.notch_checkbox)
+        filter_layout.addStretch()
+        filter_layout.addWidget(self.spectrum_button)
+        filter_layout.addWidget(self.spectrogram_button)
+        layout.addLayout(filter_layout)
 
         layout.addWidget(self.axis_file_label)
         layout.addLayout(waveform_grid, stretch=1)
         layout.addWidget(self.timeline_area)
 
         self.setLayout(layout)
+
+    def create_frequency_spinbox(self, value):
+        spinbox = QDoubleSpinBox()
+        spinbox.setDecimals(2)
+        spinbox.setRange(0.01, 10000.0)
+        spinbox.setSingleStep(1.0)
+        spinbox.setValue(float(value))
+        spinbox.setSuffix(" Hz")
+        spinbox.setMaximumWidth(95)
+        return spinbox
+
+    def format_line_noise_label(self):
+        return f"{self.line_noise_hz:g} Hz" if self.line_noise_hz else "not set"
+
+    def update_notch_control_text(self):
+        label = self.format_line_noise_label()
+        self.notch_checkbox.setText(f"Notch {label}")
+        self.notch_checkbox.setToolTip(
+            f"Apply {label} power-line noise notch filter when Filtered is selected."
+        )
 
     def create_waveform_area(self, text):
         frame = QFrame()
@@ -774,6 +863,675 @@ class LfpPanel(QWidget):
         except (TypeError, ValueError):
             return None
 
+    def current_lfp_filter_settings(self):
+        line_noise_hz = self.line_noise_hz if self.notch_checkbox.isChecked() else None
+        if line_noise_hz is not None:
+            line_noise_hz = float(line_noise_hz)
+
+        return signal_func.LfpFilterSettings(
+            show_filtered=bool(self.signal_view_selector.currentData()),
+            bandpass_enabled=self.bandpass_checkbox.isChecked(),
+            bandpass_low_hz=float(self.bandpass_low_spin.value()),
+            bandpass_high_hz=float(self.bandpass_high_spin.value()),
+            line_noise_hz=line_noise_hz,
+        )
+
+    def set_line_noise_hz(self, line_noise_hz):
+        next_value = 60.0 if line_noise_hz is None else float(line_noise_hz)
+        if self.line_noise_hz == next_value:
+            return
+
+        self.line_noise_hz = next_value
+        self.update_notch_control_text()
+        self.refresh_lfp_processing()
+
+    def refresh_lfp_processing(self, *_args):
+        if not self.lfp_path:
+            return
+
+        current_xlim = self.current_timeline_xlim()
+        self.lfp_fig = None
+        self.lfp_callback_connected = False
+        self.invalidate_current_time_backgrounds("lfp")
+        self.plot_lfp()
+
+        if current_xlim is not None:
+            self.set_shared_xlim(*current_xlim, source="timeline")
+
+    def record_time_from_display(self, display_time_sec):
+        if self.sync_time_origin_sec is None:
+            return float(display_time_sec)
+
+        return float(display_time_sec) + self.sync_time_origin_sec
+
+    def current_lfp_record_xlim(self):
+        selected_xlim = self.current_timeline_xlim()
+        if selected_xlim is None and self.lfp_fig is not None:
+            selected_xlim = self.lfp_fig.lfp_full_xlim
+
+        if selected_xlim is None:
+            raise ValueError("Please select an LFP time range first.")
+
+        left, right = sorted((float(selected_xlim[0]), float(selected_xlim[1])))
+        return left, right
+
+    def available_lfp_channels(self):
+        channels = self.lfp_info.get("channels", []) if self.lfp_info else []
+        return [int(channel) for channel in channels]
+
+    def load_lfp_segment(self, channel, left, right, settings):
+        data = read.LFP(self.lfp_path)
+        column = f"channel_{channel}"
+        if column not in data:
+            raise ValueError(f"LFP CSV does not include channel {channel}.")
+
+        sample_rate_hz = signal_func.sample_rate_for_channel(
+            self.lfp_info,
+            data["time_us"],
+            channel,
+        )
+        return signal_func.prepare_lfp_segment(
+            data["time_us"],
+            data[column].to_numpy(dtype=float),
+            sample_rate_hz,
+            left,
+            right,
+            settings,
+        )
+
+    def create_time_spinbox(self, value, minimum, maximum):
+        spinbox = QDoubleSpinBox()
+        spinbox.setDecimals(4)
+        spinbox.setRange(float(minimum), float(maximum))
+        spinbox.setSingleStep(0.1)
+        spinbox.setValue(float(value))
+        spinbox.setSuffix(" s")
+        return spinbox
+
+    def full_lfp_record_xlim(self):
+        if self.lfp_fig is not None:
+            return self.lfp_fig.lfp_full_xlim
+
+        if not self.lfp_path:
+            raise ValueError("Please import LFP CSV data first.")
+
+        data = read.LFP(self.lfp_path)
+        time_s = data["time_us"].to_numpy(dtype=float) / 1e6
+        if time_s.size == 0:
+            raise ValueError("LFP CSV does not contain samples.")
+
+        return float(time_s[0]), float(time_s[-1])
+
+    def settings_from_processing_controls(
+        self,
+        signal_selector,
+        bandpass_checkbox,
+        low_spin,
+        high_spin,
+        notch_checkbox,
+    ):
+        line_noise_hz = self.line_noise_hz if notch_checkbox.isChecked() else None
+        if line_noise_hz is not None:
+            line_noise_hz = float(line_noise_hz)
+
+        return signal_func.LfpFilterSettings(
+            show_filtered=bool(signal_selector.currentData()),
+            bandpass_enabled=bandpass_checkbox.isChecked(),
+            bandpass_low_hz=float(low_spin.value()),
+            bandpass_high_hz=float(high_spin.value()),
+            line_noise_hz=line_noise_hz,
+        )
+
+    def ask_lfp_output_parameters(self, title, *, default_full_range=True):
+        channels = self.available_lfp_channels()
+        if not channels:
+            QMessageBox.warning(
+                self,
+                "No LFP channels",
+                "The imported LFP CSV does not list available channels.",
+            )
+            return None
+
+        try:
+            full_left, full_right = self.full_lfp_record_xlim()
+        except ValueError as error:
+            QMessageBox.warning(self, "No selected range", str(error))
+            return None
+
+        if default_full_range:
+            left, right = full_left, full_right
+        else:
+            left, right = self.current_lfp_record_xlim()
+
+        display_full_left = self.display_time(full_left)
+        display_full_right = self.display_time(full_right)
+        display_min, display_max = sorted((display_full_left, display_full_right))
+        display_left = self.display_time(left)
+        display_right = self.display_time(right)
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle(title)
+
+        channel_selector = PlaybackAwareComboBox()
+        selected_channel = self.selected_channel(self.lfp_channel_selector)
+        for channel in channels:
+            channel_selector.addItem(f"Channel {channel}", channel)
+        if selected_channel in channels:
+            channel_selector.setCurrentIndex(channels.index(selected_channel))
+
+        start_spin = self.create_time_spinbox(
+            display_left,
+            display_min,
+            display_max,
+        )
+        end_spin = self.create_time_spinbox(
+            display_right,
+            display_min,
+            display_max,
+        )
+
+        signal_selector = PlaybackAwareComboBox()
+        signal_selector.addItem("Raw", False)
+        signal_selector.addItem("Processed", True)
+        signal_selector.setCurrentIndex(
+            1 if bool(self.signal_view_selector.currentData()) else 0
+        )
+
+        processing_bandpass = QCheckBox("Bandpass")
+        processing_bandpass.setChecked(self.bandpass_checkbox.isChecked())
+
+        processing_low_spin = self.create_frequency_spinbox(
+            self.bandpass_low_spin.value()
+        )
+        processing_high_spin = self.create_frequency_spinbox(
+            self.bandpass_high_spin.value()
+        )
+        processing_notch = QCheckBox(f"Notch {self.format_line_noise_label()}")
+        processing_notch.setChecked(self.notch_checkbox.isChecked())
+
+        bandpass_range_layout = QHBoxLayout()
+        bandpass_range_layout.setContentsMargins(0, 0, 0, 0)
+        bandpass_range_layout.addWidget(QLabel("Low"))
+        bandpass_range_layout.addWidget(processing_low_spin)
+        bandpass_range_layout.addWidget(QLabel("High"))
+        bandpass_range_layout.addWidget(processing_high_spin)
+
+        def update_processing_enabled():
+            enabled = bool(signal_selector.currentData())
+            for widget in (
+                processing_bandpass,
+                processing_low_spin,
+                processing_high_spin,
+                processing_notch,
+            ):
+                widget.setEnabled(enabled)
+
+        signal_selector.currentIndexChanged.connect(
+            lambda _index: update_processing_enabled()
+        )
+        update_processing_enabled()
+
+        time_label = "Sync time" if self.sync_time_origin_sec is not None else "Time"
+        form = QFormLayout()
+        form.addRow("Channel", channel_selector)
+        form.addRow(f"Start {time_label}", start_spin)
+        form.addRow(f"End {time_label}", end_spin)
+        form.addRow("Signal", signal_selector)
+        form.addRow("", processing_bandpass)
+        form.addRow("Bandpass range", bandpass_range_layout)
+        form.addRow("", processing_notch)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+
+        layout = QVBoxLayout()
+        layout.addLayout(form)
+        layout.addWidget(buttons)
+        dialog.setLayout(layout)
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return None
+
+        channel = int(channel_selector.currentData())
+        start = self.record_time_from_display(start_spin.value())
+        end = self.record_time_from_display(end_spin.value())
+        left, right = sorted((start, end))
+        if left == right:
+            QMessageBox.warning(
+                self,
+                "Invalid time range",
+                "Start and end time must be different.",
+            )
+            return None
+
+        settings = self.settings_from_processing_controls(
+            signal_selector,
+            processing_bandpass,
+            processing_low_spin,
+            processing_high_spin,
+            processing_notch,
+        )
+
+        return channel, left, right, settings
+
+    def show_lfp_power_spectrum(self):
+        if not self.lfp_path:
+            QMessageBox.information(
+                self,
+                "No LFP data",
+                "Please import LFP CSV data first.",
+            )
+            return
+
+        channel = self.selected_channel(self.lfp_channel_selector)
+        if channel is None:
+            QMessageBox.warning(
+                self,
+                "No LFP channel",
+                "Please select an LFP channel first.",
+            )
+            return
+
+        settings = self.current_lfp_filter_settings()
+
+        try:
+            left, right = self.current_lfp_record_xlim()
+            segment = self.load_lfp_segment(channel, left, right, settings)
+            frequencies, power = signal_func.compute_power_spectrum(
+                segment.values,
+                segment.sample_rate_hz,
+            )
+        except Exception as error:
+            QMessageBox.warning(self, "Power spectrum failed", str(error))
+            return
+
+        self.open_power_spectrum_dialog(
+            channel,
+            left,
+            right,
+            segment.sample_rate_hz,
+            segment.sample_count,
+            settings,
+            frequencies,
+            power,
+        )
+
+    def open_power_spectrum_dialog(
+        self,
+        channel,
+        left,
+        right,
+        sample_rate_hz,
+        sample_count,
+        settings,
+        frequencies,
+        power,
+    ):
+        from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+
+        dialog = QDialog(self)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+        dialog.setWindowTitle(f"LFP Power Spectrum - Channel {channel}")
+        dialog.resize(780, 520)
+
+        display_left = self.display_time(left)
+        display_right = self.display_time(right)
+        time_mode = "sync time" if self.sync_time_origin_sec is not None else "time"
+        status = QLabel(
+            f"Channel {channel} | {signal_func.filter_description(settings)} | "
+            f"{time_mode}: {display_left:.2f}-{display_right:.2f} s | "
+            f"samples={sample_count} | Fs={sample_rate_hz:g} Hz"
+        )
+
+        figure = self.create_power_spectrum_figure(channel, frequencies, power)
+
+        canvas = FigureCanvas(figure)
+        layout = QVBoxLayout()
+        layout.addWidget(status)
+        layout.addWidget(canvas)
+        dialog.setLayout(layout)
+
+        self.spectrum_dialogs.append(dialog)
+        dialog.destroyed.connect(
+            lambda _obj=None, item=dialog: self.forget_spectrum_dialog(item)
+        )
+        dialog.show()
+
+    def forget_spectrum_dialog(self, dialog):
+        if dialog in self.spectrum_dialogs:
+            self.spectrum_dialogs.remove(dialog)
+
+    def create_power_spectrum_figure(self, channel, frequencies, power):
+        figure = Figure(figsize=(7.6, 4.4), constrained_layout=True)
+        ax = figure.add_subplot(111)
+        positive_power = np.maximum(power, np.finfo(float).tiny)
+        ax.semilogy(frequencies, positive_power, linewidth=0.8, color="#1f77b4")
+        ax.set_title(f"LFP Power Spectrum - Channel {channel}")
+        ax.set_xlabel("Frequency (Hz)")
+        ax.set_ylabel("Power spectral density")
+        ax.grid(True, linewidth=0.4, alpha=0.35)
+        return figure
+
+    def show_lfp_spectrogram(self):
+        if not self.lfp_path:
+            QMessageBox.information(
+                self,
+                "No LFP data",
+                "Please import LFP CSV data first.",
+            )
+            return
+
+        channel = self.selected_channel(self.lfp_channel_selector)
+        if channel is None:
+            QMessageBox.warning(
+                self,
+                "No LFP channel",
+                "Please select an LFP channel first.",
+            )
+            return
+
+        settings = self.current_lfp_filter_settings()
+
+        try:
+            left, right = self.current_lfp_record_xlim()
+            segment = self.load_lfp_segment(channel, left, right, settings)
+            frequencies, times, power = signal_func.compute_time_frequency(
+                segment.values,
+                segment.sample_rate_hz,
+            )
+        except Exception as error:
+            QMessageBox.warning(self, "Spectrogram failed", str(error))
+            return
+
+        self.open_spectrogram_dialog(
+            channel,
+            left,
+            right,
+            segment,
+            settings,
+            frequencies,
+            times,
+            power,
+        )
+
+    def open_spectrogram_dialog(
+        self,
+        channel,
+        left,
+        right,
+        segment,
+        settings,
+        frequencies,
+        times,
+        power,
+    ):
+        from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+
+        dialog = QDialog(self)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+        dialog.setWindowTitle(f"LFP Spectrogram - Channel {channel}")
+        dialog.resize(820, 560)
+
+        display_left = self.display_time(left)
+        display_right = self.display_time(right)
+        time_mode = "sync time" if self.sync_time_origin_sec is not None else "time"
+        status = QLabel(
+            f"Channel {channel} | {signal_func.filter_description(settings)} | "
+            f"{time_mode}: {display_left:.2f}-{display_right:.2f} s | "
+            f"samples={segment.sample_count} | Fs={segment.sample_rate_hz:g} Hz"
+        )
+
+        figure = self.create_spectrogram_figure(
+            channel,
+            segment,
+            frequencies,
+            times,
+            power,
+            time_mode,
+        )
+
+        canvas = FigureCanvas(figure)
+        layout = QVBoxLayout()
+        layout.addWidget(status)
+        layout.addWidget(canvas)
+        dialog.setLayout(layout)
+
+        self.spectrum_dialogs.append(dialog)
+        dialog.destroyed.connect(
+            lambda _obj=None, item=dialog: self.forget_spectrum_dialog(item)
+        )
+        dialog.show()
+
+    def create_spectrogram_figure(
+        self,
+        channel,
+        segment,
+        frequencies,
+        times,
+        power,
+        time_mode,
+    ):
+        figure = Figure(figsize=(8.0, 4.8), constrained_layout=True)
+        ax = figure.add_subplot(111)
+        plot_times = times + self.display_time(float(segment.record_time_s[0]))
+        power_db = 10.0 * np.log10(np.maximum(power, np.finfo(float).tiny))
+        mesh = ax.pcolormesh(
+            plot_times,
+            frequencies,
+            power_db,
+            shading="auto",
+            cmap="viridis",
+        )
+        figure.colorbar(mesh, ax=ax, label="PSD (dB/Hz)")
+        ax.set_title(f"LFP Spectrogram - Channel {channel}")
+        ax.set_xlabel(f"{time_mode} (s)")
+        ax.set_ylabel("Frequency (Hz)")
+        return figure
+
+    def export_lfp_power_spectrum_image(self):
+        if not self.lfp_path:
+            QMessageBox.information(
+                self,
+                "No LFP data",
+                "Please import LFP CSV data first.",
+            )
+            return
+
+        parameters = self.ask_lfp_output_parameters("Export Power Spectrum Image")
+        if parameters is None:
+            return
+
+        channel, left, right, settings = parameters
+        filename = self.default_lfp_image_filename(
+            channel,
+            left,
+            right,
+            settings,
+            "power_spectrum",
+        )
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Power Spectrum Image",
+            filename,
+            "PNG Images (*.png);;PDF Files (*.pdf);;SVG Files (*.svg);;All Files (*)",
+        )
+        if not path:
+            return
+
+        try:
+            segment = self.load_lfp_segment(channel, left, right, settings)
+            frequencies, power = signal_func.compute_power_spectrum(
+                segment.values,
+                segment.sample_rate_hz,
+            )
+            figure = self.create_power_spectrum_figure(channel, frequencies, power)
+            figure.savefig(path, dpi=300)
+        except Exception as error:
+            QMessageBox.warning(self, "Export power spectrum failed", str(error))
+            return
+
+        QMessageBox.information(
+            self,
+            "Power Spectrum Exported",
+            f"Power spectrum image exported to:\n{path}",
+        )
+
+    def export_lfp_spectrogram_image(self):
+        if not self.lfp_path:
+            QMessageBox.information(
+                self,
+                "No LFP data",
+                "Please import LFP CSV data first.",
+            )
+            return
+
+        parameters = self.ask_lfp_output_parameters("Export Spectrogram Image")
+        if parameters is None:
+            return
+
+        channel, left, right, settings = parameters
+        filename = self.default_lfp_image_filename(
+            channel,
+            left,
+            right,
+            settings,
+            "spectrogram",
+        )
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Spectrogram Image",
+            filename,
+            "PNG Images (*.png);;PDF Files (*.pdf);;SVG Files (*.svg);;All Files (*)",
+        )
+        if not path:
+            return
+
+        try:
+            segment = self.load_lfp_segment(channel, left, right, settings)
+            frequencies, times, power = signal_func.compute_time_frequency(
+                segment.values,
+                segment.sample_rate_hz,
+            )
+            time_mode = (
+                "sync time" if self.sync_time_origin_sec is not None else "time"
+            )
+            figure = self.create_spectrogram_figure(
+                channel,
+                segment,
+                frequencies,
+                times,
+                power,
+                time_mode,
+            )
+            figure.savefig(path, dpi=300)
+        except Exception as error:
+            QMessageBox.warning(self, "Export spectrogram failed", str(error))
+            return
+
+        QMessageBox.information(
+            self,
+            "Spectrogram Exported",
+            f"Spectrogram image exported to:\n{path}",
+        )
+
+    def export_lfp_segment(self):
+        if not self.lfp_path:
+            QMessageBox.information(
+                self,
+                "No LFP data",
+                "Please import LFP CSV data first.",
+            )
+            return
+
+        parameters = self.ask_lfp_output_parameters("Export LFP Data")
+        if parameters is None:
+            return
+
+        channel, left, right, settings = parameters
+
+        filename = self.default_segment_filename(channel, left, right, settings)
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export LFP Data",
+            filename,
+            "CSV Files (*.csv);;All Files (*)",
+        )
+        if not path:
+            return
+
+        try:
+            segment = self.load_lfp_segment(channel, left, right, settings)
+            self.write_lfp_segment_csv(path, channel, segment)
+        except Exception as error:
+            QMessageBox.warning(self, "Export LFP segment failed", str(error))
+            return
+
+        QMessageBox.information(
+            self,
+            "LFP Data Exported",
+            f"LFP data exported to:\n{path}",
+        )
+
+    def output_mode_label(self, settings):
+        return "processed" if settings.show_filtered else "raw"
+
+    def output_time_label(self, value):
+        return f"{self.display_time(value):.3f}".replace("-", "neg")
+
+    def default_segment_filename(self, channel, left, right, settings):
+        filename = self.lfp_info.get("filename", "lfp") if self.lfp_info else "lfp"
+        stem = filename.rsplit(".", 1)[0]
+        mode = self.output_mode_label(settings)
+        start_label = self.output_time_label(left)
+        end_label = self.output_time_label(right)
+        return f"{stem}_channel_{channel}_{mode}_{start_label}-{end_label}s.csv"
+
+    def default_lfp_image_filename(self, channel, left, right, settings, suffix):
+        filename = self.lfp_info.get("filename", "lfp") if self.lfp_info else "lfp"
+        stem = filename.rsplit(".", 1)[0]
+        mode = self.output_mode_label(settings)
+        start_label = self.output_time_label(left)
+        end_label = self.output_time_label(right)
+        return (
+            f"{stem}_channel_{channel}_{mode}_{suffix}_"
+            f"{start_label}-{end_label}s.png"
+        )
+
+    def write_lfp_segment_csv(self, path, channel, segment):
+        if self.sync_time_origin_sec is None:
+            display_times = segment.record_time_s
+        else:
+            display_times = segment.record_time_s - self.sync_time_origin_sec
+
+        with open(path, "w", encoding="utf-8-sig", newline="") as csv_file:
+            writer = csv.writer(csv_file)
+            writer.writerow(
+                [
+                    "record_time_us",
+                    "record_time_s",
+                    "display_time_s",
+                    f"channel_{channel}",
+                ]
+            )
+            for time_us, record_time, display_time, value in zip(
+                segment.time_us,
+                segment.record_time_s,
+                display_times,
+                segment.values,
+            ):
+                writer.writerow(
+                    [
+                        f"{time_us:.0f}",
+                        f"{record_time:.9f}",
+                        f"{display_time:.9f}",
+                        f"{value:.9g}",
+                    ]
+                )
+
     def plot_lfp(self):
         if not self.lfp_path:
             return
@@ -786,6 +1544,7 @@ class LfpPanel(QWidget):
                     info=self.lfp_info,
                     channels=channel,
                     step=self.lfp_step,
+                    filter_settings=self.current_lfp_filter_settings(),
                 )
                 created_figure = True
             elif self.lfp_fig is not None and channel is not None:
@@ -849,9 +1608,13 @@ class LfpPanel(QWidget):
                 self.lfp_channel_selector.addItem(f"Channel {channel}", channel)
 
             self.lfp_channel_selector.setEnabled(True)
+            self.spectrum_button.setEnabled(True)
+            self.spectrogram_button.setEnabled(True)
         else:
             self.lfp_channel_selector.addItem("No LFP channel")
             self.lfp_channel_selector.setEnabled(False)
+            self.spectrum_button.setEnabled(False)
+            self.spectrogram_button.setEnabled(False)
 
         self.lfp_channel_selector.blockSignals(False)
         self.plot_lfp()
