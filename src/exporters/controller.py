@@ -1,7 +1,10 @@
-from PySide6.QtWidgets import QFileDialog, QInputDialog, QMessageBox
+from pathlib import Path
+
+from PySide6.QtWidgets import QDialog, QFileDialog, QInputDialog, QMessageBox
 
 from .. import plotting, signal_processing, validation
-from .writers import export_events_csv, export_events_excel, write_lfp_segment_csv
+from .lfp_image_dialog import LfpImageExportDialog
+from .writers import export_events_csv, export_events_excel
 
 
 class ExportController:
@@ -9,6 +12,7 @@ class ExportController:
 
     def __init__(self, window):
         self.window = window
+        self.last_lfp_export_directory = None
 
     def actions(self):
         # 第三個欄位是顯示給使用者的英文滑鼠懸停說明。
@@ -34,19 +38,9 @@ class ExportController:
                 "Export the complete three-axis waveform as a PNG, PDF, or SVG image.",
             ),
             (
-                "Export LFP Waveform Image",
-                self.export_lfp_segment,
-                "Export LFP signal data for the selected channel and time range as CSV.",
-            ),
-            (
-                "Export Power Spectrum Image",
-                self.export_power_spectrum_image,
-                "Calculate the power spectrum of the selected LFP segment and export it as an image.",
-            ),
-            (
-                "Export Spectrogram Image",
-                self.export_spectrogram_image,
-                "Calculate the spectrogram of the selected LFP segment and export it as an image.",
+                "Export LFP Images...",
+                self.export_lfp_images,
+                "Configure and batch-export the LFP waveform, power spectrum, and spectrogram.",
             ),
         ]
 
@@ -146,110 +140,142 @@ class ExportController:
             f"3-axis waveform image exported to:\n{path}",
         )
 
-    def _lfp_parameters(self, title):
-        # 所有 LFP 輸出共用相同的資料存在檢查及參數選擇流程。
+    def export_lfp_images(self):
         panel = self.window.lfp_panel
         if not panel.lfp_path:
             QMessageBox.information(
                 self.window, "No LFP data", "Please import LFP CSV data first."
             )
-            return None
-        return panel.ask_lfp_output_parameters(title)
+            return
 
-    def _lfp_filename(self, channel, left, right, settings, suffix, extension):
+        default_directory = self.last_lfp_export_directory
+        if default_directory is None or not Path(default_directory).is_dir():
+            default_directory = Path(panel.lfp_path).parent
+
+        try:
+            dialog = LfpImageExportDialog(
+                panel,
+                default_directory,
+                parent=self.window,
+            )
+        except (OSError, ValueError) as error:
+            QMessageBox.warning(self.window, "Cannot export LFP images", str(error))
+            return
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        options = dialog.options()
+        self.last_lfp_export_directory = options.directory
+
+        paths = {
+            image_type: options.directory
+            / self._lfp_filename(
+                options.channel,
+                options.settings,
+                image_type,
+            )
+            for image_type in options.image_types
+        }
+        existing_paths = [path for path in paths.values() if path.exists()]
+        if existing_paths:
+            filenames = "\n".join(f"- {path.name}" for path in existing_paths)
+            answer = QMessageBox.question(
+                self.window,
+                "Replace existing images?",
+                f"The following files already exist:\n{filenames}\n\nReplace them?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+
+        figures = {}
+        saved_paths = []
+        try:
+            segment = panel.load_lfp_segment(
+                options.channel,
+                options.left,
+                options.right,
+                options.settings,
+            )
+            time_mode = (
+                "Sync time" if panel.sync_time_origin_sec is not None else "Time"
+            )
+
+            if "waveform" in options.image_types:
+                figures["waveform"] = panel.create_lfp_waveform_figure(
+                    options.channel,
+                    segment,
+                    options.settings,
+                    time_mode,
+                )
+
+            if "power_spectrum" in options.image_types:
+                frequencies, power = signal_processing.compute_power_spectrum(
+                    segment.values,
+                    segment.sample_rate_hz,
+                )
+                figures["power_spectrum"] = panel.create_power_spectrum_figure(
+                    options.channel,
+                    frequencies,
+                    power,
+                )
+
+            if "spectrogram" in options.image_types:
+                frequencies, times, power = signal_processing.compute_time_frequency(
+                    segment.values,
+                    segment.sample_rate_hz,
+                )
+                figures["spectrogram"] = panel.create_spectrogram_figure(
+                    options.channel,
+                    segment,
+                    frequencies,
+                    times,
+                    power,
+                    time_mode,
+                )
+
+            for figure in figures.values():
+                panel.annotate_lfp_figure(
+                    figure,
+                    options.channel,
+                    segment,
+                    options.settings,
+                )
+
+            for image_type in options.image_types:
+                path = paths[image_type]
+                figures[image_type].savefig(str(path), dpi=options.dpi)
+                saved_paths.append(path)
+        except Exception as error:
+            saved_message = ""
+            if saved_paths:
+                names = "\n".join(f"- {path.name}" for path in saved_paths)
+                saved_message = f"\n\nAlready exported:\n{names}"
+            QMessageBox.warning(
+                self.window,
+                "Export LFP images failed",
+                f"{error}{saved_message}",
+            )
+            return
+        finally:
+            for figure in figures.values():
+                figure.clear()
+
+        filenames = "\n".join(f"- {path.name}" for path in saved_paths)
+        QMessageBox.information(
+            self.window,
+            "LFP Images Exported",
+            f"Exported {len(saved_paths)} image(s) to:\n"
+            f"{options.directory}\n\n{filenames}",
+        )
+
+    def _lfp_filename(self, channel, settings, suffix):
         # 將通道、處理模式與同步後的時間範圍編入預設檔名，方便辨識輸出內容。
         panel = self.window.lfp_panel
         filename = panel.lfp_info.get("filename", "lfp") if panel.lfp_info else "lfp"
         stem = filename.rsplit(".", 1)[0]
         mode = "processed" if settings.show_filtered else "raw"
-        start = f"{panel.display_time(left):.3f}".replace("-", "neg")
-        end = f"{panel.display_time(right):.3f}".replace("-", "neg")
         middle = f"_{suffix}" if suffix else ""
-        return f"{stem}_channel_{channel}_{mode}{middle}_{start}-{end}s.{extension}"
-
-    def export_lfp_segment(self):
-        parameters = self._lfp_parameters("Export LFP Data")
-        if parameters is None:
-            return
-        channel, left, right, settings = parameters
-        filename = self._lfp_filename(channel, left, right, settings, "", "csv")
-        path, _ = QFileDialog.getSaveFileName(
-            self.window, "Export LFP Data", filename,
-            "CSV Files (*.csv);;All Files (*)",
-        )
-        if not path:
-            return
-        try:
-            segment = self.window.lfp_panel.load_lfp_segment(channel, left, right, settings)
-            write_lfp_segment_csv(
-                path, channel, segment, self.window.lfp_panel.sync_time_origin_sec
-            )
-        except Exception as error:
-            QMessageBox.warning(self.window, "Export LFP segment failed", str(error))
-            return
-        QMessageBox.information(
-            self.window, "LFP Data Exported", f"LFP data exported to:\n{path}"
-        )
-
-    def export_power_spectrum_image(self):
-        parameters = self._lfp_parameters("Export Power Spectrum Image")
-        if parameters is None:
-            return
-        channel, left, right, settings = parameters
-        filename = self._lfp_filename(
-            channel, left, right, settings, "power_spectrum", "png"
-        )
-        path, _ = QFileDialog.getSaveFileName(
-            self.window, "Export Power Spectrum Image", filename,
-            "PNG Images (*.png);;PDF Files (*.pdf);;SVG Files (*.svg);;All Files (*)",
-        )
-        if not path:
-            return
-        try:
-            panel = self.window.lfp_panel
-            segment = panel.load_lfp_segment(channel, left, right, settings)
-            frequencies, power = signal_processing.compute_power_spectrum(
-                segment.values, segment.sample_rate_hz
-            )
-            panel.create_power_spectrum_figure(channel, frequencies, power).savefig(
-                path, dpi=300
-            )
-        except Exception as error:
-            QMessageBox.warning(self.window, "Export power spectrum failed", str(error))
-            return
-        QMessageBox.information(
-            self.window, "Power Spectrum Exported",
-            f"Power spectrum image exported to:\n{path}",
-        )
-
-    def export_spectrogram_image(self):
-        parameters = self._lfp_parameters("Export Spectrogram Image")
-        if parameters is None:
-            return
-        channel, left, right, settings = parameters
-        filename = self._lfp_filename(
-            channel, left, right, settings, "spectrogram", "png"
-        )
-        path, _ = QFileDialog.getSaveFileName(
-            self.window, "Export Spectrogram Image", filename,
-            "PNG Images (*.png);;PDF Files (*.pdf);;SVG Files (*.svg);;All Files (*)",
-        )
-        if not path:
-            return
-        try:
-            panel = self.window.lfp_panel
-            segment = panel.load_lfp_segment(channel, left, right, settings)
-            frequencies, times, power = signal_processing.compute_time_frequency(
-                segment.values, segment.sample_rate_hz
-            )
-            time_mode = "sync time" if panel.sync_time_origin_sec is not None else "time"
-            panel.create_spectrogram_figure(
-                channel, segment, frequencies, times, power, time_mode
-            ).savefig(path, dpi=300)
-        except Exception as error:
-            QMessageBox.warning(self.window, "Export spectrogram failed", str(error))
-            return
-        QMessageBox.information(
-            self.window, "Spectrogram Exported",
-            f"Spectrogram image exported to:\n{path}",
-        )
+        return f"{stem}_channel_{channel}_{mode}{middle}.png"

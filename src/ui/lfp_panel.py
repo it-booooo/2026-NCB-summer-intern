@@ -3,7 +3,9 @@ import csv
 from .. import plotting as draw
 import numpy as np
 from .. import signal_processing as signal_func
+from ..data_io import csv_loader
 from ..data_io import readers as read
+from ..plotting.plot_utils import format_signal_label, resolve_plot_step
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -1342,6 +1344,50 @@ class LfpPanel(QWidget):
         ax.set_ylabel("Power spectral density")
         ax.grid(True, linewidth=0.4, alpha=0.35)
         return figure
+
+    def create_lfp_waveform_figure(self, channel, segment, settings, time_mode):
+        duration_sec = abs(
+            float(segment.record_time_s[-1]) - float(segment.record_time_s[0])
+        )
+        figure_width = min(24.0, 8.0 + duration_sec / 120.0)
+        figure = Figure(figsize=(figure_width, 4.8), constrained_layout=True)
+        ax = figure.add_subplot(111)
+
+        plot_step = resolve_plot_step(segment.sample_count, self.lfp_step)
+        if plot_step == 0 or segment.sample_count <= plot_step:
+            plot_index = slice(None)
+        else:
+            plot_index = slice(None, None, plot_step)
+
+        if self.sync_time_origin_sec is None:
+            plot_times = segment.record_time_s
+        else:
+            plot_times = segment.record_time_s - self.sync_time_origin_sec
+
+        ax.plot(
+            plot_times[plot_index],
+            segment.values[plot_index],
+            linewidth=0.6,
+            color="#1f77b4",
+        )
+        units = csv_loader.parse_signal_csv_units(self.lfp_path)
+        ax.set_title(f"LFP Waveform - Channel {channel}")
+        ax.set_xlabel(f"{time_mode} (s)")
+        ax.set_ylabel(format_signal_label(units["value_unit"]))
+        ax.grid(True, linewidth=0.4, alpha=0.35)
+        return figure
+
+    def annotate_lfp_figure(self, figure, channel, segment, settings):
+        filename = self.lfp_info.get("filename", "LFP") if self.lfp_info else "LFP"
+        time_mode = "Sync time" if self.sync_time_origin_sec is not None else "Time"
+        display_left = self.display_time(float(segment.record_time_s[0]))
+        display_right = self.display_time(float(segment.record_time_s[-1]))
+        processing = signal_func.filter_description(settings)
+        figure.suptitle(
+            f"File: {filename} | Channel {channel} | {processing}\n"
+            f"{time_mode}: {display_left:.3f}-{display_right:.3f} s",
+            fontsize=8,
+        )
 
     def show_lfp_spectrogram(self):
         if not self.lfp_path:
