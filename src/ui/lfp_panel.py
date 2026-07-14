@@ -351,11 +351,11 @@ class LfpPanel(QWidget):
         self.lfp_waveform_area = self.create_waveform_area(
             "Import LFP CSV to show waveform"
         )
-        self.lfp_waveform_area.setFixedHeight(110)
+        self.lfp_waveform_area.setFixedHeight(100)
         self.axis_waveform_area = self.create_waveform_area(
             "Import 3-axis CSV to show waveform"
         )
-        self.axis_waveform_area.setFixedHeight(88)
+        self.axis_waveform_area.setFixedHeight(80)
 
         waveform_grid.addWidget(QLabel("LFP"), 0, 0)
         waveform_grid.addWidget(self.lfp_waveform_area, 0, 1)
