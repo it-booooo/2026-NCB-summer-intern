@@ -29,6 +29,7 @@ class MarkerPanel(QWidget):
         behavior_start_button = QPushButton("Action Start")
         behavior_end_button = QPushButton("Action End")
         seizure_button = QPushButton("Seizure-like")
+        edit_button = QPushButton("Edit Selected")
         delete_button = QPushButton("Delete Selected")
 
         select_roi_button.setToolTip("Select LED area and run brightness detection")
@@ -39,6 +40,7 @@ class MarkerPanel(QWidget):
         behavior_start_button.clicked.connect(lambda: self.add_event_callback("behavior_start"))
         behavior_end_button.clicked.connect(lambda: self.add_event_callback("behavior_end"))
         seizure_button.clicked.connect(lambda: self.add_event_callback("seizure_like_event"))
+        edit_button.clicked.connect(self.event_table.edit_selected_event)
         delete_button.clicked.connect(self.event_table.delete_selected_rows)
 
         button_layout = QGridLayout()
@@ -51,6 +53,7 @@ class MarkerPanel(QWidget):
         button_layout.addWidget(behavior_end_button, 2, 1)
         button_layout.addWidget(seizure_button, 3, 0)
         button_layout.addWidget(delete_button, 3, 1)
+        button_layout.addWidget(edit_button, 4, 0, 1, 2)
 
         layout = QVBoxLayout()
         layout.setContentsMargins(6, 6, 6, 6)

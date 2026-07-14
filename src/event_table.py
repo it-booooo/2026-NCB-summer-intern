@@ -1,14 +1,20 @@
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QDialog,
     QHeaderView,
     QLineEdit,
+    QMessageBox,
     QTableWidget,
     QTableWidgetItem,
 )
 
+from .event_editor import EventEditDialog
+
 
 class NoteEditor(QLineEdit):
+    selection_requested = Signal()
+
     def __init__(self, text=""):
         super().__init__(text)
 
@@ -18,6 +24,24 @@ class NoteEditor(QLineEdit):
 
     def text(self):
         return super().text()
+
+    def focusInEvent(self, event):
+        self.selection_requested.emit()
+        super().focusInEvent(event)
+
+    def set_row_selected(self, selected):
+        if selected:
+            self.setStyleSheet(
+                "background-color: #dcecff;"
+                "border: 1px solid #2f80ed;"
+                "color: #111111;"
+            )
+        else:
+            self.setStyleSheet(
+                "background-color: #ffffff;"
+                "border: none;"
+                "color: #111111;"
+            )
 
 
 class EventTable(QTableWidget):
@@ -30,6 +54,7 @@ class EventTable(QTableWidget):
     NOTE_COLUMN = 2
     FRAME_ROLE = Qt.UserRole + 1
     SOURCE_ROLE = Qt.UserRole + 2
+    VIDEO_TIME_ROLE = Qt.UserRole + 3
 
     def __init__(self):
         super().__init__(0, len(self.DISPLAY_HEADERS))
@@ -57,12 +82,14 @@ class EventTable(QTableWidget):
         self.setStyleSheet(
             """
             QTableWidget::item:selected {
-                background: transparent;
-                color: black;
+                background-color: #dcecff;
+                color: #111111;
+                border: 1px solid #2f80ed;
             }
             """
         )
         self.cellClicked.connect(self.handle_cell_clicked)
+        self.itemSelectionChanged.connect(self.update_note_selection_styles)
 
     def handle_cell_clicked(self, row, column):
         if column != self.VIDEO_TIME_COLUMN:
@@ -72,12 +99,14 @@ class EventTable(QTableWidget):
         if item is None:
             return
 
-        try:
-            video_time_sec = float(item.text())
-        except ValueError:
-            return
+        video_time_sec = item.data(self.VIDEO_TIME_ROLE)
+        if video_time_sec is None:
+            try:
+                video_time_sec = float(item.text())
+            except ValueError:
+                return
 
-        self.video_time_selected.emit(video_time_sec)
+        self.video_time_selected.emit(float(video_time_sec))
 
     def add_event(
         self,
@@ -97,14 +126,76 @@ class EventTable(QTableWidget):
 
         for column, value in enumerate(fixed_values):
             item = QTableWidgetItem(value)
-            item.setFlags(Qt.ItemIsEnabled)
+            item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
             if column == self.EVENT_TYPE_COLUMN:
                 item.setData(self.FRAME_ROLE, int(frame_index))
                 item.setData(self.SOURCE_ROLE, source)
+            elif column == self.VIDEO_TIME_COLUMN:
+                item.setData(self.VIDEO_TIME_ROLE, float(video_time_sec))
             self.setItem(row, column, item)
 
         note_editor = NoteEditor(note)
+        note_editor.selection_requested.connect(
+            lambda editor=note_editor: self.select_note_editor_row(editor)
+        )
         self.setCellWidget(row, self.NOTE_COLUMN, note_editor)
+        self.update_note_selection_styles()
+        self.events_changed.emit()
+
+    def select_note_editor_row(self, editor):
+        for row in range(self.rowCount()):
+            if self.cellWidget(row, self.NOTE_COLUMN) is editor:
+                self.setCurrentCell(row, self.NOTE_COLUMN)
+                self.selectRow(row)
+                return
+
+    def update_note_selection_styles(self):
+        selected_rows = {
+            index.row() for index in self.selectionModel().selectedRows()
+        }
+        for row in range(self.rowCount()):
+            note_widget = self.cellWidget(row, self.NOTE_COLUMN)
+            if note_widget is not None:
+                note_widget.set_row_selected(row in selected_rows)
+
+    def edit_selected_event(self):
+        row = self.currentRow()
+        if row < 0:
+            QMessageBox.information(
+                self,
+                "Edit Event",
+                "Please select an event to edit.",
+            )
+            return
+
+        dialog = EventEditDialog(self.event_at(row), self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        self.update_event(row, **dialog.values())
+
+    def update_event(
+        self,
+        row,
+        event_type,
+        video_time_sec,
+        frame_index,
+        note,
+    ):
+        if row < 0 or row >= self.rowCount():
+            raise IndexError("Event row is out of range.")
+
+        event_item = self.item(row, self.EVENT_TYPE_COLUMN)
+        time_item = self.item(row, self.VIDEO_TIME_COLUMN)
+        note_widget = self.cellWidget(row, self.NOTE_COLUMN)
+
+        event_item.setText(str(event_type))
+        event_item.setData(self.FRAME_ROLE, int(frame_index))
+        time_item.setText(f"{float(video_time_sec):.3f}")
+        time_item.setData(self.VIDEO_TIME_ROLE, float(video_time_sec))
+        if note_widget is not None:
+            note_widget.setText(str(note))
+
         self.events_changed.emit()
 
     def delete_selected_rows(self):
@@ -112,6 +203,14 @@ class EventTable(QTableWidget):
 
         if current_row >= 0:
             self.removeRow(current_row)
+            if self.rowCount() > 0:
+                next_row = min(current_row, self.rowCount() - 1)
+                self.setCurrentCell(next_row, self.EVENT_TYPE_COLUMN)
+                self.selectRow(next_row)
+            else:
+                self.clearSelection()
+                self.setCurrentItem(None)
+            self.update_note_selection_styles()
             self.events_changed.emit()
 
     def delete_events_by_source(self, source):
@@ -123,34 +222,29 @@ class EventTable(QTableWidget):
                 removed = True
 
         if removed:
+            self.update_note_selection_styles()
             self.events_changed.emit()
 
+    def event_at(self, row):
+        if row < 0 or row >= self.rowCount():
+            raise IndexError("Event row is out of range.")
+
+        event_item = self.item(row, self.EVENT_TYPE_COLUMN)
+        time_item = self.item(row, self.VIDEO_TIME_COLUMN)
+        note_widget = self.cellWidget(row, self.NOTE_COLUMN)
+        video_time_sec = time_item.data(self.VIDEO_TIME_ROLE)
+        if video_time_sec is None:
+            video_time_sec = float(time_item.text() if time_item else 0)
+        frame_index = event_item.data(self.FRAME_ROLE) if event_item is not None else 0
+        source = event_item.data(self.SOURCE_ROLE) if event_item is not None else None
+
+        return {
+            "event_type": event_item.text() if event_item else "",
+            "video_time_sec": float(video_time_sec),
+            "frame_index": int(frame_index or 0),
+            "note": note_widget.text() if note_widget else "",
+            "source": source or "manual",
+        }
+
     def events(self):
-        rows = []
-
-        for row in range(self.rowCount()):
-            event_item = self.item(row, self.EVENT_TYPE_COLUMN)
-            time_item = self.item(row, self.VIDEO_TIME_COLUMN)
-            note_widget = self.cellWidget(row, self.NOTE_COLUMN)
-
-            frame_index = (
-                event_item.data(self.FRAME_ROLE)
-                if event_item is not None
-                else 0
-            )
-
-            event = {
-                "event_type": event_item.text() if event_item else "",
-                "video_time_sec": float(time_item.text() if time_item else 0),
-                "frame_index": int(frame_index or 0),
-                "note": note_widget.text() if note_widget else "",
-                "source": (
-                    event_item.data(self.SOURCE_ROLE)
-                    if event_item is not None
-                    else "manual"
-                ),
-            }
-
-            rows.append(event)
-
-        return rows
+        return [self.event_at(row) for row in range(self.rowCount())]
