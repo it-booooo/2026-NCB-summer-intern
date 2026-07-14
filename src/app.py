@@ -417,21 +417,32 @@ class MainWindow(QMainWindow):
             return
 
         cache_hit = worker.cached_points is not None
+        stats = dict(stats or {})
+        stats["scan_outcome"] = "events_found" if events else "no_events"
         if points and cache_key is not None and not cache_hit:
             self.led_brightness_cache[cache_key] = points
 
-        self.sync_panel.finish_led_detection_progress()
+        self.sync_panel.finish_led_detection_progress(has_events=bool(events))
         self.sync_panel.set_led_analysis(
             points,
             threshold,
             events,
             stats=stats,
         )
+        self.event_table.delete_events_by_source("led_detection")
         self.add_led_events(events)
         status = format_led_detection_status(points, threshold, events, stats)
         if cache_hit:
             status += " | cached scan"
         self.sync_panel.set_led_detection_status(status)
+
+        if not events:
+            QMessageBox.warning(
+                self,
+                "No LED event found",
+                "The scan completed successfully, but no LED event was found.\n\n"
+                "Please select the ROI again, adjust the scan range, or add markers manually.",
+            )
 
     def update_led_detection_progress(self, worker, current_frame, total_frames):
         if self.led_worker is not None and worker is not self.led_worker:
@@ -562,6 +573,7 @@ class MainWindow(QMainWindow):
                 video_time_sec=event.video_time_sec,
                 frame_index=event.frame_index,
                 note=f"brightness={event.brightness:.4f}",
+                source="led_detection",
             )
 
         if led_events:

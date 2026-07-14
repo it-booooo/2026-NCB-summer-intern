@@ -2,6 +2,11 @@ def format_led_detection_status(points, threshold, events, stats):
     stats = stats or {}
     interval_count = stats.get("event_count", len(events or []) // 2)
     mode_label = stats.get("mode_label", "Frame delta (ROI mean brightness)")
+    status_prefix = (
+        "LED scan completed: no events found"
+        if stats.get("scan_outcome") == "no_events"
+        else "LED detection"
+    )
     event_status = (
         f"event pairs={interval_count}"
         if interval_count
@@ -9,7 +14,7 @@ def format_led_detection_status(points, threshold, events, stats):
     )
 
     status = (
-        f"LED detection: {mode_label} | {interval_count} intervals | "
+        f"{status_prefix}: {mode_label} | {interval_count} intervals | "
         f"scan frames={stats.get('scan_start_frame', 0)}-{stats.get('scan_end_frame', 0)} | "
         f"coarse step={stats.get('coarse_step', 20)} frames | "
         f"refine window={stats.get('refine_window_sec', 1.0):.1f}s | "

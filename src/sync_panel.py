@@ -394,10 +394,14 @@ class SyncPanel(QWidget):
         )
         self.led_progress_bar.show()
 
-    def finish_led_detection_progress(self):
+    def finish_led_detection_progress(self, has_events=True):
         self.led_progress_bar.setRange(0, 100)
         self.led_progress_bar.setValue(100)
-        self.led_progress_bar.setFormat("LED analysis complete")
+        self.led_progress_bar.setFormat(
+            "LED analysis complete"
+            if has_events
+            else "LED scan complete: no events found"
+        )
         self.led_progress_bar.show()
 
     def set_led_detection_stage(self, text):

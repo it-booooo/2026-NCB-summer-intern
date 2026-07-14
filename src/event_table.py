@@ -29,6 +29,7 @@ class EventTable(QTableWidget):
     VIDEO_TIME_COLUMN = 1
     NOTE_COLUMN = 2
     FRAME_ROLE = Qt.UserRole + 1
+    SOURCE_ROLE = Qt.UserRole + 2
 
     def __init__(self):
         super().__init__(0, len(self.DISPLAY_HEADERS))
@@ -78,7 +79,14 @@ class EventTable(QTableWidget):
 
         self.video_time_selected.emit(video_time_sec)
 
-    def add_event(self, event_type, video_time_sec, frame_index, note=""):
+    def add_event(
+        self,
+        event_type,
+        video_time_sec,
+        frame_index,
+        note="",
+        source="manual",
+    ):
         row = self.rowCount()
         self.insertRow(row)
 
@@ -92,6 +100,7 @@ class EventTable(QTableWidget):
             item.setFlags(Qt.ItemIsEnabled)
             if column == self.EVENT_TYPE_COLUMN:
                 item.setData(self.FRAME_ROLE, int(frame_index))
+                item.setData(self.SOURCE_ROLE, source)
             self.setItem(row, column, item)
 
         note_editor = NoteEditor(note)
@@ -103,6 +112,17 @@ class EventTable(QTableWidget):
 
         if current_row >= 0:
             self.removeRow(current_row)
+            self.events_changed.emit()
+
+    def delete_events_by_source(self, source):
+        removed = False
+        for row in range(self.rowCount() - 1, -1, -1):
+            event_item = self.item(row, self.EVENT_TYPE_COLUMN)
+            if event_item is not None and event_item.data(self.SOURCE_ROLE) == source:
+                self.removeRow(row)
+                removed = True
+
+        if removed:
             self.events_changed.emit()
 
     def events(self):
@@ -124,6 +144,11 @@ class EventTable(QTableWidget):
                 "video_time_sec": float(time_item.text() if time_item else 0),
                 "frame_index": int(frame_index or 0),
                 "note": note_widget.text() if note_widget else "",
+                "source": (
+                    event_item.data(self.SOURCE_ROLE)
+                    if event_item is not None
+                    else "manual"
+                ),
             }
 
             rows.append(event)

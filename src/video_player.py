@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QSizePolicy,
     QSlider,
@@ -354,15 +355,34 @@ class VideoPlayer(QWidget):
         if not path:
             return False
 
+        new_cap = None
+        try:
+            metadata = parse_video_metadata(path)
+            new_cap = cv2.VideoCapture(path)
+            if not new_cap.isOpened():
+                raise ValueError("The video stream could not be opened.")
+
+            success, first_frame = read_frame(new_cap, 0)
+            if not success or first_frame is None:
+                raise ValueError("The first video frame could not be decoded.")
+        except Exception as error:
+            if new_cap is not None:
+                new_cap.release()
+            if not self.has_video():
+                self.info_label.setText("Failed to open video")
+            QMessageBox.warning(
+                self,
+                "Video load failed",
+                "Could not open or decode the selected video.\n\n"
+                f"Reason: {error}",
+            )
+            return False
+
         if self.cap is not None:
             self.cap.release()
 
-        self.metadata = parse_video_metadata(path)
-        self.cap = cv2.VideoCapture(path)
-
-        if not self.cap.isOpened():
-            self.info_label.setText("Failed to open video")
-            return False
+        self.metadata = metadata
+        self.cap = new_cap
 
         self.video_path = path
         self.fps = self.metadata.using_fps
@@ -385,7 +405,8 @@ class VideoPlayer(QWidget):
         self.play_button.setText("Play")
         self.rotate_button.setText("Rotate 180°")
 
-        return self.show_frame(0)
+        self.display_frame(first_frame, 0)
+        return True
 
     def toggle_play(self):
         if not self.has_video():
