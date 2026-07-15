@@ -231,6 +231,7 @@ class ExportController:
                     segment,
                     options.settings,
                     time_mode,
+                    self.window.lfp_info,
                 )
 
             if "power_spectrum" in options.image_types:

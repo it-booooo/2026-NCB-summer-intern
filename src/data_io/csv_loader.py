@@ -4,6 +4,8 @@ from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 
+from pyqtgraph import units
+
 from ..time_utils import record_time_parts
 
 
@@ -59,6 +61,7 @@ def parse_signal_csv_metadata(path):
 def parse_lfp_csv_info(path):
     metadata = parse_signal_csv_metadata(path)
     channels = metadata["channels"]
+    units = parse_signal_csv_units(path)
 
     return {
         "path": path,
@@ -68,6 +71,8 @@ def parse_lfp_csv_info(path):
         "channel_count": len(channels),
         "header_row": metadata["header_row"],
         "data_column_count": metadata["data_column_count"],
+        "time_unit": units["time_unit"],
+        "value_unit": units["value_unit"],
     }
 
 

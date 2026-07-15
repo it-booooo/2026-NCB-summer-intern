@@ -49,7 +49,7 @@ def accelerator(
         raise FileNotFoundError(f"3-axis CSV file not found: {input_file}")
 
     data = read.read_signal_csv(str(input_file), requested_channels=[260])
-    units = csv_func.parse_signal_csv_units(input_file)
+
 
     channel_name = "channel_260"
     if channel_name not in data:
@@ -84,7 +84,7 @@ def accelerator(
         linewidth=0.2,
     )
 
-    y_label = format_signal_label(units["value_unit"])
+    y_label = format_signal_label(info["value_unit"])
     ax.set_xlabel("")
     ax.set_ylabel("")
     fig.text(
@@ -98,7 +98,7 @@ def accelerator(
     fig.text(
         0.055,
         0.07,
-        f"Time ({units['time_unit']})",
+        f"Time ({info['time_unit']})",
         fontsize=7,
         ha="right",
         va="bottom",

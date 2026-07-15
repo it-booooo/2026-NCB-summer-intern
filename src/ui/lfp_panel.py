@@ -1180,7 +1180,7 @@ class LfpPanel(QWidget):
         ax.grid(True, linewidth=0.4, alpha=0.35)
         return figure
 
-    def create_lfp_waveform_figure(self, channel, segment, settings, time_mode):
+    def create_lfp_waveform_figure(self, channel, segment, settings, time_mode,info):
         duration_sec = abs(
             float(segment.record_time_s[-1]) - float(segment.record_time_s[0])
         )
@@ -1205,10 +1205,9 @@ class LfpPanel(QWidget):
             linewidth=0.6,
             color="#1f77b4",
         )
-        units = csv_loader.parse_signal_csv_units(self.lfp_path)
         ax.set_title(f"LFP Waveform - Channel {channel}")
         ax.set_xlabel(f"{time_mode} (s)")
-        ax.set_ylabel(format_signal_label(units["value_unit"]))
+        ax.set_ylabel(format_signal_label(info["value_unit"]))
         ax.grid(True, linewidth=0.4, alpha=0.35)
         return figure
 

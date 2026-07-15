@@ -41,7 +41,7 @@ def LFP(
         raise FileNotFoundError(f"LFP CSV file not found: {input_file}")
 
     data = read.read_signal_csv(str(input_file))
-    units = csv_func.parse_signal_csv_units(input_file)
+
 
     time_s = data["time_us"].to_numpy(dtype=float) / 1e6
 
@@ -119,7 +119,7 @@ def LFP(
     fig.text(
         0.055,
         0.855,
-        format_signal_label(units["value_unit"]),
+        format_signal_label(info["value_unit"]),
         fontsize=7,
         ha="right",
         va="top",
@@ -127,7 +127,7 @@ def LFP(
     fig.text(
         0.055,
         0.055,
-        f"Time ({units['time_unit']})",
+        f"Time ({info['time_unit']})",
         fontsize=7,
         ha="right",
         va="bottom",
