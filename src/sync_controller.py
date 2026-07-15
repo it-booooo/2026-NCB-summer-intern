@@ -69,6 +69,9 @@ class SyncControllerMixin:
         if not self.video_player.has_video():
             return
 
+        self._seek_video_time(video_time_sec)
+
+    def _seek_video_time(self, video_time_sec):
         self.video_player.pause()
         self.video_player.seek_time_sec(video_time_sec)
         self.video_player.update_seek_inputs_from_current_frame()
@@ -78,9 +81,7 @@ class SyncControllerMixin:
             return
 
         video_time_sec = float(record_time_sec) + self.time_offset_sec
-        self.video_player.pause()
-        self.video_player.seek_time_sec(video_time_sec)
-        self.video_player.update_seek_inputs_from_current_frame()
+        self._seek_video_time(video_time_sec)
 
     def add_led_events(self, led_events):
         for event in led_events:
@@ -120,16 +121,12 @@ class SyncControllerMixin:
 
     def update_time_offset(self):
         video_led_sec = self.first_video_led_time_sec()
-        if video_led_sec is None:
-            self.clear_time_offset()
-            return
-
-        if self.timeMarker_info is None:
-            self.clear_time_offset()
-            return
-
-        ttl_marker_sec = self.timeMarker_info.get("first_marker_sec")
-        if ttl_marker_sec is None:
+        ttl_marker_sec = (
+            self.timeMarker_info.get("first_marker_sec")
+            if self.timeMarker_info is not None
+            else None
+        )
+        if video_led_sec is None or ttl_marker_sec is None:
             self.clear_time_offset()
             return
 

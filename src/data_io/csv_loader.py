@@ -1,8 +1,8 @@
 import csv
 import re
-from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 
 from ..time_utils import record_time_parts
 
@@ -106,20 +106,27 @@ def normalize_unit(unit):
     return replacements.get(unit, re.sub(r"\s+", " ", unit))
 
 
+def _time_marker_info(path, time_column_name=None, markers=None):
+    markers = list(markers or [])
+    return {
+        "path": path,
+        "filename": Path(path).name,
+        "time_column_name": time_column_name,
+        "marker_count": len(markers),
+        "markers": markers,
+        "first_marker_sec": (
+            markers[0]["record_time"] / 1_000_000.0 if markers else None
+        ),
+    }
+
+
 def parse_time_marker_csv_info(path):
     rows = []
     with open(path, "r", encoding="utf-8-sig", newline="") as csv_file:
         rows = list(csv.reader(csv_file))
 
     if len(rows) < 2:
-        return {
-            "path": path,
-            "filename": Path(path).name,
-            "marker_count": 0,
-            "markers": [],
-            "time_column_name": None,
-            "first_marker_sec": None,
-        }
+        return _time_marker_info(path)
 
     header = [column.strip() for column in rows[0]]
 
@@ -141,7 +148,7 @@ def parse_time_marker_csv_info(path):
         ):
             record_time_column_index = index
 
-    # 如果找不到，就預設第 0 欄是 local/abs time，第 1 欄是 record time
+    # Fall back to the first two columns for legacy marker CSV files.
     if abs_time_column_index is None and len(header) >= 1:
         abs_time_column_index = 0
         time_column_name = header[0]
@@ -152,14 +159,7 @@ def parse_time_marker_csv_info(path):
     markers = []
 
     if abs_time_column_index is None or record_time_column_index is None:
-        return {
-            "path": path,
-            "filename": Path(path).name,
-            "marker_count": 0,
-            "markers": [],
-            "time_column_name": time_column_name,
-            "first_marker_sec": None,
-        }
+        return _time_marker_info(path, time_column_name)
 
     for row in rows[1:]:
         if (
@@ -190,13 +190,4 @@ def parse_time_marker_csv_info(path):
             }
         )
 
-    first_marker_sec = markers[0]["record_time"] / 1_000_000.0 if markers else None
-
-    return {
-        "path": path,
-        "filename": Path(path).name,
-        "time_column_name": time_column_name,
-        "marker_count": len(markers),
-        "markers": markers,
-        "first_marker_sec": first_marker_sec,
-    }
+    return _time_marker_info(path, time_column_name, markers)

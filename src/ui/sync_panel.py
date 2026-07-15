@@ -47,6 +47,13 @@ class RoiPlotIndicator(QLabel):
         self.frame_index = (self.frame_index + 1) % len(self.SPINNER_FRAMES)
         self.setText(self.SPINNER_FRAMES[self.frame_index])
 
+    def _set_visual(self, text, color):
+        self.setText(text)
+        self.setStyleSheet(
+            f"font-size: 9pt; color: {color}; "
+            "background: transparent; border: none;"
+        )
+
     def set_state(self, state):
         """Apply one ROI rendering state and its timer/tooltip behavior."""
         if state not in self.STATE_TOOLTIPS:
@@ -56,30 +63,14 @@ class RoiPlotIndicator(QLabel):
         self.frame_index = 0
         self.setToolTip(self.STATE_TOOLTIPS[state])
         if state == "rendering":
-            self.setText(self.SPINNER_FRAMES[0])
-            self.setStyleSheet(
-                "font-size: 9pt; color: #2f80ed; "
-                "background: transparent; border: none;"
-            )
+            self._set_visual(self.SPINNER_FRAMES[0], "#2f80ed")
             self.timer.start(120)
         elif state == "done":
-            self.setText("●")
-            self.setStyleSheet(
-                "font-size: 9pt; color: #2f80ed; "
-                "background: transparent; border: none;"
-            )
+            self._set_visual("●", "#2f80ed")
         elif state == "failed":
-            self.setText("○")
-            self.setStyleSheet(
-                "font-size: 9pt; color: #c0392b; "
-                "background: transparent; border: none;"
-            )
+            self._set_visual("○", "#c0392b")
         else:
-            self.setText("○")
-            self.setStyleSheet(
-                "font-size: 9pt; color: #777777; "
-                "background: transparent; border: none;"
-            )
+            self._set_visual("○", "#777777")
         self.show()
 
 
@@ -91,7 +82,7 @@ class SyncPanel(QWidget):
         self.analysis_info_button = QPushButton("Analysis Info")
         self.analysis_info_button.setFixedSize(108, 24)
         self.analysis_info_button.setStyleSheet(
-            "font-size: 12px; padding: 2px 6px;"
+            "font-size: 9pt; padding: 2px 6px;"
         )
         self.analysis_info_button.setEnabled(False)
         self.analysis_info_button.clicked.connect(self.show_analysis_info)

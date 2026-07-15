@@ -118,16 +118,7 @@ class TtlPanel(QWidget):
         markers = list(self.info.get("markers", []))
         markers.append(marker)
         markers.sort(key=lambda item: item["record_time"])
-
-        self.info = {
-            **self.info,
-            "filename": self.info.get("filename") or "Manual TTL",
-            "marker_count": len(markers),
-            "markers": markers,
-            "first_marker_sec": (
-                markers[0]["record_time"] / 1_000_000.0 if markers else None
-            ),
-        }
+        self._update_marker_info(markers, ensure_filename=True)
 
         self.record_time_input.clear()
         self.refresh_table()
@@ -149,17 +140,27 @@ class TtlPanel(QWidget):
             return
 
         del markers[row]
-        self.info = {
-            **self.info,
+        self._update_marker_info(markers)
+
+        self.refresh_table()
+        self.markers_changed.emit(self.info)
+
+    def _update_marker_info(self, markers, ensure_filename=False):
+        """Keep the marker list and its derived summary fields consistent."""
+        updates = {
             "marker_count": len(markers),
             "markers": markers,
             "first_marker_sec": (
                 markers[0]["record_time"] / 1_000_000.0 if markers else None
             ),
         }
+        if ensure_filename:
+            updates["filename"] = self.info.get("filename") or "Manual TTL"
 
-        self.refresh_table()
-        self.markers_changed.emit(self.info)
+        self.info = {
+            **self.info,
+            **updates,
+        }
 
     def parse_record_time_us(self, text):
         if not text:

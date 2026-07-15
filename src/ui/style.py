@@ -7,7 +7,7 @@ QMainWindow {
 QWidget {
     background-color: #f0f0f0;
     color: #111111;
-    font-size: 13px;
+    font-size: 10pt;
 }
 
 QMenuBar {
@@ -64,7 +64,7 @@ QGroupBox::title {
 QLabel {
     color: #111111;
     background-color: transparent;
-    font-size: 13px;
+    font-size: 10pt;
 }
 
 QPushButton {

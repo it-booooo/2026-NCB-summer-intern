@@ -98,6 +98,6 @@ class ImportController:
         path = self.open_csv_file("Import Time Marker (.csv)")
         if not path:
             return
-        window.timeMarker_info = data_io.parse_time_marker_csv_info(path)
-        window.set_ttl_markers(window.timeMarker_info)
-        window.ttl_panel.set_markers(window.timeMarker_info)
+        info = data_io.parse_time_marker_csv_info(path)
+        window.set_ttl_markers(info)
+        window.ttl_panel.set_markers(info)
