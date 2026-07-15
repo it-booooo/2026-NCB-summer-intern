@@ -1,5 +1,5 @@
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QIcon
 from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
@@ -31,6 +31,7 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
         self.setWindowTitle("Pig Behavior Video-LFP Synchronization Tool")
         self.resize(1280, 720)
         self.setMinimumSize(1100, 640)
+        self.setWindowIcon(QIcon("input_data/icon.png"))
 
         self.video_player = VideoPlayer()
         self.event_table = EventTable()
