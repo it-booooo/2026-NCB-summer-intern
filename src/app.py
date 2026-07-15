@@ -35,7 +35,7 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
         self.event_table = EventTable()
         self.lfp_panel = LfpPanel()
         self.sync_panel = SyncPanel()
-        self.ttl_panel = TtlPanel()
+        self.ttl_panel = TtlPanel(self.paused_video_time_for_ttl)
         self.marker_panel = MarkerPanel(
             self.event_table,
             self.add_event,
@@ -61,6 +61,13 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
 
         self.create_menu()
         self.create_layout()
+
+    def paused_video_time_for_ttl(self):
+        if not self.video_player.has_video():
+            raise ValueError("Please import a video or enter a TTL time manually.")
+        if self.video_player.is_playing:
+            raise ValueError("Pause the video before adding its current time as TTL.")
+        return self.video_player.current_time_sec()
 
     def add_action(self, menu, text, callback, description=""):
         action = QAction(text, self)

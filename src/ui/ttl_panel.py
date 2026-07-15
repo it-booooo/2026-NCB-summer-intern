@@ -21,19 +21,20 @@ class TtlPanel(QWidget):
     HEADERS = ["#", "Local time", "Record time"]
     markers_changed = Signal(dict)
 
-    def __init__(self):
+    def __init__(self, video_time_provider=None):
         super().__init__()
         self.info = self.empty_info()
+        self.video_time_provider = video_time_provider
 
         self.record_time_input = QLineEdit()
         self.record_time_input.setPlaceholderText("HH:MM:SS.ffffff")
         self.record_time_input.setToolTip(
             "Manual TTL record time. Accepts seconds or HH:MM:SS.ffffff."
         )
-        self.record_time_input.returnPressed.connect(self.add_manual_marker)
+        self.record_time_input.returnPressed.connect(self.add_ttl_marker)
 
         self.add_button = QPushButton("Add TTL")
-        self.add_button.clicked.connect(self.add_manual_marker)
+        self.add_button.clicked.connect(self.add_ttl_marker)
 
         self.remove_button = QPushButton("Remove TTL")
         self.remove_button.clicked.connect(self.remove_selected_marker)
@@ -90,14 +91,28 @@ class TtlPanel(QWidget):
         self.info = info or self.empty_info()
         self.refresh_table()
 
-    def add_manual_marker(self):
+    def add_ttl_marker(self):
         text = self.record_time_input.text().strip()
 
-        try:
-            record_time = self.parse_record_time_us(text)
-        except ValueError as error:
-            QMessageBox.warning(self, "Invalid TTL record time", str(error))
-            return
+        if text:
+            try:
+                record_time = self.parse_record_time_us(text)
+            except ValueError as error:
+                QMessageBox.warning(self, "Invalid TTL record time", str(error))
+                return
+        else:
+            try:
+                if self.video_time_provider is None:
+                    raise ValueError("Please enter a TTL time manually.")
+                video_time_sec = self.video_time_provider()
+                record_time = int(
+                    (Decimal(str(video_time_sec)) * 1_000_000).to_integral_value(
+                        rounding=ROUND_HALF_UP
+                    )
+                )
+            except (TypeError, InvalidOperation, ValueError) as error:
+                QMessageBox.warning(self, "Cannot add TTL", str(error))
+                return
 
         marker = self.create_record_time_marker(record_time)
         markers = list(self.info.get("markers", []))

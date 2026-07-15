@@ -1,5 +1,4 @@
 from PySide6.QtWidgets import (
-    QFrame,
     QGridLayout,
     QPushButton,
     QVBoxLayout,
@@ -18,10 +17,6 @@ class MarkerPanel(QWidget):
 
         self.event_table = event_table
         self.add_event_callback = add_event_callback
-
-        divider = QFrame()
-        divider.setFrameShape(QFrame.HLine)
-        divider.setFrameShadow(QFrame.Sunken)
 
         led_on_button = QPushButton("LED On")
         led_off_button = QPushButton("LED Off")
@@ -74,7 +69,6 @@ class MarkerPanel(QWidget):
         layout.setContentsMargins(3, 3, 3, 3)
         layout.setSpacing(3)
         layout.addLayout(button_layout)
-        layout.addWidget(divider)
         layout.addWidget(self.event_table)
 
         self.setLayout(layout)
