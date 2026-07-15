@@ -432,12 +432,6 @@ class VideoPlayer(QWidget):
             self.pause()
             return
 
-        if (
-            self.sync_time_origin_sec is not None
-            and self.current_time_sec() < self.sync_time_origin_sec
-        ):
-            self.seek_time_sec(self.sync_time_origin_sec)
-
         self.is_playing = True
         self.play_button.setText("Pause")
 
