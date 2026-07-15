@@ -1,6 +1,5 @@
 """Readers that normalize signal CSV files into data frames."""
 
-from .read_accelerator import accelerator
-from .read_LFP import LFP
+from .signal_reader import read_signal_csv
 
-__all__ = ["LFP", "accelerator"]
+__all__ = ["read_signal_csv"]

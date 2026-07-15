@@ -296,14 +296,18 @@ class LfpPanel(QWidget):
         self.spectrum_button.setToolTip(
             "Calculate the power spectrum of the selected LFP time range."
         )
-        self.spectrum_button.clicked.connect(self.show_lfp_power_spectrum)
+        self.spectrum_button.clicked.connect(
+            lambda _checked=False: self.show_lfp_analysis("power_spectrum")
+        )
 
         self.spectrogram_button = QPushButton("Spectrogram")
         self.spectrogram_button.setEnabled(False)
         self.spectrogram_button.setToolTip(
             "Calculate the time-frequency map of the selected LFP time range."
         )
-        self.spectrogram_button.clicked.connect(self.show_lfp_spectrogram)
+        self.spectrogram_button.clicked.connect(
+            lambda _checked=False: self.show_lfp_analysis("spectrogram")
+        )
 
         self.follow_video_checkbox = QCheckBox("Follow video playback")
         self.follow_video_checkbox.setChecked(True)
@@ -498,10 +502,6 @@ class LfpPanel(QWidget):
 
         left, right = value
         self.set_shared_xlim(float(left), float(right), source=source)
-
-    def on_timeline_changed(self, value):
-        left, right = value
-        self.set_shared_xlim(float(left), float(right), source="timeline")
 
     def current_timeline_xlim(self):
         if self.timeline_slider is None:
@@ -752,7 +752,9 @@ class LfpPanel(QWidget):
             full_xlim,
         )
         slider.set_time_origin(self.sync_time_origin_sec)
-        slider.on_changed(self.on_timeline_changed)
+        slider.on_changed(
+            lambda value: self.on_plot_xlim_changed(value, "timeline")
+        )
 
         canvas = FigureCanvas(fig)
         canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -876,16 +878,12 @@ class LfpPanel(QWidget):
         return self._applied_lfp_filter_settings
 
     def pending_lfp_filter_settings(self):
-        line_noise_hz = self.line_noise_hz if self.notch_checkbox.isChecked() else None
-        if line_noise_hz is not None:
-            line_noise_hz = float(line_noise_hz)
-
-        return signal_func.LfpFilterSettings(
-            show_filtered=bool(self.signal_view_selector.currentData()),
-            bandpass_enabled=self.bandpass_checkbox.isChecked(),
-            bandpass_low_hz=float(self.bandpass_low_spin.value()),
-            bandpass_high_hz=float(self.bandpass_high_spin.value()),
-            line_noise_hz=line_noise_hz,
+        return self.settings_from_processing_controls(
+            self.signal_view_selector,
+            self.bandpass_checkbox,
+            self.bandpass_low_spin,
+            self.bandpass_high_spin,
+            self.notch_checkbox,
         )
 
     def mark_lfp_filter_settings_pending(self, *_args):
@@ -977,7 +975,7 @@ class LfpPanel(QWidget):
         return [int(channel) for channel in channels]
 
     def load_lfp_segment(self, channel, left, right, settings):
-        data = read.LFP(self.lfp_path)
+        data = read.read_signal_csv(self.lfp_path)
         column = f"channel_{channel}"
         if column not in data:
             raise ValueError(f"LFP CSV does not include channel {channel}.")
@@ -1012,7 +1010,7 @@ class LfpPanel(QWidget):
         if not self.lfp_path:
             raise ValueError("Please import LFP CSV data first.")
 
-        data = read.LFP(self.lfp_path)
+        data = read.read_signal_csv(self.lfp_path)
         time_s = data["time_us"].to_numpy(dtype=float) / 1e6
         if time_s.size == 0:
             raise ValueError("LFP CSV does not contain samples.")
@@ -1039,14 +1037,15 @@ class LfpPanel(QWidget):
             line_noise_hz=line_noise_hz,
         )
 
-    def show_lfp_power_spectrum(self):
+    def _prepare_lfp_analysis(self, failure_title):
+        """Validate the current selection and load one shared analysis segment."""
         if not self.lfp_path:
             QMessageBox.information(
                 self,
                 "No LFP data",
                 "Please import LFP CSV data first.",
             )
-            return
+            return None
 
         channel = self.selected_channel(self.lfp_channel_selector)
         if channel is None:
@@ -1055,31 +1054,73 @@ class LfpPanel(QWidget):
                 "No LFP channel",
                 "Please select an LFP channel first.",
             )
-            return
+            return None
 
         settings = self.current_lfp_filter_settings()
-
         try:
             left, right = self.current_lfp_record_xlim()
             segment = self.load_lfp_segment(channel, left, right, settings)
-            frequencies, power = signal_func.compute_power_spectrum(
-                segment.values,
-                segment.sample_rate_hz,
-            )
         except Exception as error:
-            QMessageBox.warning(self, "Power spectrum failed", str(error))
+            QMessageBox.warning(self, failure_title, str(error))
+            return None
+
+        return channel, left, right, segment, settings
+
+    def show_lfp_analysis(self, analysis_type):
+        """Calculate and display the selected frequency-domain analysis."""
+        failure_title, dialog_title, dialog_size = {
+            "power_spectrum": (
+                "Power spectrum failed",
+                "LFP Power Spectrum",
+                (780, 520),
+            ),
+            "spectrogram": (
+                "Spectrogram failed",
+                "LFP Spectrogram",
+                (820, 560),
+            ),
+        }[analysis_type]
+
+        analysis = self._prepare_lfp_analysis(failure_title)
+        if analysis is None:
             return
 
-        figure = self.create_power_spectrum_figure(channel, frequencies, power)
+        channel, left, right, segment, settings = analysis
+        try:
+            if analysis_type == "power_spectrum":
+                frequencies, power = signal_func.compute_power_spectrum(
+                    segment.values,
+                    segment.sample_rate_hz,
+                )
+                figure = self.create_power_spectrum_figure(
+                    channel, frequencies, power
+                )
+            else:
+                frequencies, times, power = signal_func.compute_time_frequency(
+                    segment.values,
+                    segment.sample_rate_hz,
+                )
+                figure = self.create_spectrogram_figure(
+                    channel,
+                    segment,
+                    frequencies,
+                    times,
+                    power,
+                    "sync time" if self.sync_time_origin_sec is not None else "time",
+                )
+        except Exception as error:
+            QMessageBox.warning(self, failure_title, str(error))
+            return
+
         self.open_lfp_analysis_dialog(
-            f"LFP Power Spectrum - Channel {channel}",
+            f"{dialog_title} - Channel {channel}",
             channel,
             left,
             right,
             segment,
             settings,
             figure,
-            (780, 520),
+            dialog_size,
         )
 
     def open_lfp_analysis_dialog(
@@ -1182,56 +1223,6 @@ class LfpPanel(QWidget):
             f"File: {filename} | Channel {channel} | {processing}\n"
             f"{time_mode}: {display_left:.3f}-{display_right:.3f} s",
             fontsize=8,
-        )
-
-    def show_lfp_spectrogram(self):
-        if not self.lfp_path:
-            QMessageBox.information(
-                self,
-                "No LFP data",
-                "Please import LFP CSV data first.",
-            )
-            return
-
-        channel = self.selected_channel(self.lfp_channel_selector)
-        if channel is None:
-            QMessageBox.warning(
-                self,
-                "No LFP channel",
-                "Please select an LFP channel first.",
-            )
-            return
-
-        settings = self.current_lfp_filter_settings()
-
-        try:
-            left, right = self.current_lfp_record_xlim()
-            segment = self.load_lfp_segment(channel, left, right, settings)
-            frequencies, times, power = signal_func.compute_time_frequency(
-                segment.values,
-                segment.sample_rate_hz,
-            )
-        except Exception as error:
-            QMessageBox.warning(self, "Spectrogram failed", str(error))
-            return
-
-        figure = self.create_spectrogram_figure(
-            channel,
-            segment,
-            frequencies,
-            times,
-            power,
-            "sync time" if self.sync_time_origin_sec is not None else "time",
-        )
-        self.open_lfp_analysis_dialog(
-            f"LFP Spectrogram - Channel {channel}",
-            channel,
-            left,
-            right,
-            segment,
-            settings,
-            figure,
-            (820, 560),
         )
 
     def create_spectrogram_figure(

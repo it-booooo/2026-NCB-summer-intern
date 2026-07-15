@@ -254,7 +254,12 @@ def _apply_bandpass(
         fs=sample_rate_hz,
         output="sos",
     )
-    return _apply_sos_filter(values, sos)
+    return _apply_filter(
+        values,
+        padlen=3 * (2 * sos.shape[0] + 1),
+        causal_filter=lambda data: signal.sosfilt(sos, data),
+        zero_phase_filter=lambda data: signal.sosfiltfilt(sos, data),
+    )
 
 
 def _apply_notch(
@@ -277,26 +282,25 @@ def _apply_notch(
         raise ValueError("Notch quality factor must be greater than 0.")
 
     b, a = signal.iirnotch(line_noise_hz, quality, fs=sample_rate_hz)
-    return _apply_ba_filter(values, b, a)
+    return _apply_filter(
+        values,
+        padlen=3 * max(len(a), len(b)),
+        causal_filter=lambda data: signal.lfilter(b, a, data),
+        zero_phase_filter=lambda data: signal.filtfilt(b, a, data),
+    )
 
 
-def _apply_sos_filter(values: np.ndarray, sos: np.ndarray) -> np.ndarray:
+def _apply_filter(
+    values: np.ndarray,
+    padlen: int,
+    causal_filter,
+    zero_phase_filter,
+) -> np.ndarray:
+    """Use zero-phase filtering when possible and a causal short-signal fallback."""
     if values.size < 2:
         return values.copy()
 
-    padlen = 3 * (2 * sos.shape[0] + 1)
     if values.size <= padlen:
-        return signal.sosfilt(sos, values)
+        return causal_filter(values)
 
-    return signal.sosfiltfilt(sos, values)
-
-
-def _apply_ba_filter(values: np.ndarray, b: np.ndarray, a: np.ndarray) -> np.ndarray:
-    if values.size < 2:
-        return values.copy()
-
-    padlen = 3 * max(len(a), len(b))
-    if values.size <= padlen:
-        return signal.lfilter(b, a, values)
-
-    return signal.filtfilt(b, a, values)
+    return zero_phase_filter(values)

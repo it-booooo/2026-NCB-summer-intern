@@ -48,7 +48,7 @@ def accelerator(
     if not input_file.is_file():
         raise FileNotFoundError(f"3-axis CSV file not found: {input_file}")
 
-    data = read.accelerator(str(input_file))
+    data = read.read_signal_csv(str(input_file), requested_channels=[260])
     units = csv_func.parse_signal_csv_units(input_file)
 
     channel_name = "channel_260"

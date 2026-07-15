@@ -153,11 +153,6 @@ def _matches_device_request(platform, device, requested_text):
     return any(term and term in search_text for term in _request_terms(requested_text))
 
 
-def _matches_vendor(platform, device, vendor):
-    search_text = _device_search_text(platform, device)
-    return any(term in search_text for term in GPU_VENDOR_ALIASES[vendor])
-
-
 def _normalise_vendor(value):
     value = value.strip().lower()
     if value in GPU_VENDOR_ALIASES:
@@ -209,7 +204,7 @@ def _choose_gpu_device(cl, gpu_devices):
         vendor_devices = [
             item
             for item in gpu_devices
-            if _matches_vendor(item[0], item[1], normalised_vendor)
+            if _matches_device_request(item[0], item[1], normalised_vendor)
         ]
         if not vendor_devices:
             raise OpenClUnavailable(
@@ -222,7 +217,9 @@ def _choose_gpu_device(cl, gpu_devices):
 
     for vendor in GPU_VENDOR_PRIORITY:
         vendor_devices = [
-            item for item in gpu_devices if _matches_vendor(item[0], item[1], vendor)
+            item
+            for item in gpu_devices
+            if _matches_device_request(item[0], item[1], vendor)
         ]
         if vendor_devices:
             platform, device = _largest_memory_device(cl, vendor_devices)

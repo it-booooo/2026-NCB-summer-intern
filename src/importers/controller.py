@@ -6,6 +6,11 @@ from .. import data_io
 class ImportController:
     """Own all file-selection and import workflows for the main window."""
 
+    SIGNAL_IMPORT_TITLES = {
+        "lfp": "Import LFP (.csv)",
+        "axis": "Import 3-axis (.csv)",
+    }
+
     def __init__(self, window):
         self.window = window
 
@@ -18,12 +23,12 @@ class ImportController:
             ),
             (
                 "Import LFP (.csv)",
-                self.import_lfp,
+                lambda: self.import_signal("lfp"),
                 "Load LFP data from a CSV file, parse its channels and sampling information, and display the waveform.",
             ),
             (
                 "Import 3-axis (.csv)",
-                self.import_axis,
+                lambda: self.import_signal("axis"),
                 "Load three-axis sensor data from a CSV file and display its waveforms.",
             ),
             (
@@ -40,7 +45,6 @@ class ImportController:
         return path
 
     def import_video(self):
-        # 更換影片前先停止背景 LED 分析，避免舊影片的工作執行緒繼續寫入狀態。
         window = self.window
         if not window.stop_led_detection(wait=True):
             QMessageBox.information(
@@ -70,35 +74,28 @@ class ImportController:
             )
             window.sync_panel.set_video_path(window.video_player.video_path)
 
-    def import_lfp(self):
-        # LFP 解析、畫面狀態更新與波形刷新都集中在此匯入流程。
+    def import_signal(self, signal_type):
+        """Import an LFP or 3-axis CSV through the shared signal workflow."""
         window = self.window
-        path = self.open_csv_file("Import LFP (.csv)")
-        if path:
-            window.lfp_info = data_io.parse_lfp_csv_info(path)
-            window.lfp_panel.set_lfp_info(window.lfp_info)
-            window.sync_panel.set_lfp_status(
-                f"LFP file: {window.lfp_info['filename']}"
-            )
-            window.update_waveform_current_time(
-                window.video_player.current_frame,
-                window.video_player.current_time_sec(),
-            )
+        path = self.open_csv_file(self.SIGNAL_IMPORT_TITLES[signal_type])
+        if not path:
+            return
 
-    def import_axis(self):
-        # 三軸資料沿用相同的 CSV metadata 格式，再交由波形面板繪製。
-        window = self.window
-        path = self.open_csv_file("Import 3-axis (.csv)")
-        if path:
-            window.axis_info = data_io.parse_lfp_csv_info(path)
-            window.lfp_panel.set_axis_info(window.axis_info)
-            window.update_waveform_current_time(
-                window.video_player.current_frame,
-                window.video_player.current_time_sec(),
-            )
+        info = data_io.parse_lfp_csv_info(path)
+        if signal_type == "lfp":
+            window.lfp_info = info
+            window.lfp_panel.set_lfp_info(info)
+            window.sync_panel.set_lfp_status(f"LFP file: {info['filename']}")
+        else:
+            window.axis_info = info
+            window.lfp_panel.set_axis_info(info)
+
+        window.update_waveform_current_time(
+            window.video_player.current_frame,
+            window.video_player.current_time_sec(),
+        )
 
     def import_time_marker(self):
-        # TTL marker 載入後立即更新同步計算及側邊 marker 面板。
         window = self.window
         path = self.open_csv_file("Import Time Marker (.csv)")
         if not path:

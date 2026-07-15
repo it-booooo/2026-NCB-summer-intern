@@ -213,7 +213,7 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
         close_button.setObjectName("sidebarCloseButton")
         close_button.setFlat(True)
         close_button.setFixedSize(16, 16)
-        close_button.clicked.connect(self.hide_marker_panel)
+        close_button.clicked.connect(self.side_panel.hide)
 
         close_layout = QHBoxLayout()
         close_layout.setContentsMargins(0, 0, 2, 0)
@@ -243,9 +243,6 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
 
     def show_marker_panel(self):
         self.side_panel.show()
-
-    def hide_marker_panel(self):
-        self.side_panel.hide()
 
     def closeEvent(self, event):
         if self.stop_led_detection(wait=True):

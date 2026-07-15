@@ -19,50 +19,37 @@ from ..video.video_utils import format_time, parse_time_input
 
 
 class RoiPlotIndicator(QWidget):
+    STATE_TOOLTIPS = {
+        "idle": "ROI plot has not been generated.",
+        "rendering": "Generating ROI plot...",
+        "done": "ROI plot generated.",
+        "empty": "ROI plot generated without brightness data.",
+        "failed": "LED analysis failed.",
+    }
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.angle = 0
-        self.state = "idle"
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.advance)
         self.setFixedSize(14, 14)
-        self.setToolTip("ROI plot has not been generated.")
+        self.set_state("idle")
 
     def advance(self):
         self.angle = (self.angle + 35) % 360
         self.update()
 
-    def set_idle(self):
+    def set_state(self, state):
+        """Apply one ROI rendering state and its timer/tooltip behavior."""
+        if state not in self.STATE_TOOLTIPS:
+            raise ValueError(f"Unknown ROI plot state: {state}")
+
         self.timer.stop()
         self.angle = 0
-        self.state = "idle"
-        self.setToolTip("ROI plot has not been generated.")
-        self.show()
-        self.update()
-
-    def start_rendering(self):
-        self.angle = 0
-        self.state = "rendering"
-        self.setToolTip("Generating ROI plot...")
-        self.show()
-        self.timer.start(80)
-        self.update()
-
-    def set_done(self, has_points):
-        self.timer.stop()
-        self.state = "done" if has_points else "empty"
-        self.setToolTip(
-            "ROI plot generated."
-            if has_points
-            else "ROI plot generated without brightness data."
-        )
-        self.show()
-        self.update()
-
-    def set_failed(self):
-        self.timer.stop()
-        self.state = "failed"
-        self.setToolTip("LED analysis failed.")
+        self.state = state
+        self.setToolTip(self.STATE_TOOLTIPS[state])
+        if state == "rendering":
+            self.timer.start(80)
         self.show()
         self.update()
 
@@ -122,7 +109,6 @@ class SyncPanel(QWidget):
         self.led_progress_bar.hide()
 
         self.roi_plot_indicator = RoiPlotIndicator(self)
-        self.roi_plot_indicator.set_idle()
 
         self.offset_label = QLabel("Time offset: Not calculated")
         self.led_curve_canvas = None
@@ -256,19 +242,13 @@ class SyncPanel(QWidget):
         return self.detect_multiple_led_checkbox.isChecked()
 
     def set_roi_plot_idle(self):
-        self.roi_plot_indicator.set_idle()
-
-    def begin_roi_plot_render(self):
-        self.roi_plot_indicator.start_rendering()
-
-    def finish_roi_plot_render(self, has_points):
-        self.roi_plot_indicator.set_done(has_points)
+        self.roi_plot_indicator.set_state("idle")
 
     def set_led_analysis(self, points, threshold, events, stats=None):
         points = points or []
         events = events or []
         stats = stats or {}
-        self.begin_roi_plot_render()
+        self.roi_plot_indicator.set_state("rendering")
         self.led_detection_label.setText(
             f"Generating ROI plot... points={len(points)}"
         )
@@ -347,7 +327,9 @@ class SyncPanel(QWidget):
         canvas.draw_idle()
         QTimer.singleShot(
             250,
-            lambda has_points=bool(points): self.finish_roi_plot_render(has_points),
+            lambda has_points=bool(points): self.roi_plot_indicator.set_state(
+                "done" if has_points else "empty"
+            ),
         )
 
     def begin_led_detection_progress(self):
@@ -389,7 +371,7 @@ class SyncPanel(QWidget):
         self.led_progress_bar.show()
 
     def fail_led_detection_progress(self):
-        self.roi_plot_indicator.set_failed()
+        self.roi_plot_indicator.set_state("failed")
         self.led_progress_bar.setRange(0, 100)
         self.led_progress_bar.setValue(0)
         self.led_progress_bar.setFormat("LED analysis failed")

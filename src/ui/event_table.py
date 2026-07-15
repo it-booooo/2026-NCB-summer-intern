@@ -137,9 +137,6 @@ class NoteEditor(QLineEdit):
         self.setPlaceholderText("Add note...")
         self.setClearButtonEnabled(True)
 
-    def text(self):
-        return super().text()
-
     def focusInEvent(self, event):
         self.selection_requested.emit()
         super().focusInEvent(event)

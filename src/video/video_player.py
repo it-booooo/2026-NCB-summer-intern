@@ -259,12 +259,20 @@ class VideoPlayer(QWidget):
 
         self.play_button.clicked.connect(self.toggle_play)
         self.stop_button.clicked.connect(self.stop)
-        self.prev_frame_button.clicked.connect(self.previous_frame)
-        self.next_frame_button.clicked.connect(self.advance_one_frame)
+        self.prev_frame_button.clicked.connect(
+            lambda _checked=False: self.step_frame(-1)
+        )
+        self.next_frame_button.clicked.connect(
+            lambda _checked=False: self.step_frame(1)
+        )
         self.rotate_button.clicked.connect(self.toggle_rotate_180)
         self.slider.sliderMoved.connect(self.seek_frame)
-        self.time_seek_input.returnPressed.connect(self.seek_to_time_input)
-        self.frame_seek_input.returnPressed.connect(self.seek_to_frame_input)
+        self.time_seek_input.returnPressed.connect(
+            lambda: self.seek_to_input("time")
+        )
+        self.frame_seek_input.returnPressed.connect(
+            lambda: self.seek_to_input("frame")
+        )
 
         controls_layout = QHBoxLayout()
         controls_layout.setContentsMargins(0, 0, 0, 0)
@@ -467,13 +475,10 @@ class VideoPlayer(QWidget):
         else:
             self.pause()
 
-    def advance_one_frame(self):
+    def step_frame(self, offset):
+        """Pause playback and move by a relative number of frames."""
         self.pause()
-        self.seek_frame(self.current_frame + 1)
-
-    def previous_frame(self):
-        self.pause()
-        self.seek_frame(self.current_frame - 1)
+        self.seek_frame(self.current_frame + int(offset))
 
     def seek_frame(self, frame_index):
         if not self.has_video() or self.total_frames <= 0:
@@ -494,34 +499,38 @@ class VideoPlayer(QWidget):
     def mark_seek_input_valid(self, widget, is_valid):
         widget.setStyleSheet("" if is_valid else "border: 1px solid #c0392b;")
 
-    def seek_to_time_input(self):
-        seconds = parse_time_input(self.time_seek_input.text())
-        if seconds is None:
-            self.mark_seek_input_valid(self.time_seek_input, False)
+    def seek_to_input(self, input_type):
+        """Validate and apply either the time or frame seek field."""
+        if input_type == "time":
+            widget = self.time_seek_input
+            value = parse_time_input(widget.text())
+        elif input_type == "frame":
+            widget = self.frame_seek_input
+            try:
+                value = int(widget.text().strip())
+            except ValueError:
+                value = None
+        else:
+            raise ValueError(f"Unknown seek input type: {input_type}")
+
+        if value is None:
+            self.mark_seek_input_valid(widget, False)
             return
 
-        self.mark_seek_input_valid(self.time_seek_input, True)
-        self.mark_seek_input_valid(self.frame_seek_input, True)
-        self.pause()
-        self.seek_time_sec(absolute_time(seconds, self.sync_time_origin_sec))
-        self.time_seek_input.setText(
-            self.format_display_time(self.current_display_time_sec())
-        )
-        self.frame_seek_input.clear()
+        for seek_input in self.seek_inputs:
+            self.mark_seek_input_valid(seek_input, True)
 
-    def seek_to_frame_input(self):
-        try:
-            frame_index = int(self.frame_seek_input.text().strip())
-        except ValueError:
-            self.mark_seek_input_valid(self.frame_seek_input, False)
-            return
-
-        self.mark_seek_input_valid(self.frame_seek_input, True)
-        self.mark_seek_input_valid(self.time_seek_input, True)
         self.pause()
-        self.seek_frame(frame_index)
-        self.frame_seek_input.setText(str(self.current_frame))
-        self.time_seek_input.clear()
+        if input_type == "time":
+            self.seek_time_sec(absolute_time(value, self.sync_time_origin_sec))
+            widget.setText(
+                self.format_display_time(self.current_display_time_sec())
+            )
+            self.frame_seek_input.clear()
+        else:
+            self.seek_frame(value)
+            widget.setText(str(self.current_frame))
+            self.time_seek_input.clear()
 
     def toggle_rotate_180(self):
         if not self.has_video():

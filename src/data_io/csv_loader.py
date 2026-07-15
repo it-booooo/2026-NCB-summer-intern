@@ -4,6 +4,8 @@ from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 
+from ..time_utils import record_time_parts
+
 
 def read_csv_preview(path, max_rows=8):
     rows = []
@@ -179,19 +181,12 @@ def parse_time_marker_csv_info(path):
             tz=timezone(timedelta(hours=8)),
         )
 
-        record_hours, remainder = divmod(record_time, 3_600_000_000)
-        record_minutes, remainder = divmod(remainder, 60_000_000)
-        record_seconds, record_microseconds = divmod(remainder, 1_000_000)
-
         markers.append(
             {
                 "local_time_us": local_time_us,
                 "local_time": local_time,
                 "record_time": record_time,
-                "record_hours": record_hours,
-                "record_minutes": record_minutes,
-                "record_seconds": record_seconds,
-                "record_microseconds": record_microseconds,
+                **record_time_parts(record_time),
             }
         )
 

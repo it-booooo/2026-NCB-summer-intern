@@ -14,6 +14,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..time_utils import record_time_parts
+
 
 class TtlPanel(QWidget):
     HEADERS = ["#", "Local time", "Record time"]
@@ -166,18 +168,11 @@ class TtlPanel(QWidget):
         return int((seconds * 1_000_000).to_integral_value(rounding=ROUND_HALF_UP))
 
     def create_record_time_marker(self, record_time):
-        record_hours, remainder = divmod(record_time, 3_600_000_000)
-        record_minutes, remainder = divmod(remainder, 60_000_000)
-        record_seconds, record_microseconds = divmod(remainder, 1_000_000)
-
         return {
             "local_time_us": None,
             "local_time": None,
             "record_time": record_time,
-            "record_hours": record_hours,
-            "record_minutes": record_minutes,
-            "record_seconds": record_seconds,
-            "record_microseconds": record_microseconds,
+            **record_time_parts(record_time),
             "source": "manual",
         }
 

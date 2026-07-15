@@ -40,7 +40,7 @@ def LFP(
     if not input_file.is_file():
         raise FileNotFoundError(f"LFP CSV file not found: {input_file}")
 
-    data = read.LFP(str(input_file))
+    data = read.read_signal_csv(str(input_file))
     units = csv_func.parse_signal_csv_units(input_file)
 
     time_s = data["time_us"].to_numpy(dtype=float) / 1e6
