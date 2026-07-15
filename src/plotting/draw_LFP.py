@@ -79,7 +79,7 @@ def LFP(
             FigureClass=LfpFigure,
         ),
     )
-    ax = fig.add_axes((0.08, 0.30, 0.90, 0.60))
+    ax = fig.add_axes((0.08, 0.22, 0.90, 0.62))
 
     lines: dict[tuple[int, bool], Line2D] = {}
     show_filtered = bool(filter_settings and filter_settings.show_filtered)
@@ -116,25 +116,29 @@ def LFP(
 
     ax.set_xlabel("")
     ax.set_ylabel("")
-    ax.text(
-        -0.040,
-        0.99,
+    fig.text(
+        0.055,
+        0.855,
         format_signal_label(units["value_unit"]),
         fontsize=7,
         ha="right",
         va="top",
-        transform=ax.transAxes,
-        clip_on=False,
     )
-    filter_label = ax.text(
-        0.99,
-        0.99,
+    fig.text(
+        0.055,
+        0.055,
+        f"Time ({units['time_unit']})",
+        fontsize=7,
+        ha="right",
+        va="bottom",
+    )
+    filter_label = fig.text(
+        0.97,
+        0.88,
         signal_func.filter_description(filter_settings),
         fontsize=7,
         ha="right",
-        va="top",
-        transform=ax.transAxes,
-        clip_on=False,
+        va="bottom",
     )
     ax.grid(True, linewidth=0.4, alpha=0.35)
     ax.tick_params(axis="both", labelsize=7, pad=1)

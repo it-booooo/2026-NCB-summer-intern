@@ -64,6 +64,10 @@ class ImportController:
         if loaded:
             window.led_brightness_cache.clear()
             window.reset_sync_state_for_new_video()
+            window.event_table.set_video_timing(
+                window.video_player.fps,
+                window.video_player.total_frames,
+            )
             window.sync_panel.set_video_path(window.video_player.video_path)
 
     def import_lfp(self):
