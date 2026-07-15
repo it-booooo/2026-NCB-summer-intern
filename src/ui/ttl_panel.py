@@ -21,19 +21,20 @@ class TtlPanel(QWidget):
     HEADERS = ["#", "Local time", "Record time"]
     markers_changed = Signal(dict)
 
-    def __init__(self):
+    def __init__(self, video_time_provider=None):
         super().__init__()
         self.info = self.empty_info()
+        self.video_time_provider = video_time_provider
 
         self.record_time_input = QLineEdit()
         self.record_time_input.setPlaceholderText("HH:MM:SS.ffffff")
         self.record_time_input.setToolTip(
             "Manual TTL record time. Accepts seconds or HH:MM:SS.ffffff."
         )
-        self.record_time_input.returnPressed.connect(self.add_manual_marker)
+        self.record_time_input.returnPressed.connect(self.add_ttl_marker)
 
         self.add_button = QPushButton("Add TTL")
-        self.add_button.clicked.connect(self.add_manual_marker)
+        self.add_button.clicked.connect(self.add_ttl_marker)
 
         self.remove_button = QPushButton("Remove TTL")
         self.remove_button.clicked.connect(self.remove_selected_marker)
@@ -52,6 +53,15 @@ class TtlPanel(QWidget):
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.verticalHeader().setVisible(False)
         self.table.verticalHeader().setDefaultSectionSize(48)
+        self.table.setStyleSheet(
+            """
+            QTableWidget::item:selected {
+                background-color: #dcecff;
+                color: #111111;
+                border: 1px solid #2f80ed;
+            }
+            """
+        )
 
         header = self.table.horizontalHeader()
         header.setFixedHeight(32)
@@ -81,29 +91,34 @@ class TtlPanel(QWidget):
         self.info = info or self.empty_info()
         self.refresh_table()
 
-    def add_manual_marker(self):
+    def add_ttl_marker(self):
         text = self.record_time_input.text().strip()
 
-        try:
-            record_time = self.parse_record_time_us(text)
-        except ValueError as error:
-            QMessageBox.warning(self, "Invalid TTL record time", str(error))
-            return
+        if text:
+            try:
+                record_time = self.parse_record_time_us(text)
+            except ValueError as error:
+                QMessageBox.warning(self, "Invalid TTL record time", str(error))
+                return
+        else:
+            try:
+                if self.video_time_provider is None:
+                    raise ValueError("Please enter a TTL time manually.")
+                video_time_sec = self.video_time_provider()
+                record_time = int(
+                    (Decimal(str(video_time_sec)) * 1_000_000).to_integral_value(
+                        rounding=ROUND_HALF_UP
+                    )
+                )
+            except (TypeError, InvalidOperation, ValueError) as error:
+                QMessageBox.warning(self, "Cannot add TTL", str(error))
+                return
 
         marker = self.create_record_time_marker(record_time)
         markers = list(self.info.get("markers", []))
         markers.append(marker)
         markers.sort(key=lambda item: item["record_time"])
-
-        self.info = {
-            **self.info,
-            "filename": self.info.get("filename") or "Manual TTL",
-            "marker_count": len(markers),
-            "markers": markers,
-            "first_marker_sec": (
-                markers[0]["record_time"] / 1_000_000.0 if markers else None
-            ),
-        }
+        self._update_marker_info(markers, ensure_filename=True)
 
         self.record_time_input.clear()
         self.refresh_table()
@@ -125,17 +140,27 @@ class TtlPanel(QWidget):
             return
 
         del markers[row]
-        self.info = {
-            **self.info,
+        self._update_marker_info(markers)
+
+        self.refresh_table()
+        self.markers_changed.emit(self.info)
+
+    def _update_marker_info(self, markers, ensure_filename=False):
+        """Keep the marker list and its derived summary fields consistent."""
+        updates = {
             "marker_count": len(markers),
             "markers": markers,
             "first_marker_sec": (
                 markers[0]["record_time"] / 1_000_000.0 if markers else None
             ),
         }
+        if ensure_filename:
+            updates["filename"] = self.info.get("filename") or "Manual TTL"
 
-        self.refresh_table()
-        self.markers_changed.emit(self.info)
+        self.info = {
+            **self.info,
+            **updates,
+        }
 
     def parse_record_time_us(self, text):
         if not text:

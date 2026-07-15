@@ -2,11 +2,9 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtWidgets import (
     QGroupBox,
-    QHBoxLayout,
     QInputDialog,
     QMainWindow,
     QMessageBox,
-    QPushButton,
     QSizePolicy,
     QSplitter,
     QVBoxLayout,
@@ -24,7 +22,6 @@ from .video import VideoPlayer
 class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
     """Compose the application widgets and connect feature controllers."""
 
-    MARKER_PANEL_WIDTH = 300
     WAVEFORM_AREA_HEIGHT = 320
 
     def __init__(self):
@@ -38,7 +35,7 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
         self.event_table = EventTable()
         self.lfp_panel = LfpPanel()
         self.sync_panel = SyncPanel()
-        self.ttl_panel = TtlPanel()
+        self.ttl_panel = TtlPanel(self.paused_video_time_for_ttl)
         self.marker_panel = MarkerPanel(
             self.event_table,
             self.add_event,
@@ -64,6 +61,13 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
 
         self.create_menu()
         self.create_layout()
+
+    def paused_video_time_for_ttl(self):
+        if not self.video_player.has_video():
+            raise ValueError("Please import a video or enter a TTL time manually.")
+        if self.video_player.is_playing:
+            raise ValueError("Pause the video before adding its current time as TTL.")
+        return self.video_player.current_time_sec()
 
     def add_action(self, menu, text, callback, description=""):
         action = QAction(text, self)
@@ -172,7 +176,7 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Minimum,
         )
-        sync_group = self.create_group("Synchronization Area", self.sync_panel)
+        sync_group = self.create_group("Sync Area", self.sync_panel)
         ttl_group = self.create_group("TTL", self.ttl_panel, margins=(6, 10, 6, 6))
         marker_group = self.create_group("Video Marker", self.marker_panel)
 
@@ -183,10 +187,7 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
         video_layout.addWidget(self.video_player, stretch=1)
         video_group.setLayout(video_layout)
 
-        self.open_marker_button = QPushButton("Open Video Marker")
-        self.open_marker_button.setFixedSize(150, 26)
-        self.open_marker_button.clicked.connect(self.show_marker_panel)
-        self.sync_panel.add_top_left_widget(self.open_marker_button)
+        self.sync_panel.set_embedded_panels(ttl_group, marker_group)
 
         lower_splitter = QSplitter(Qt.Orientation.Horizontal)
         lower_splitter.addWidget(sync_group)
@@ -204,43 +205,7 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
         main_layout.addWidget(lower_splitter, stretch=1)
         main_content.setLayout(main_layout)
 
-        self.side_panel = QWidget()
-        self.side_panel.setFixedWidth(self.MARKER_PANEL_WIDTH)
-
-        close_button = QPushButton("X")
-        close_button.setObjectName("sidebarCloseButton")
-        close_button.setFlat(True)
-        close_button.setFixedSize(16, 16)
-        close_button.clicked.connect(self.side_panel.hide)
-
-        close_layout = QHBoxLayout()
-        close_layout.setContentsMargins(0, 0, 2, 0)
-        close_layout.setSpacing(0)
-        close_layout.addStretch()
-        close_layout.addWidget(close_button)
-
-        side_layout = QVBoxLayout()
-        side_layout.setContentsMargins(0, 0, 0, 0)
-        side_layout.setSpacing(0)
-        side_layout.addLayout(close_layout)
-        side_layout.addWidget(ttl_group, stretch=2)
-        side_layout.addSpacing(6)
-        side_layout.addWidget(marker_group, stretch=3)
-        self.side_panel.setLayout(side_layout)
-        self.side_panel.hide()
-
-        root_layout = QHBoxLayout()
-        root_layout.setContentsMargins(4, 4, 4, 4)
-        root_layout.setSpacing(4)
-        root_layout.addWidget(self.side_panel)
-        root_layout.addWidget(main_content, stretch=1)
-
-        container = QWidget()
-        container.setLayout(root_layout)
-        self.setCentralWidget(container)
-
-    def show_marker_panel(self):
-        self.side_panel.show()
+        self.setCentralWidget(main_content)
 
     def closeEvent(self, event):
         if self.stop_led_detection(wait=True):

@@ -7,7 +7,7 @@ QMainWindow {
 QWidget {
     background-color: #f0f0f0;
     color: #111111;
-    font-size: 13px;
+    font-size: 10pt;
 }
 
 QMenuBar {
@@ -64,7 +64,7 @@ QGroupBox::title {
 QLabel {
     color: #111111;
     background-color: transparent;
-    font-size: 13px;
+    font-size: 10pt;
 }
 
 QPushButton {
@@ -86,24 +86,6 @@ QPushButton:pressed {
 QPushButton:disabled {
     background-color: #eeeeee;
     color: #888888;
-}
-
-QPushButton#sidebarCloseButton {
-    background-color: transparent;
-    color: #111111;
-    border: none;
-    padding: 0;
-    font-weight: bold;
-}
-
-QPushButton#sidebarCloseButton:hover {
-    background-color: #e6e6e6;
-    border: none;
-}
-
-QPushButton#sidebarCloseButton:pressed {
-    background-color: #d8d8d8;
-    border: none;
 }
 
 QComboBox {

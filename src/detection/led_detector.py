@@ -6,7 +6,7 @@ from ..video.video_utils import open_video_capture
 
 
 DETECTION_MODE = "frame_delta_mean_brightness"
-DETECTION_MODE_LABEL = "Frame delta (ROI mean brightness)"
+DETECTION_MODE_LABEL = "Frame delta"
 MIN_THRESHOLD = 1e-6
 
 
@@ -82,10 +82,7 @@ def compute_led_brightness_curve(
         acceleration_info.clear()
 
     try:
-        from .led_opencl import (
-            OpenClUnavailable,
-            compute_led_brightness_curve_opencl,
-        )
+        from .led_opencl import compute_led_brightness_curve_opencl
 
         opencl_points = compute_led_brightness_curve_opencl(
             video_path,
@@ -107,14 +104,6 @@ def compute_led_brightness_curve(
             )
             for frame_index, video_time_sec, brightness in opencl_points
         ]
-    except OpenClUnavailable as error:
-        if acceleration_info is not None:
-            acceleration_info.update(
-                {
-                    "brightness_backend": "cpu",
-                    "opencl_fallback_reason": str(error),
-                }
-            )
     except Exception as error:
         if acceleration_info is not None:
             acceleration_info.update(

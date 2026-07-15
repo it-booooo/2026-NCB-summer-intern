@@ -72,7 +72,6 @@ class ImportController:
                 window.video_player.fps,
                 window.video_player.total_frames,
             )
-            window.sync_panel.set_video_path(window.video_player.video_path)
 
     def import_signal(self, signal_type):
         """Import an LFP or 3-axis CSV through the shared signal workflow."""
@@ -85,7 +84,6 @@ class ImportController:
         if signal_type == "lfp":
             window.lfp_info = info
             window.lfp_panel.set_lfp_info(info)
-            window.sync_panel.set_lfp_status(f"LFP file: {info['filename']}")
         else:
             window.axis_info = info
             window.lfp_panel.set_axis_info(info)
@@ -97,7 +95,6 @@ class ImportController:
         path = self.open_csv_file("Import Time Marker (.csv)")
         if not path:
             return
-        window.timeMarker_info = data_io.parse_time_marker_csv_info(path)
-        window.set_ttl_markers(window.timeMarker_info)
-        window.ttl_panel.set_markers(window.timeMarker_info)
-        window.show_marker_panel()
+        info = data_io.parse_time_marker_csv_info(path)
+        window.set_ttl_markers(info)
+        window.ttl_panel.set_markers(info)

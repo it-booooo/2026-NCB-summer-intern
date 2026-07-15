@@ -23,6 +23,24 @@ class LfpFigure(Figure):
     lfp_plot_step: int
 
 
+def _filter_settings_for_view(filter_settings, show_filtered):
+    """Return one complete filter configuration for a raw/filtered view."""
+    return signal_func.LfpFilterSettings(
+        show_filtered=bool(show_filtered),
+        bandpass_enabled=bool(
+            filter_settings and filter_settings.bandpass_enabled
+        ),
+        bandpass_low_hz=(
+            filter_settings.bandpass_low_hz if filter_settings else 1.0
+        ),
+        bandpass_high_hz=(
+            filter_settings.bandpass_high_hz if filter_settings else 100.0
+        ),
+        line_noise_hz=(filter_settings.line_noise_hz if filter_settings else None),
+        notch_quality=(filter_settings.notch_quality if filter_settings else 30.0),
+    )
+
+
 def LFP(
     channels: int | list[int] | tuple[int, ...] | None = 1,
     step: int | None = None,
@@ -91,14 +109,7 @@ def LFP(
             channel,
         )
         raw_values = data[f"channel_{channel}"].to_numpy(dtype=float)
-        filtered_settings = signal_func.LfpFilterSettings(
-            show_filtered=True,
-            bandpass_enabled=bool(filter_settings and filter_settings.bandpass_enabled),
-            bandpass_low_hz=(filter_settings.bandpass_low_hz if filter_settings else 1.0),
-            bandpass_high_hz=(filter_settings.bandpass_high_hz if filter_settings else 100.0),
-            line_noise_hz=(filter_settings.line_noise_hz if filter_settings else None),
-            notch_quality=(filter_settings.notch_quality if filter_settings else 30.0),
-        )
+        filtered_settings = _filter_settings_for_view(filter_settings, True)
         filtered_values = signal_func.prepare_lfp_signal(
             raw_values,
             sample_rate_hz,
@@ -175,14 +186,7 @@ def LFP(
             line.set_visible(
                 item_channel == selected_channel and item_filtered == show_filtered
             )
-        label_settings = signal_func.LfpFilterSettings(
-            show_filtered=show_filtered,
-            bandpass_enabled=bool(filter_settings and filter_settings.bandpass_enabled),
-            bandpass_low_hz=(filter_settings.bandpass_low_hz if filter_settings else 1.0),
-            bandpass_high_hz=(filter_settings.bandpass_high_hz if filter_settings else 100.0),
-            line_noise_hz=(filter_settings.line_noise_hz if filter_settings else None),
-            notch_quality=(filter_settings.notch_quality if filter_settings else 30.0),
-        )
+        label_settings = _filter_settings_for_view(filter_settings, show_filtered)
         filter_label.set_text(signal_func.filter_description(label_settings))
         ax.relim(visible_only=True)
         ax.autoscale_view(scalex=False, scaley=True)

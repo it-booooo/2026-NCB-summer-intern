@@ -75,28 +75,17 @@ class SharedTimelineSlider:
             alpha=0.85,
             edgecolor="none",
         )
-        self.left_handle = self.ax.plot(
-            [valinit[0]],
-            [0.5],
-            marker="o",
-            markersize=6,
-            markerfacecolor="#ffffff",
-            markeredgecolor="#c0c0c0",
-            markeredgewidth=1.0,
-            linestyle="None",
-            zorder=3,
-        )[0]
-        self.right_handle = self.ax.plot(
-            [valinit[1]],
-            [0.5],
-            marker="o",
-            markersize=6,
-            markerfacecolor="#ffffff",
-            markeredgecolor="#c0c0c0",
-            markeredgewidth=1.0,
-            linestyle="None",
-            zorder=3,
-        )[0]
+        handle_style = {
+            "marker": "o",
+            "markersize": 6,
+            "markerfacecolor": "#ffffff",
+            "markeredgecolor": "#c0c0c0",
+            "markeredgewidth": 1.0,
+            "linestyle": "None",
+            "zorder": 3,
+        }
+        self.left_handle = self.ax.plot([valinit[0]], [0.5], **handle_style)[0]
+        self.right_handle = self.ax.plot([valinit[1]], [0.5], **handle_style)[0]
         self.label = self.ax.text(
             full_xlim[0],
             0.5,

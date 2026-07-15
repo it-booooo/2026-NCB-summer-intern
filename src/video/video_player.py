@@ -206,10 +206,6 @@ class VideoPlayer(QWidget):
         self.current_pixmap = None
         self.sync_time_origin_sec = None
 
-        # 儲存目前 LED ROI，座標格式是影片原始 frame 座標：
-        # (x, y, width, height)
-        self.led_roi = None
-
         self.video_label = RoiVideoLabel("No video loaded")
         self.video_label.setAlignment(Qt.AlignCenter)
         self.video_label.setMinimumSize(360, 203)
@@ -322,13 +318,11 @@ class VideoPlayer(QWidget):
 
     def set_led_roi(self, roi):
         """讓外部也可以設定 LED ROI，並確保影片上會持續顯示。"""
-        self.led_roi = roi
         self.video_label.set_saved_roi(roi)
         self.update_video_display()
 
     def clear_led_roi(self):
         """清除 LED ROI。之後如果要做 Clear ROI 按鈕，可以直接呼叫這個。"""
-        self.led_roi = None
         self.video_label.clear_saved_roi()
         self.update_video_display()
 
@@ -437,12 +431,6 @@ class VideoPlayer(QWidget):
         if self.is_playing:
             self.pause()
             return
-
-        if (
-            self.sync_time_origin_sec is not None
-            and self.current_time_sec() < self.sync_time_origin_sec
-        ):
-            self.seek_time_sec(self.sync_time_origin_sec)
 
         self.is_playing = True
         self.play_button.setText("Pause")

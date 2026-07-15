@@ -44,8 +44,6 @@ class SyncControllerMixin:
         self.lfp_panel.clear_current_time_marker()
         self.lfp_panel.set_event_intervals([])
 
-        self.sync_panel.video_led_label.setText("Video LED marker: Not selected")
-        self.sync_panel.ttl_label.setText("TTL marker: Not loaded")
         self.sync_panel.offset_label.setText(
             "Time offset (video - TTL): Not calculated"
         )
@@ -55,15 +53,6 @@ class SyncControllerMixin:
 
     def set_ttl_markers(self, info):
         self.timeMarker_info = info
-        first_marker_sec = (
-            self.timeMarker_info.get("first_marker_sec")
-            if self.timeMarker_info is not None
-            else None
-        )
-        if first_marker_sec is not None:
-            self.sync_panel.set_ttl_marker(first_marker_sec)
-        else:
-            self.sync_panel.ttl_label.setText("TTL marker: Not loaded")
         self.update_time_offset()
 
     def add_event(self, event_type):
@@ -82,6 +71,9 @@ class SyncControllerMixin:
         if not self.video_player.has_video():
             return
 
+        self._seek_video_time(video_time_sec)
+
+    def _seek_video_time(self, video_time_sec):
         self.video_player.pause()
         self.video_player.seek_time_sec(video_time_sec)
         self.video_player.update_seek_inputs_from_current_frame()
@@ -91,9 +83,7 @@ class SyncControllerMixin:
             return
 
         video_time_sec = float(record_time_sec) + self.time_offset_sec
-        self.video_player.pause()
-        self.video_player.seek_time_sec(video_time_sec)
-        self.video_player.update_seek_inputs_from_current_frame()
+        self._seek_video_time(video_time_sec)
 
     def add_led_events(self, led_events):
         for event in led_events:
@@ -104,9 +94,6 @@ class SyncControllerMixin:
                 note=f"brightness={event.brightness:.4f}",
                 source="led_detection",
             )
-
-        if led_events:
-            self.show_marker_panel()
 
     def first_video_led_time_sec(self):
         led_events = [
@@ -136,19 +123,12 @@ class SyncControllerMixin:
 
     def update_time_offset(self):
         video_led_sec = self.first_video_led_time_sec()
-        if video_led_sec is None:
-            self.sync_panel.video_led_label.setText("Video LED marker: Not selected")
-            self.clear_time_offset()
-            return
-
-        self.sync_panel.set_video_led_marker(video_led_sec)
-
-        if self.timeMarker_info is None:
-            self.clear_time_offset()
-            return
-
-        ttl_marker_sec = self.timeMarker_info.get("first_marker_sec")
-        if ttl_marker_sec is None:
+        ttl_marker_sec = (
+            self.timeMarker_info.get("first_marker_sec")
+            if self.timeMarker_info is not None
+            else None
+        )
+        if video_led_sec is None or ttl_marker_sec is None:
             self.clear_time_offset()
             return
 
