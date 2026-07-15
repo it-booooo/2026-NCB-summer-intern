@@ -94,9 +94,7 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
         import_actions = self.import_controller.actions()
         export_actions = self.export_controller.actions()
 
-        self.add_action(import_menu, *import_actions[0])
-        import_menu.addSeparator()
-        for text, callback, description in import_actions[1:]:
+        for text, callback, description in import_actions:
             self.add_action(import_menu, text, callback, description)
 
         for text, callback, description in export_actions:

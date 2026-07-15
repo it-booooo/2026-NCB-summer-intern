@@ -90,10 +90,7 @@ class ImportController:
             window.axis_info = info
             window.lfp_panel.set_axis_info(info)
 
-        window.update_waveform_current_time(
-            window.video_player.current_frame,
-            window.video_player.current_time_sec(),
-        )
+        window.update_waveform_current_time()
 
     def import_time_marker(self):
         window = self.window

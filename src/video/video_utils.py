@@ -48,10 +48,9 @@ def open_video_capture(cv2, video_path):
     )
 
 
-def parse_video_metadata(path, using_fps=None):
+def parse_video_metadata(cap, path, using_fps=None):
     import cv2
 
-    cap = cv2.VideoCapture(path)
     if not cap.isOpened():
         raise ValueError(f"Could not open video: {path}")
 
@@ -65,22 +64,13 @@ def parse_video_metadata(path, using_fps=None):
     fourcc_value = int(cap.get(cv2.CAP_PROP_FOURCC) or 0)
     codec = fourcc_to_string(fourcc_value)
 
-    detected_duration_sec = (
-        total_frames / detected_fps
-        if detected_fps
-        else 0.0
-    )
+    detected_duration_sec = total_frames / detected_fps if detected_fps else 0.0
 
     if using_fps is None:
         using_fps = detected_fps if detected_fps > 0 else 30.0
-
-    duration_sec = (
-        total_frames / using_fps
-        if using_fps
-        else detected_duration_sec
-    )
-
-    cap.release()
+        duration_sec = detected_duration_sec
+    else:
+        duration_sec = total_frames / using_fps if using_fps else detected_duration_sec
 
     return VideoMetadata(
         path=str(video_path),
@@ -101,10 +91,7 @@ def fourcc_to_string(fourcc_value):
     if not fourcc_value:
         return "unknown"
 
-    chars = [
-        chr((fourcc_value >> 8 * index) & 0xFF)
-        for index in range(4)
-    ]
+    chars = [chr((fourcc_value >> 8 * index) & 0xFF) for index in range(4)]
 
     codec = "".join(chars).strip()
 

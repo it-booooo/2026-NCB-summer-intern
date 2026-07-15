@@ -752,9 +752,7 @@ class LfpPanel(QWidget):
             full_xlim,
         )
         slider.set_time_origin(self.sync_time_origin_sec)
-        slider.on_changed(
-            lambda value: self.on_plot_xlim_changed(value, "timeline")
-        )
+        slider.on_changed(lambda value: self.on_plot_xlim_changed(value, "timeline"))
 
         canvas = FigureCanvas(fig)
         canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -857,10 +855,12 @@ class LfpPanel(QWidget):
                 self.current_time_lines[key] = line
                 self.invalidate_current_time_backgrounds(key)
             else:
-                line.set_xdata([
-                    self.current_record_time_sec,
-                    self.current_record_time_sec,
-                ])
+                line.set_xdata(
+                    [
+                        self.current_record_time_sec,
+                        self.current_record_time_sec,
+                    ]
+                )
 
             self.draw_marker_line(key, canvas, ax, line)
 
@@ -893,7 +893,10 @@ class LfpPanel(QWidget):
 
     def apply_lfp_filter_settings(self):
         settings = self.pending_lfp_filter_settings()
-        if settings.bandpass_enabled and settings.bandpass_low_hz >= settings.bandpass_high_hz:
+        if (
+            settings.bandpass_enabled
+            and settings.bandpass_low_hz >= settings.bandpass_high_hz
+        ):
             QMessageBox.warning(
                 self,
                 "Invalid bandpass range",
@@ -975,19 +978,21 @@ class LfpPanel(QWidget):
         return [int(channel) for channel in channels]
 
     def load_lfp_segment(self, channel, left, right, settings):
-        data = read.read_signal_csv(self.lfp_path)
+        data = read.read_signal_csv(self.lfp_path, requested_channels=[channel])
         column = f"channel_{channel}"
         if column not in data:
             raise ValueError(f"LFP CSV does not include channel {channel}.")
 
+        time_us = data["time_us"].to_numpy(dtype=float)
+        values = data[column].to_numpy(dtype=float)
         sample_rate_hz = signal_func.sample_rate_for_channel(
             self.lfp_info,
-            data["time_us"],
+            time_us,
             channel,
         )
         return signal_func.prepare_lfp_segment(
-            data["time_us"],
-            data[column].to_numpy(dtype=float),
+            time_us,
+            values,
             sample_rate_hz,
             left,
             right,
@@ -1092,9 +1097,7 @@ class LfpPanel(QWidget):
                     segment.values,
                     segment.sample_rate_hz,
                 )
-                figure = self.create_power_spectrum_figure(
-                    channel, frequencies, power
-                )
+                figure = self.create_power_spectrum_figure(channel, frequencies, power)
             else:
                 frequencies, times, power = signal_func.compute_time_frequency(
                     segment.values,

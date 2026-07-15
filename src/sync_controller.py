@@ -1,5 +1,7 @@
 from PySide6.QtWidgets import QMessageBox
 
+from src.video import video_player
+
 
 def pair_event_intervals(events, start_type, end_type, interval_type):
     """Pair matching start/end point markers in table order."""
@@ -162,10 +164,7 @@ class SyncControllerMixin:
         ):
             self.video_player.seek_time_sec(video_led_sec)
 
-        self.update_waveform_current_time(
-            self.video_player.current_frame,
-            self.video_player.current_time_sec(),
-        )
+        self.update_waveform_current_time()
         self.update_event_intervals()
 
     def update_event_intervals(self):
@@ -195,7 +194,8 @@ class SyncControllerMixin:
 
         self.lfp_panel.set_event_intervals(record_intervals)
 
-    def update_waveform_current_time(self, frame_index, video_time_sec):
+    def update_waveform_current_time(self):
+        video_time_sec = self.video_player.current_time_sec()
         if self.loading_video or self.time_offset_sec is None:
             return
 

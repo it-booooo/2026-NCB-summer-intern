@@ -378,8 +378,8 @@ class VideoPlayer(QWidget):
 
         new_cap = None
         try:
-            metadata = parse_video_metadata(path)
             new_cap = cv2.VideoCapture(path)
+            metadata = parse_video_metadata(new_cap, path)
             if not new_cap.isOpened():
                 raise ValueError("The video stream could not be opened.")
 

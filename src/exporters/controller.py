@@ -62,49 +62,71 @@ class ExportController:
         if path:
             (export_events_csv if is_csv else export_events_excel)(path, events)
 
-    def signal_exports(self):
-        result = []
-        if self.window.lfp_info is not None:
-            result.append(("LFP", self.window.lfp_info))
-        if self.window.axis_info is not None:
-            result.append(("3-axis", self.window.axis_info))
-        return result
-
-    def choose_signal_export(self, title):
-        exports = self.signal_exports()
-        if not exports:
-            QMessageBox.information(
-                self.window, "No signal data",
-                "Please import LFP or 3-axis CSV data first.",
-            )
-            return None
-        if len(exports) == 1:
-            return exports[0]
-        items = [label for label, _ in exports]
-        label, accepted = QInputDialog.getItem(
-            self.window, title, "Data:", items, 0, False
-        )
-        return exports[items.index(label)] if accepted else None
 
     def export_check_results(self):
-        selected = self.choose_signal_export("Export Check Results")
-        if selected is None:
+        exports = []
+
+        if self.window.lfp_info is not None:
+            exports.append(("LFP", self.window.lfp_info))
+
+        if self.window.axis_info is not None:
+            exports.append(("3-axis", self.window.axis_info))
+
+        if not exports:
+            QMessageBox.information(
+                self.window,
+                "No signal data",
+                "Please import LFP or 3-axis CSV data first.",
+            )
             return
-        label, info = selected
+
+        if len(exports) == 1:
+            label, info = exports[0]
+        else:
+            items = [label for label, _ in exports]
+
+            label, accepted = QInputDialog.getItem(
+                self.window,
+                "Export Check Results",
+                "Data:",
+                items,
+                0,
+                False,
+            )
+
+            if not accepted:
+                return
+
+            info = exports[items.index(label)][1]
+
         filename = info.get("filename", label).rsplit(".", 1)[0]
+
         path, _ = QFileDialog.getSaveFileName(
-            self.window, "Export Check Results", f"{filename}_check_report.csv",
+            self.window,
+            "Export Check Results",
+            f"{filename}_check_report.csv",
             "CSV Files (*.csv)",
         )
+
         if not path:
             return
+
         try:
-            output_path = validation.check(info=info, output_path=path)
+            output_path = validation.check(
+                info=info,
+                output_path=path,
+            )
         except Exception as error:
-            QMessageBox.warning(self.window, "Export check results failed", str(error))
+            QMessageBox.warning(
+                self.window,
+                "Export check results failed",
+                str(error),
+            )
             return
+
         QMessageBox.information(
-            self.window, "Check Results Exported",
+            self.window,
+            "Check Results Exported",
             f"Check results exported to:\n{output_path}",
         )
 
@@ -117,7 +139,9 @@ class ExportController:
             return
         stem = window.axis_info.get("filename", "axis").rsplit(".", 1)[0]
         path, _ = QFileDialog.getSaveFileName(
-            window, "Export 3-axis Waveform Image", f"{stem}_waveform.png",
+            window,
+            "Export 3-axis Waveform Image",
+            f"{stem}_waveform.png",
             "PNG Images (*.png);;PDF Files (*.pdf);;SVG Files (*.svg);;All Files (*)",
         )
         if not path:
@@ -128,10 +152,13 @@ class ExportController:
             )
             figure.savefig(path, dpi=300)
         except Exception as error:
-            QMessageBox.warning(window, "Export 3-axis waveform image failed", str(error))
+            QMessageBox.warning(
+                window, "Export 3-axis waveform image failed", str(error)
+            )
             return
         QMessageBox.information(
-            window, "3-axis Waveform Image Exported",
+            window,
+            "3-axis Waveform Image Exported",
             f"3-axis waveform image exported to:\n{path}",
         )
 
