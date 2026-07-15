@@ -71,22 +71,17 @@ class LedControllerMixin:
             return
 
         try:
-            scan_start_sec, scan_end_sec = self.sync_panel.led_scan_range_sec()
+            scan_start_sec, scan_end_sec, scan_start_frame, scan_end_frame = (
+                self.sync_panel.led_scan_range_sec(
+                    self.video_player.fps,
+                    self.video_player.total_frames,
+                )
+            )
         except ValueError as error:
             self.sync_panel.mark_scan_range_valid(False)
             QMessageBox.warning(self, "Invalid LED scan range", str(error))
             return
 
-        scan_start_frame = (
-            self.video_player.time_sec_to_frame(scan_start_sec)
-            if scan_start_sec is not None
-            else 0
-        )
-        scan_end_frame = (
-            self.video_player.time_sec_to_frame(scan_end_sec)
-            if scan_end_sec is not None
-            else max(self.video_player.total_frames - 1, 0)
-        )
         if scan_start_frame >= scan_end_frame:
             self.sync_panel.mark_scan_range_valid(False)
             QMessageBox.warning(

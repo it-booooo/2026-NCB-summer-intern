@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..led_status import format_led_detection_status
-from ..video.video_utils import format_time, parse_time_input
+from ..video.video_utils import format_time, parse_time_input, time_sec_to_frame
 
 
 class RoiPlotIndicator(QLabel):
@@ -227,7 +227,7 @@ class SyncPanel(QWidget):
         self.led_scan_start_input.setStyleSheet(style)
         self.led_scan_end_input.setStyleSheet(style)
 
-    def led_scan_range_sec(self):
+    def led_scan_range_sec(self, fps, total_frames):
         start_text = self.led_scan_start_input.text().strip()
         end_text = self.led_scan_end_input.text().strip()
 
@@ -249,8 +249,19 @@ class SyncPanel(QWidget):
         if start_sec is not None and end_sec is not None and start_sec >= end_sec:
             raise ValueError("LED scan start time must be earlier than end time.")
 
+        scan_start_frame = (
+            time_sec_to_frame(start_sec, fps, total_frames)
+            if start_sec is not None
+            else 0
+        )
+        scan_end_frame = (
+            time_sec_to_frame(end_sec, fps, total_frames)
+            if end_sec is not None
+            else max(total_frames - 1, 0)
+        )
+
         self.mark_scan_range_valid(True)
-        return start_sec, end_sec
+        return start_sec, end_sec, scan_start_frame, scan_end_frame
 
     def detect_multiple_led_events(self):
         return self.detect_multiple_led_checkbox.isChecked()
