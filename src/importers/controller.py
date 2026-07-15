@@ -72,7 +72,6 @@ class ImportController:
                 window.video_player.fps,
                 window.video_player.total_frames,
             )
-            window.sync_panel.set_video_path(window.video_player.video_path)
 
     def import_signal(self, signal_type):
         """Import an LFP or 3-axis CSV through the shared signal workflow."""
@@ -85,7 +84,6 @@ class ImportController:
         if signal_type == "lfp":
             window.lfp_info = info
             window.lfp_panel.set_lfp_info(info)
-            window.sync_panel.set_lfp_status(f"LFP file: {info['filename']}")
         else:
             window.axis_info = info
             window.lfp_panel.set_axis_info(info)

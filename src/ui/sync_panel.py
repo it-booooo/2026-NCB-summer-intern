@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -50,7 +48,6 @@ class RoiPlotIndicator(QLabel):
 
         self.timer.stop()
         self.frame_index = 0
-        self.state = state
         self.setToolTip(self.STATE_TOOLTIPS[state])
         if state == "rendering":
             self.setText(self.SPINNER_FRAMES[0])
@@ -80,10 +77,6 @@ class SyncPanel(QWidget):
     def __init__(self):
         super().__init__()
 
-        self.video_file_label = QLabel("Video file: Not imported")
-        self.lfp_file_label = QLabel("LFP file: Not imported")
-        self.video_led_label = QLabel("Video LED marker: Not selected")
-        self.ttl_label = QLabel("TTL marker: Not loaded")
         self.led_roi_label = QLabel("LED ROI: Not selected")
         self.analysis_info_button = QPushButton("Analysis Info")
         self.analysis_info_button.setFixedSize(120, 26)
@@ -124,10 +117,6 @@ class SyncPanel(QWidget):
         self.led_scan_end_input.returnPressed.connect(self.normalize_led_scan_range_inputs)
 
         for label in [
-            self.video_file_label,
-            self.lfp_file_label,
-            self.video_led_label,
-            self.ttl_label,
             self.led_roi_label,
             self.led_detection_label,
             self.offset_label,
@@ -184,18 +173,6 @@ class SyncPanel(QWidget):
     def set_embedded_panels(self, ttl_group, marker_group):
         self.embedded_panels_layout.addWidget(ttl_group, stretch=1)
         self.embedded_panels_layout.addWidget(marker_group, stretch=1)
-
-    def set_video_path(self, path):
-        self.video_file_label.setText(f"Video file: {Path(path).name}")
-
-    def set_lfp_status(self, text):
-        self.lfp_file_label.setText(text)
-
-    def set_video_led_marker(self, video_time_sec):
-        self.video_led_label.setText(f"Video LED marker: {video_time_sec:.3f} sec")
-
-    def set_ttl_marker(self, ttl_time_sec):
-        self.ttl_label.setText(f"TTL marker: {ttl_time_sec:.6f} sec")
 
     def set_led_roi(self, roi):
         x, y, width, height = roi
