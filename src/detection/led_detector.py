@@ -6,7 +6,7 @@ from ..video.video_utils import open_video_capture
 
 
 DETECTION_MODE = "frame_delta_mean_brightness"
-DETECTION_MODE_LABEL = "Frame delta (ROI mean brightness)"
+DETECTION_MODE_LABEL = "Frame delta"
 MIN_THRESHOLD = 1e-6
 
 
