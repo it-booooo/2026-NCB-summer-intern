@@ -103,4 +103,3 @@ class ImportController:
         window.timeMarker_info = data_io.parse_time_marker_csv_info(path)
         window.set_ttl_markers(window.timeMarker_info)
         window.ttl_panel.set_markers(window.timeMarker_info)
-        window.show_marker_panel()

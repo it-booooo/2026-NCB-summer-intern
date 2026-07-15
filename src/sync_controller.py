@@ -103,9 +103,6 @@ class SyncControllerMixin:
                 source="led_detection",
             )
 
-        if led_events:
-            self.show_marker_panel()
-
     def first_video_led_time_sec(self):
         led_events = [
             event

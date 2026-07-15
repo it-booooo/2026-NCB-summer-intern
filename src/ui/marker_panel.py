@@ -32,6 +32,18 @@ class MarkerPanel(QWidget):
         edit_button = QPushButton("Edit Selected")
         delete_button = QPushButton("Delete Selected")
 
+        for button in (
+            led_on_button,
+            led_off_button,
+            select_roi_button,
+            behavior_start_button,
+            behavior_end_button,
+            seizure_button,
+            edit_button,
+            delete_button,
+        ):
+            button.setFixedHeight(22)
+
         select_roi_button.setToolTip("Select LED area and run brightness detection")
 
         led_on_button.clicked.connect(lambda: self.add_event_callback("LED_on"))
@@ -44,20 +56,23 @@ class MarkerPanel(QWidget):
         delete_button.clicked.connect(self.event_table.delete_selected_rows)
 
         button_layout = QGridLayout()
-        button_layout.setHorizontalSpacing(4)
-        button_layout.setVerticalSpacing(4)
+        button_layout.setContentsMargins(2, 2, 2, 2)
+        button_layout.setHorizontalSpacing(2)
+        button_layout.setVerticalSpacing(2)
+        for column in range(6):
+            button_layout.setColumnStretch(column, 1)
         button_layout.addWidget(select_roi_button, 0, 0, 1, 2)
-        button_layout.addWidget(led_on_button, 1, 0)
-        button_layout.addWidget(led_off_button, 1, 1)
-        button_layout.addWidget(behavior_start_button, 2, 0)
-        button_layout.addWidget(behavior_end_button, 2, 1)
-        button_layout.addWidget(seizure_button, 3, 0)
-        button_layout.addWidget(delete_button, 3, 1)
-        button_layout.addWidget(edit_button, 4, 0, 1, 2)
+        button_layout.addWidget(led_on_button, 0, 2, 1, 2)
+        button_layout.addWidget(led_off_button, 0, 4, 1, 2)
+        button_layout.addWidget(behavior_start_button, 1, 0, 1, 2)
+        button_layout.addWidget(behavior_end_button, 1, 2, 1, 2)
+        button_layout.addWidget(seizure_button, 1, 4, 1, 2)
+        button_layout.addWidget(delete_button, 2, 0, 1, 3)
+        button_layout.addWidget(edit_button, 2, 3, 1, 3)
 
         layout = QVBoxLayout()
-        layout.setContentsMargins(6, 6, 6, 6)
-        layout.setSpacing(6)
+        layout.setContentsMargins(3, 3, 3, 3)
+        layout.setSpacing(3)
         layout.addLayout(button_layout)
         layout.addWidget(divider)
         layout.addWidget(self.event_table)

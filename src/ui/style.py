@@ -88,24 +88,6 @@ QPushButton:disabled {
     color: #888888;
 }
 
-QPushButton#sidebarCloseButton {
-    background-color: transparent;
-    color: #111111;
-    border: none;
-    padding: 0;
-    font-weight: bold;
-}
-
-QPushButton#sidebarCloseButton:hover {
-    background-color: #e6e6e6;
-    border: none;
-}
-
-QPushButton#sidebarCloseButton:pressed {
-    background-color: #d8d8d8;
-    border: none;
-}
-
 QComboBox {
     background-color: #ffffff;
     color: #111111;

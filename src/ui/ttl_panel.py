@@ -52,6 +52,15 @@ class TtlPanel(QWidget):
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.verticalHeader().setVisible(False)
         self.table.verticalHeader().setDefaultSectionSize(48)
+        self.table.setStyleSheet(
+            """
+            QTableWidget::item:selected {
+                background-color: #dcecff;
+                color: #111111;
+                border: 1px solid #2f80ed;
+            }
+            """
+        )
 
         header = self.table.horizontalHeader()
         header.setFixedHeight(32)
