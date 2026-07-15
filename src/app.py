@@ -190,6 +190,17 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
         self.open_marker_button.clicked.connect(self.show_marker_panel)
         self.sync_panel.add_top_left_widget(self.open_marker_button)
 
+        self.analysis_info_button = QPushButton("Analysis Info")
+        self.analysis_info_button.setFixedSize(120, 26)
+        self.analysis_info_button.setEnabled(False)
+        self.analysis_info_button.clicked.connect(
+            self.sync_panel.show_analysis_info
+        )
+        self.sync_panel.analysis_info_available.connect(
+            self.analysis_info_button.setEnabled
+        )
+        self.sync_panel.add_top_left_widget(self.analysis_info_button)
+
         lower_splitter = QSplitter(Qt.Orientation.Horizontal)
         lower_splitter.addWidget(sync_group)
         lower_splitter.addWidget(video_group)

@@ -1,9 +1,11 @@
 from pathlib import Path
 
-from PySide6.QtCore import QTimer, Qt
+from PySide6.QtCore import QTimer, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import (
     QCheckBox,
+    QDialog,
+    QDialogButtonBox,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -21,7 +23,7 @@ from ..video.video_utils import format_time, parse_time_input
 class RoiPlotIndicator(QWidget):
     STATE_TOOLTIPS = {
         "idle": "ROI plot has not been generated.",
-        "rendering": "Generating ROI plot...",
+        "rendering": "Analyzing LED ROI...",
         "done": "ROI plot generated.",
         "empty": "ROI plot generated without brightness data.",
         "failed": "LED analysis failed.",
@@ -84,6 +86,8 @@ class RoiPlotIndicator(QWidget):
 
 
 class SyncPanel(QWidget):
+    analysis_info_available = Signal(bool)
+
     def __init__(self):
         super().__init__()
 
@@ -111,7 +115,11 @@ class SyncPanel(QWidget):
         self.roi_plot_indicator = RoiPlotIndicator(self)
 
         self.offset_label = QLabel("Time offset: Not calculated")
-        self.led_curve_canvas = None
+        self.analysis_points = None
+        self.analysis_threshold = 0.0
+        self.analysis_events = None
+        self.analysis_stats = None
+        self.analysis_status = None
 
         self.led_scan_start_input.returnPressed.connect(
             self.normalize_led_scan_range_inputs
@@ -161,13 +169,10 @@ class SyncPanel(QWidget):
         layout.setSpacing(4)
         layout.addLayout(self.action_layout)
         layout.addLayout(info_grid)
-        self.led_curve_area = QVBoxLayout()
-        layout.addLayout(self.led_curve_area, stretch=1)
-
         self.setLayout(layout)
 
     def add_top_left_widget(self, widget):
-        self.action_layout.insertWidget(0, widget)
+        self.action_layout.insertWidget(self.action_layout.count() - 1, widget)
 
     def set_video_path(self, path):
         self.video_file_label.setText(f"Video file: {Path(path).name}")
@@ -242,55 +247,64 @@ class SyncPanel(QWidget):
         return self.detect_multiple_led_checkbox.isChecked()
 
     def set_roi_plot_idle(self):
+        self.analysis_points = None
+        self.analysis_threshold = 0.0
+        self.analysis_events = None
+        self.analysis_stats = None
+        self.analysis_status = None
+        self.analysis_info_available.emit(False)
         self.roi_plot_indicator.set_state("idle")
 
-    def set_led_analysis(self, points, threshold, events, stats=None):
-        points = points or []
-        events = events or []
-        stats = stats or {}
-        self.roi_plot_indicator.set_state("rendering")
-        self.led_detection_label.setText(
-            f"Generating ROI plot... points={len(points)}"
+    def set_led_analysis(self, points, threshold, events, stats=None, status=None):
+        self.analysis_points = list(points or [])
+        self.analysis_threshold = float(threshold or 0.0)
+        self.analysis_events = list(events or [])
+        self.analysis_stats = dict(stats or {})
+        self.analysis_status = status or format_led_detection_status(
+            self.analysis_points,
+            self.analysis_threshold,
+            self.analysis_events,
+            self.analysis_stats,
         )
-        QTimer.singleShot(
-            50,
-            lambda: self.render_led_analysis(
-                points,
-                threshold,
-                events,
-                stats=stats,
-            ),
+        self.roi_plot_indicator.set_state(
+            "done" if self.analysis_points else "empty"
         )
+        self.analysis_info_available.emit(True)
 
-    def render_led_analysis(self, points, threshold, events, stats=None):
-        stats = stats or {}
-
-        if self.led_curve_canvas is not None:
-            self.led_curve_canvas.setParent(None)
-            self.led_curve_canvas.deleteLater()
-            self.led_curve_canvas = None
-        while self.led_curve_area.count():
-            item = self.led_curve_area.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                widget.setParent(None)
-
-        if not points:
-            self.led_detection_label.setText("LED detection: No brightness data")
-        else:
-            status = format_led_detection_status(points, threshold, events, stats)
-            self.led_detection_label.setText(status)
-            self.led_detection_label.setToolTip(status)
+    def show_analysis_info(self):
+        if self.analysis_status is None:
+            return
 
         from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
         from matplotlib.figure import Figure
 
-        figure = Figure(figsize=(5, 1.8), tight_layout=True)
+        dialog = QDialog(self)
+        dialog.setWindowTitle("LED Analysis Info")
+        dialog.resize(900, 620)
+
+        status_grid = QGridLayout()
+        status_grid.setHorizontalSpacing(24)
+        status_grid.setVerticalSpacing(5)
+        status_grid.setColumnStretch(0, 1)
+        status_grid.setColumnStretch(1, 1)
+        status_grid.setColumnStretch(2, 1)
+        status_items = self.analysis_status.split(" | ")
+        for index, text in enumerate(status_items):
+            label = QLabel(text)
+            label.setWordWrap(True)
+            label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+            label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            status_grid.addWidget(label, index // 3, index % 3)
+
+        figure = Figure(figsize=(8, 3.5), tight_layout=True)
         canvas = FigureCanvas(figure)
-        canvas.setMinimumHeight(120)
+        canvas.setMinimumHeight(300)
         canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         ax = figure.add_subplot(111)
+        points = self.analysis_points or []
+        events = self.analysis_events or []
+        stats = self.analysis_stats or {}
         times = [point.video_time_sec for point in points]
         delta_times = [points[index].video_time_sec for index in range(1, len(points))]
         delta_values = [
@@ -310,7 +324,7 @@ class SyncPanel(QWidget):
             ax.set_xlim(0.0, 1.0)
             ax.set_ylim(-1.0, 1.0)
         ax.axhline(0.0, color="gray", linestyle=":", linewidth=0.7)
-        threshold_value = stats.get("threshold", threshold)
+        threshold_value = stats.get("threshold", self.analysis_threshold)
         if threshold_value > 0:
             ax.axhline(threshold_value, color="gray", linestyle="--", linewidth=0.6)
             ax.axhline(-threshold_value, color="gray", linestyle="--", linewidth=0.6)
@@ -322,18 +336,19 @@ class SyncPanel(QWidget):
         ax.tick_params(axis="both", labelsize=8, pad=1)
         ax.grid(True, linewidth=0.4, alpha=0.35)
 
-        self.led_curve_area.addWidget(canvas)
-        self.led_curve_canvas = canvas
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(dialog.reject)
+
+        layout = QVBoxLayout(dialog)
+        layout.addLayout(status_grid)
+        layout.addWidget(canvas, stretch=1)
+        layout.addWidget(buttons)
         canvas.draw_idle()
-        QTimer.singleShot(
-            250,
-            lambda has_points=bool(points): self.roi_plot_indicator.set_state(
-                "done" if has_points else "empty"
-            ),
-        )
+        dialog.exec()
 
     def begin_led_detection_progress(self):
         self.set_roi_plot_idle()
+        self.roi_plot_indicator.set_state("rendering")
         self.led_progress_bar.setRange(0, 100)
         self.led_progress_bar.setValue(0)
         self.led_progress_bar.setFormat("Analyzing LED ROI: 0%")

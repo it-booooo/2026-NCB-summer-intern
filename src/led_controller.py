@@ -131,7 +131,7 @@ class LedControllerMixin:
         self.sync_panel.set_led_detection_status(
             "LED detection: using cached ROI brightness data."
             if cached_points is not None
-            else "LED detection: analyzing ROI frame changes. You can wait here; video playback is not required."
+            else "LED detection: analyzing ROI frame changes. You can wait here."
         )
         self.sync_panel.begin_led_detection_progress()
         self.led_worker = LedDetectionWorker(
@@ -212,19 +212,24 @@ class LedControllerMixin:
         if points and cache_key is not None and not cache_hit:
             self.led_brightness_cache[cache_key] = points
 
+        status = format_led_detection_status(points, threshold, events, stats)
+        if cache_hit:
+            status += " | cached scan"
         self.sync_panel.finish_led_detection_progress(has_events=bool(events))
         self.sync_panel.set_led_analysis(
             points,
             threshold,
             events,
             stats=stats,
+            status=status,
         )
         self.event_table.delete_events_by_source("led_detection")
         self.add_led_events(events)
-        status = format_led_detection_status(points, threshold, events, stats)
-        if cache_hit:
-            status += " | cached scan"
-        self.sync_panel.set_led_detection_status(status)
+        self.sync_panel.set_led_detection_status(
+            "LED detection: complete. Click Analysis Info to view results."
+            if events
+            else "LED scan complete: no events found. Click Analysis Info to view results."
+        )
 
         if not events:
             QMessageBox.warning(

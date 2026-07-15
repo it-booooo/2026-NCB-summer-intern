@@ -1,7 +1,7 @@
 def format_led_detection_status(points, threshold, events, stats):
     stats = stats or {}
     interval_count = stats.get("event_count", len(events or []) // 2)
-    mode_label = stats.get("mode_label", "Frame delta (ROI mean brightness)")
+    mode_label = stats.get("mode_label", "Frame delta")
     status_prefix = (
         "LED scan completed: no events found"
         if stats.get("scan_outcome") == "no_events"
@@ -44,13 +44,11 @@ def format_acceleration_status(stats):
     if backend == "opencl":
         status += (
             f" | brightness=OpenCL"
-            f" device={stats.get('opencl_device', 'GPU')}"
-            f" vendor={stats.get('opencl_device_vendor', 'unknown')}"
-            f" selected={stats.get('opencl_selected_reason', 'auto')}"
-            f" batch={stats.get('opencl_batch_mode', 'fixed')}"
-            f" capacity={stats.get('opencl_batch_capacity', 0)}"
-            f" batches={stats.get('opencl_batches', 0)}"
-            f" max_batch={stats.get('opencl_max_batch_frames', 0)}"
+            f" | selected={stats.get('opencl_selected_reason', 'auto')}"
+            f" | batch={stats.get('opencl_batch_mode', 'fixed')}"
+            f" | capacity={stats.get('opencl_batch_capacity', 0)}"
+            f" | batches={stats.get('opencl_batches', 0)}"
+            f" | max_batch={stats.get('opencl_max_batch_frames', 0)}"
         )
     elif backend == "cpu":
         status += " | brightness=CPU"
