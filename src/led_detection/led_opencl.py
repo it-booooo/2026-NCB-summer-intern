@@ -1,4 +1,6 @@
 import os
+import ctypes
+import sys
 import warnings
 from functools import lru_cache
 from pathlib import Path
@@ -65,6 +67,39 @@ __kernel void roi_mean_brightness(
 
 class OpenClUnavailable(RuntimeError):
     pass
+
+
+_DLL_DIRECTORY_HANDLES = []
+
+
+def _configure_windows_dll_search():
+    """Make PyInstaller's extraction directory available to native extensions."""
+    if sys.platform != "win32" or not hasattr(os, "add_dll_directory"):
+        return
+
+    bundle_root = getattr(sys, "_MEIPASS", "")
+    if bundle_root:
+        _DLL_DIRECTORY_HANDLES.append(os.add_dll_directory(bundle_root))
+
+
+def _windows_dll_diagnostics():
+    if sys.platform != "win32":
+        return ""
+
+    results = []
+    for dll_name in (
+        "OpenCL.dll",
+        "MSVCP140.dll",
+        "VCRUNTIME140.dll",
+        "VCRUNTIME140_1.dll",
+    ):
+        try:
+            ctypes.WinDLL(dll_name)
+        except OSError as error:
+            results.append(f"{dll_name}: FAILED ({error})")
+        else:
+            results.append(f"{dll_name}: OK")
+    return "; ".join(results)
 
 
 def _env_int(name, default):
@@ -235,11 +270,20 @@ def _opencl_runtime():
     if _opencl_disabled():
         raise OpenClUnavailable("OpenCL disabled by PIG_LED_OPENCL")
 
+    _configure_opencl_temp()
+    _configure_windows_dll_search()
     try:
-        _configure_opencl_temp()
         import pyopencl as cl
+    except ModuleNotFoundError as error:
+        raise OpenClUnavailable(
+            f"pyopencl is not bundled in this application ({error})"
+        ) from error
     except Exception as error:
-        raise OpenClUnavailable("pyopencl is not installed") from error
+        raise OpenClUnavailable(
+            "pyopencl could not load; an OpenCL driver or runtime DLL may be missing "
+            f"({type(error).__name__}: {error}). DLL check: "
+            f"{_windows_dll_diagnostics()}"
+        ) from error
 
     gpu_devices = []
     try:

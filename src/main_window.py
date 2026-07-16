@@ -1,3 +1,6 @@
+import sys
+from pathlib import Path
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtWidgets import (
@@ -37,7 +40,8 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
         self.setWindowTitle("Pig Behavior Video-LFP Synchronization Tool")
         self.resize(1280, 720)
         self.setMinimumSize(1100, 640)
-        self.setWindowIcon(QIcon("input_data/icon.png"))
+        bundle_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[1]))
+        self.setWindowIcon(QIcon(str(bundle_root / "input_data" / "icon.png")))
 
         self.video_player = VideoPlayer(
             self.video_state,
