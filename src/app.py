@@ -83,16 +83,13 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
         self.create_layout()
 
     def add_action(self, menu, text, callback, description=""):
-        """Perform ``add_action``.
+        """Add action.
 
         Args:
-            menu: Input accepted by this function.
-            text: Input accepted by this function.
-            callback: Input accepted by this function.
-            description: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            menu: Input used by this operation.
+            text: Text displayed to the user.
+            callback: Function invoked when the operation completes or changes.
+            description: Input used by this operation.
         """
         action = QAction(text, self)
         action.triggered.connect(callback)
@@ -103,15 +100,12 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
         return action
 
     def create_group(self, title, widget, margins=(6, 6, 6, 6)):
-        """Perform ``create_group``.
+        """Create group.
 
         Args:
-            title: Input accepted by this function.
-            widget: Input accepted by this function.
-            margins: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            title: Dialog title displayed to the user.
+            widget: Input used by this operation.
+            margins: Input used by this operation.
         """
         group = QGroupBox(title)
         layout = QVBoxLayout()
@@ -121,13 +115,10 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
         return group
 
     def create_menu(self):
-        """Perform ``create_menu``.
+        """Create menu.
 
         Args:
             None.
-
-        Returns:
-            The value produced by this function, if any.
         """
         menu_bar = self.menuBar()
         file_menu = menu_bar.addMenu("File")
@@ -168,14 +159,11 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
         )
 
     def ask_step(self, title, current_step):
-        """Perform ``ask_step``.
+        """Show a dialog for choosing a plot step and return the confirmed value.
 
         Args:
-            title: Input accepted by this function.
-            current_step: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            title: Dialog title displayed to the user.
+            current_step: Currently selected plot step.
         """
         step, accepted = QInputDialog.getInt(
             self,
@@ -191,13 +179,10 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
         return True, None if step == -1 else step
 
     def set_plot_step(self, plot_name):
-        """Perform ``set_plot_step``.
+        """Set plot step.
 
         Args:
-            plot_name: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            plot_name: Input used by this operation.
         """
         title, step_attribute = {
             "lfp": ("Set LFP step", "lfp_step"),
@@ -210,13 +195,10 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
             self.lfp_panel.set_plot_step(plot_name, step)
 
     def set_power_noise_frequency(self):
-        """Perform ``set_power_noise_frequency``.
+        """Set power noise frequency.
 
         Args:
             None.
-
-        Returns:
-            The value produced by this function, if any.
         """
         items = ["60 Hz", "50 Hz"]
         values = [60.0, 50.0]
@@ -233,13 +215,10 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
             self.lfp_panel.set_line_noise_hz(values[items.index(text)])
 
     def create_layout(self):
-        """Perform ``create_layout``.
+        """Create layout.
 
         Args:
             None.
-
-        Returns:
-            The value produced by this function, if any.
         """
         lfp_group = self.create_group(
             "Waveform Area",
@@ -283,13 +262,10 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
         self.setCentralWidget(main_content)
 
     def closeEvent(self, event):
-        """Perform ``closeEvent``.
+        """Close event.
 
         Args:
-            event: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            event: Event record to process.
         """
         if self.stop_led_detection(wait=True):
             event.accept()

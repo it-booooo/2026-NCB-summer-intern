@@ -1,14 +1,11 @@
 def format_led_detection_status(points, threshold, events, stats):
-    """Perform ``format_led_detection_status``.
+    """Format led detection status.
 
     Args:
-        points: Input accepted by this function.
-        threshold: Input accepted by this function.
-        events: Input accepted by this function.
-        stats: Input accepted by this function.
-
-    Returns:
-        The value produced by this function, if any.
+        points: Brightness or analysis points used by the operation.
+        threshold: Input used by this operation.
+        events: Event records to display, analyze, or export.
+        stats: Input used by this operation.
     """
     stats = stats or {}
     interval_count = stats.get("event_count", len(events or []) // 2)
@@ -43,13 +40,10 @@ def format_led_detection_status(points, threshold, events, stats):
 
 
 def format_timing_status(stats):
-    """Perform ``format_timing_status``.
+    """Format timing status.
 
     Args:
-        stats: Input accepted by this function.
-
-    Returns:
-        The value produced by this function, if any.
+        stats: Input used by this operation.
     """
     return (
         f" | scan={stats.get('scan_elapsed_sec', 0.0):.1f}s"
@@ -58,13 +52,10 @@ def format_timing_status(stats):
 
 
 def format_acceleration_status(stats):
-    """Perform ``format_acceleration_status``.
+    """Format acceleration status.
 
     Args:
-        stats: Input accepted by this function.
-
-    Returns:
-        The value produced by this function, if any.
+        stats: Input used by this operation.
     """
     backend = stats.get("brightness_backend")
     status = ""

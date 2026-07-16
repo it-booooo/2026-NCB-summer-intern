@@ -24,13 +24,10 @@ class ImportController:
         self.led_state = led_state or window.led_state
 
     def actions(self):
-        """Describe actions.
+        """Create and return the actions exposed by this controller.
 
         Args:
             None.
-
-        Returns:
-            The value produced by this function, if any.
         """
         return [
             (
@@ -56,13 +53,10 @@ class ImportController:
         ]
 
     def open_csv_file(self, title):
-        """Describe open_csv_file.
+        """Open csv file.
 
         Args:
-            title: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            title: Dialog title displayed to the user.
         """
         path, _ = QFileDialog.getOpenFileName(
             self.window, title, "", "CSV Files (*.csv);;All Files (*)"
@@ -70,13 +64,10 @@ class ImportController:
         return path
 
     def import_video(self):
-        """Describe import_video.
+        """Provide import video functionality.
 
         Args:
             None.
-
-        Returns:
-            The value produced by this function, if any.
         """
         window = self.window
         if not window.stop_led_detection(wait=True):
@@ -124,13 +115,10 @@ class ImportController:
         window.update_waveform_current_time()
 
     def import_time_marker(self):
-        """Describe import_time_marker.
+        """Provide import time marker functionality.
 
         Args:
             None.
-
-        Returns:
-            The value produced by this function, if any.
         """
         window = self.window
         path = self.open_csv_file("Import Time Marker (.csv)")

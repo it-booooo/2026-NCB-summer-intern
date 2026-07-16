@@ -161,13 +161,10 @@ class LfpImageExportDialog(QDialog):
         self.update_processing_controls()
 
     def update_processing_controls(self, *_args):
-        """Describe update_processing_controls.
+        """Update processing controls.
 
         Args:
-            *_args: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            *_args: Input used by this operation.
         """
         processed = bool(self.signal_selector.currentData())
         self.bandpass_checkbox.setEnabled(processed)
@@ -177,13 +174,10 @@ class LfpImageExportDialog(QDialog):
         self.high_spin.setEnabled(bandpass_enabled)
 
     def choose_destination(self):
-        """Describe choose_destination.
+        """Provide choose destination functionality.
 
         Args:
             None.
-
-        Returns:
-            The value produced by this function, if any.
         """
         directory = QFileDialog.getExistingDirectory(
             self,
@@ -195,13 +189,10 @@ class LfpImageExportDialog(QDialog):
             self.destination_edit.setText(directory)
 
     def selected_image_types(self):
-        """Describe selected_image_types.
+        """Select ed image types.
 
         Args:
             None.
-
-        Returns:
-            The value produced by this function, if any.
         """
         selected = []
         for name, checkbox in (
@@ -214,13 +205,10 @@ class LfpImageExportDialog(QDialog):
         return tuple(selected)
 
     def validate_and_accept(self):
-        """Describe validate_and_accept.
+        """Validate and accept.
 
         Args:
             None.
-
-        Returns:
-            The value produced by this function, if any.
         """
         if not self.selected_image_types():
             QMessageBox.warning(
@@ -262,13 +250,10 @@ class LfpImageExportDialog(QDialog):
         self.accept()
 
     def options(self):
-        """Describe options.
+        """Provide options functionality.
 
         Args:
             None.
-
-        Returns:
-            The value produced by this function, if any.
         """
         start = absolute_time(
             self.start_spin.value(), self.panel.sync_time_origin_sec

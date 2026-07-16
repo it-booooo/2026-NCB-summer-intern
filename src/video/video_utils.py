@@ -49,15 +49,12 @@ def open_video_capture(cv2, video_path):
 
 
 def parse_video_metadata(cap, path, using_fps=None):
-    """Describe parse_video_metadata.
+    """Parse video metadata.
 
     Args:
-        cap: Input accepted by this function.
-        path: Input accepted by this function.
-        using_fps: Input accepted by this function.
-
-    Returns:
-        The value produced by this function, if any.
+        cap: Input used by this operation.
+        path: File path to read from or write to.
+        using_fps: Frame rate used for time conversion.
     """
     import cv2
 
@@ -98,13 +95,10 @@ def parse_video_metadata(cap, path, using_fps=None):
 
 
 def fourcc_to_string(fourcc_value):
-    """Describe fourcc_to_string.
+    """Provide fourcc to string functionality.
 
     Args:
-        fourcc_value: Input accepted by this function.
-
-    Returns:
-        The value produced by this function, if any.
+        fourcc_value: Input used by this operation.
     """
     if not fourcc_value:
         return "unknown"
@@ -117,14 +111,11 @@ def fourcc_to_string(fourcc_value):
 
 
 def read_frame(cap, frame_index):
-    """Describe read_frame.
+    """Read frame.
 
     Args:
-        cap: Input accepted by this function.
-        frame_index: Input accepted by this function.
-
-    Returns:
-        The value produced by this function, if any.
+        cap: Input used by this operation.
+        frame_index: Zero-based video frame index.
     """
     import cv2
 
@@ -136,14 +127,11 @@ def read_frame(cap, frame_index):
 
 
 def frame_to_time_sec(frame_index, fps):
-    """Describe frame_to_time_sec.
+    """Provide frame to time sec functionality.
 
     Args:
-        frame_index: Input accepted by this function.
-        fps: Input accepted by this function.
-
-    Returns:
-        The value produced by this function, if any.
+        frame_index: Zero-based video frame index.
+        fps: Video frame rate in frames per second.
     """
     if not fps:
         return 0.0
@@ -152,15 +140,12 @@ def frame_to_time_sec(frame_index, fps):
 
 
 def time_sec_to_frame(time_sec, fps, total_frames=None):
-    """Describe time_sec_to_frame.
+    """Convert time to sec to frame.
 
     Args:
-        time_sec: Input accepted by this function.
-        fps: Input accepted by this function.
-        total_frames: Input accepted by this function.
-
-    Returns:
-        The value produced by this function, if any.
+        time_sec: Time value in seconds.
+        fps: Video frame rate in frames per second.
+        total_frames: Input used by this operation.
     """
     if not fps:
         return 0
@@ -198,13 +183,10 @@ def parse_time_input(text):
 
 
 def format_time(seconds):
-    """Describe format_time.
+    """Format time.
 
     Args:
-        seconds: Input accepted by this function.
-
-    Returns:
-        The value produced by this function, if any.
+        seconds: Input used by this operation.
     """
     total_ms = int(round(seconds * 1000))
 

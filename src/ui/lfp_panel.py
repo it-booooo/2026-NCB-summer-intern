@@ -1,7 +1,6 @@
 from .. import plotting as draw
 import numpy as np
 from .. import signal_processing as signal_func
-from ..data_io import csv_loader
 from ..data_io import readers as read
 from ..plotting.plot_utils import (
     clamp_xlim,
@@ -34,7 +33,7 @@ from matplotlib.ticker import FuncFormatter
 
 class PlaybackAwareComboBox(QComboBox):
     def showPopup(self):
-        """Describe showPopup.
+        """Show the popup menu for this widget.
 
         Args:
             None.
@@ -120,18 +119,18 @@ class SharedTimelineSlider:
         canvas.mpl_connect("button_release_event", self.on_release)
 
     def on_changed(self, callback):
-        """Describe on_changed.
+        """Provide on changed functionality.
 
         Args:
-            callback: Input accepted by this method.
+            callback: Function invoked when the operation completes or changes.
         """
         self.callbacks.append(callback)
 
     def set_time_origin(self, origin_sec):
-        """Describe set_time_origin.
+        """Set time origin.
 
         Args:
-            origin_sec: Input accepted by this method.
+            origin_sec: Input used by this operation.
         """
         self.time_origin_sec = None if origin_sec is None else float(origin_sec)
         self.ax.xaxis.set_major_formatter(
@@ -144,11 +143,11 @@ class SharedTimelineSlider:
         self.ax.figure.canvas.draw_idle()
 
     def set_val(self, value, emit=True):
-        """Describe set_val.
+        """Set val.
 
         Args:
-            value: Input accepted by this method.
-            emit: Input accepted by this method.
+            value: New value to store or apply.
+            emit: Input used by this operation.
         """
         left, right = clamp_xlim(float(value[0]), float(value[1]), self.full_xlim)
         if right - left < self.min_width:
@@ -164,7 +163,7 @@ class SharedTimelineSlider:
                 callback(self.val)
 
     def update_artists(self):
-        """Describe update_artists.
+        """Update artists.
 
         Args:
             None.
@@ -179,10 +178,10 @@ class SharedTimelineSlider:
         self.valtext.set_text(f"({display_left:.2f} s, {display_right:.2f} s)")
 
     def on_press(self, event):
-        """Describe on_press.
+        """Provide on press functionality.
 
         Args:
-            event: Input accepted by this method.
+            event: Event record to process.
         """
         if event.inaxes != self.ax or event.button != 1 or event.xdata is None:
             return
@@ -208,10 +207,10 @@ class SharedTimelineSlider:
         }
 
     def on_motion(self, event):
-        """Describe on_motion.
+        """Provide on motion functionality.
 
         Args:
-            event: Input accepted by this method.
+            event: Event record to process.
         """
         if self.drag_state is None or event.xdata is None:
             return
@@ -232,10 +231,10 @@ class SharedTimelineSlider:
             self.set_val((left + dx, right + dx))
 
     def on_release(self, event):
-        """Describe on_release.
+        """Provide on release functionality.
 
         Args:
-            event: Input accepted by this method.
+            event: Event record to process.
         """
         self.drag_state = None
 
@@ -423,7 +422,7 @@ class LfpPanel(QWidget):
 
     @property
     def lfp_info(self):
-        """Describe lfp_info.
+        """Provide lfp info functionality.
 
         Args:
             None.
@@ -432,16 +431,16 @@ class LfpPanel(QWidget):
 
     @lfp_info.setter
     def lfp_info(self, info):
-        """Describe lfp_info.
+        """Provide lfp info functionality.
 
         Args:
-            info: Input accepted by this method.
+            info: Metadata or state information to store or use.
         """
         self.data_state.lfp_info = info
 
     @property
     def axis_info(self):
-        """Describe axis_info.
+        """Provide axis info functionality.
 
         Args:
             None.
@@ -450,16 +449,16 @@ class LfpPanel(QWidget):
 
     @axis_info.setter
     def axis_info(self, info):
-        """Describe axis_info.
+        """Provide axis info functionality.
 
         Args:
-            info: Input accepted by this method.
+            info: Metadata or state information to store or use.
         """
         self.data_state.axis_info = info
 
     @property
     def lfp_path(self):
-        """Describe lfp_path.
+        """Provide lfp path functionality.
 
         Args:
             None.
@@ -468,7 +467,7 @@ class LfpPanel(QWidget):
 
     @property
     def axis_path(self):
-        """Describe axis_path.
+        """Provide axis path functionality.
 
         Args:
             None.
@@ -477,7 +476,7 @@ class LfpPanel(QWidget):
 
     @property
     def lfp_step(self):
-        """Describe lfp_step.
+        """Provide lfp step functionality.
 
         Args:
             None.
@@ -486,16 +485,16 @@ class LfpPanel(QWidget):
 
     @lfp_step.setter
     def lfp_step(self, step):
-        """Describe lfp_step.
+        """Provide lfp step functionality.
 
         Args:
-            step: Input accepted by this method.
+            step: Input used by this operation.
         """
         self.data_state.lfp_step = step
 
     @property
     def axis_step(self):
-        """Describe axis_step.
+        """Provide axis step functionality.
 
         Args:
             None.
@@ -504,16 +503,16 @@ class LfpPanel(QWidget):
 
     @axis_step.setter
     def axis_step(self, step):
-        """Describe axis_step.
+        """Provide axis step functionality.
 
         Args:
-            step: Input accepted by this method.
+            step: Input used by this operation.
         """
         self.data_state.axis_step = step
 
     @property
     def line_noise_hz(self):
-        """Describe line_noise_hz.
+        """Provide line noise hz functionality.
 
         Args:
             None.
@@ -522,16 +521,16 @@ class LfpPanel(QWidget):
 
     @line_noise_hz.setter
     def line_noise_hz(self, frequency):
-        """Describe line_noise_hz.
+        """Provide line noise hz functionality.
 
         Args:
-            frequency: Input accepted by this method.
+            frequency: Input used by this operation.
         """
         self.data_state.line_noise_hz = float(frequency)
 
     @property
     def sync_time_origin_sec(self):
-        """Describe sync_time_origin_sec.
+        """Synchronize time origin sec.
 
         Args:
             None.
@@ -540,16 +539,16 @@ class LfpPanel(QWidget):
 
     @sync_time_origin_sec.setter
     def sync_time_origin_sec(self, origin_sec):
-        """Describe sync_time_origin_sec.
+        """Synchronize time origin sec.
 
         Args:
-            origin_sec: Input accepted by this method.
+            origin_sec: Input used by this operation.
         """
         self.sync_state.record_time_origin_sec = origin_sec
 
     @property
     def current_record_time_sec(self):
-        """Describe current_record_time_sec.
+        """Provide current record time sec functionality.
 
         Args:
             None.
@@ -558,16 +557,16 @@ class LfpPanel(QWidget):
 
     @current_record_time_sec.setter
     def current_record_time_sec(self, time_sec):
-        """Describe current_record_time_sec.
+        """Provide current record time sec functionality.
 
         Args:
-            time_sec: Input accepted by this method.
+            time_sec: Time value in seconds.
         """
         self.sync_state.current_record_time_sec = time_sec
 
     @property
     def event_intervals(self):
-        """Describe event_intervals.
+        """Provide event intervals functionality.
 
         Args:
             None.
@@ -576,18 +575,18 @@ class LfpPanel(QWidget):
 
     @event_intervals.setter
     def event_intervals(self, intervals):
-        """Describe event_intervals.
+        """Provide event intervals functionality.
 
         Args:
-            intervals: Input accepted by this method.
+            intervals: Input used by this operation.
         """
         self.sync_state.event_intervals = list(intervals)
 
     def create_frequency_spinbox(self, value):
-        """Describe create_frequency_spinbox.
+        """Create frequency spinbox.
 
         Args:
-            value: Input accepted by this method.
+            value: New value to store or apply.
         """
         spinbox = QDoubleSpinBox()
         spinbox.setDecimals(2)
@@ -599,7 +598,7 @@ class LfpPanel(QWidget):
         return spinbox
 
     def format_line_noise_label(self):
-        """Describe format_line_noise_label.
+        """Format line noise label.
 
         Args:
             None.
@@ -607,7 +606,7 @@ class LfpPanel(QWidget):
         return f"{self.line_noise_hz:g} Hz" if self.line_noise_hz else "not set"
 
     def update_notch_control_text(self):
-        """Describe update_notch_control_text.
+        """Update notch control text.
 
         Args:
             None.
@@ -619,10 +618,10 @@ class LfpPanel(QWidget):
         )
 
     def create_waveform_area(self, text):
-        """Describe create_waveform_area.
+        """Create waveform area.
 
         Args:
-            text: Input accepted by this method.
+            text: Text displayed to the user.
         """
         frame = QFrame()
         frame.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
@@ -646,12 +645,12 @@ class LfpPanel(QWidget):
         return frame
 
     def set_figure(self, frame, canvas_attr, fig):
-        """Describe set_figure.
+        """Set figure.
 
         Args:
-            frame: Input accepted by this method.
-            canvas_attr: Input accepted by this method.
-            fig: Input accepted by this method.
+            frame: Input used by this operation.
+            canvas_attr: Input used by this operation.
+            fig: Input used by this operation.
         """
         from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 
@@ -677,7 +676,7 @@ class LfpPanel(QWidget):
         canvas.draw_idle()
 
     def timeline_limits(self):
-        """Describe timeline_limits.
+        """Convert time to line limits.
 
         Args:
             None.
@@ -696,12 +695,12 @@ class LfpPanel(QWidget):
         return min(limit[0] for limit in limits), max(limit[1] for limit in limits)
 
     def set_shared_xlim(self, left, right, source=None):
-        """Describe set_shared_xlim.
+        """Set shared xlim.
 
         Args:
-            left: Input accepted by this method.
-            right: Input accepted by this method.
-            source: Input accepted by this method.
+            left: Input used by this operation.
+            right: Input used by this operation.
+            source: Input used by this operation.
         """
         if self.updating_timeline:
             return
@@ -721,11 +720,11 @@ class LfpPanel(QWidget):
         self.updating_timeline = False
 
     def on_plot_xlim_changed(self, value, source):
-        """Describe on_plot_xlim_changed.
+        """Provide on plot xlim changed functionality.
 
         Args:
-            value: Input accepted by this method.
-            source: Input accepted by this method.
+            value: New value to store or apply.
+            source: Input used by this operation.
         """
         if self.updating_timeline:
             return
@@ -734,7 +733,7 @@ class LfpPanel(QWidget):
         self.set_shared_xlim(float(left), float(right), source=source)
 
     def current_timeline_xlim(self):
-        """Describe current_timeline_xlim.
+        """Provide current timeline xlim functionality.
 
         Args:
             None.
@@ -746,7 +745,7 @@ class LfpPanel(QWidget):
         return float(left), float(right)
 
     def should_follow_video_playback(self):
-        """Describe should_follow_video_playback.
+        """Provide should follow video playback functionality.
 
         Args:
             None.
@@ -754,10 +753,10 @@ class LfpPanel(QWidget):
         return self.follow_video_checkbox.isChecked()
 
     def set_sync_time_origin(self, origin_sec):
-        """Describe set_sync_time_origin.
+        """Set sync time origin.
 
         Args:
-            origin_sec: Input accepted by this method.
+            origin_sec: Input used by this operation.
         """
         next_origin = None if origin_sec is None else float(origin_sec)
         if self.sync_time_origin_sec == next_origin:
@@ -767,7 +766,7 @@ class LfpPanel(QWidget):
         self.apply_sync_time_axis_formatters()
 
     def apply_sync_time_axis_formatters(self):
-        """Describe apply_sync_time_axis_formatters.
+        """Apply sync time axis formatters.
 
         Args:
             None.
@@ -789,20 +788,20 @@ class LfpPanel(QWidget):
         self.invalidate_current_time_backgrounds()
 
     def connect_canvas_events(self, canvas):
-        """Describe connect_canvas_events.
+        """Connect canvas events.
 
         Args:
-            canvas: Input accepted by this method.
+            canvas: Matplotlib canvas to configure.
         """
         canvas.mpl_connect("draw_event", self.on_canvas_draw)
         canvas.mpl_connect("button_press_event", self.on_canvas_press)
         canvas.mpl_connect("button_release_event", self.on_canvas_release)
 
     def is_seekable_axis(self, ax):
-        """Describe is_seekable_axis.
+        """Determine whether seekable axis.
 
         Args:
-            ax: Input accepted by this method.
+            ax: Matplotlib axes to draw on.
         """
         return any(
             fig is not None and fig.axes and ax is fig.axes[0]
@@ -810,10 +809,10 @@ class LfpPanel(QWidget):
         )
 
     def on_canvas_press(self, event):
-        """Describe on_canvas_press.
+        """Provide on canvas press functionality.
 
         Args:
-            event: Input accepted by this method.
+            event: Event record to process.
         """
         if (
             event.button != 1
@@ -834,10 +833,10 @@ class LfpPanel(QWidget):
         }
 
     def on_canvas_release(self, event):
-        """Describe on_canvas_release.
+        """Provide on canvas release functionality.
 
         Args:
-            event: Input accepted by this method.
+            event: Event record to process.
         """
         state = self.click_seek_state
         self.click_seek_state = None
@@ -862,7 +861,7 @@ class LfpPanel(QWidget):
         self.time_selected.emit(record_time_sec)
 
     def follow_current_time_marker(self):
-        """Describe follow_current_time_marker.
+        """Provide follow current time marker functionality.
 
         Args:
             None.
@@ -924,7 +923,7 @@ class LfpPanel(QWidget):
         self.set_shared_xlim(next_left, next_right, source="playback")
 
     def figure_items(self):
-        """Describe figure_items.
+        """Provide figure items functionality.
 
         Args:
             None.
@@ -936,10 +935,10 @@ class LfpPanel(QWidget):
         ]
 
     def invalidate_current_time_backgrounds(self, key=None):
-        """Describe invalidate_current_time_backgrounds.
+        """Invalidate current time backgrounds.
 
         Args:
-            key: Input accepted by this method.
+            key: Input used by this operation.
         """
         if key is None:
             self.current_time_backgrounds = {}
@@ -948,11 +947,11 @@ class LfpPanel(QWidget):
         self.current_time_backgrounds.pop(key, None)
 
     def background_signature(self, canvas, ax):
-        """Describe background_signature.
+        """Provide background signature functionality.
 
         Args:
-            canvas: Input accepted by this method.
-            ax: Input accepted by this method.
+            canvas: Matplotlib canvas to configure.
+            ax: Matplotlib axes to draw on.
         """
         return (
             canvas.get_width_height(),
@@ -962,10 +961,10 @@ class LfpPanel(QWidget):
         )
 
     def supports_marker_blit(self, canvas):
-        """Describe supports_marker_blit.
+        """Provide supports marker blit functionality.
 
         Args:
-            canvas: Input accepted by this method.
+            canvas: Matplotlib canvas to configure.
         """
         return all(
             hasattr(canvas, name)
@@ -973,10 +972,10 @@ class LfpPanel(QWidget):
         )
 
     def on_canvas_draw(self, event):
-        """Describe on_canvas_draw.
+        """Provide on canvas draw functionality.
 
         Args:
-            event: Input accepted by this method.
+            event: Event record to process.
         """
         for key, fig, canvas in self.figure_items():
             if canvas is not event.canvas:
@@ -1002,13 +1001,13 @@ class LfpPanel(QWidget):
             return
 
     def draw_marker_line(self, key, canvas, ax, line):
-        """Describe draw_marker_line.
+        """Draw marker line.
 
         Args:
-            key: Input accepted by this method.
-            canvas: Input accepted by this method.
-            ax: Input accepted by this method.
-            line: Input accepted by this method.
+            key: Input used by this operation.
+            canvas: Matplotlib canvas to configure.
+            ax: Matplotlib axes to draw on.
+            line: Input used by this operation.
         """
         if not self.supports_marker_blit(canvas):
             canvas.draw_idle()
@@ -1029,7 +1028,7 @@ class LfpPanel(QWidget):
             canvas.draw_idle()
 
     def create_or_update_timeline(self):
-        """Describe create_or_update_timeline.
+        """Create or update timeline.
 
         Args:
             None.
@@ -1086,11 +1085,11 @@ class LfpPanel(QWidget):
         self.update_current_time_marker()
 
     def set_current_time_marker(self, record_time_sec, follow_playback=False):
-        """Describe set_current_time_marker.
+        """Set current time marker.
 
         Args:
-            record_time_sec: Input accepted by this method.
-            follow_playback: Input accepted by this method.
+            record_time_sec: Input used by this operation.
+            follow_playback: Input used by this operation.
         """
         self.current_record_time_sec = record_time_sec
 
@@ -1100,7 +1099,7 @@ class LfpPanel(QWidget):
         self.update_current_time_marker()
 
     def clear_current_time_marker(self):
-        """Describe clear_current_time_marker.
+        """Clear current time marker.
 
         Args:
             None.
@@ -1116,16 +1115,16 @@ class LfpPanel(QWidget):
                 canvas.draw_idle()
 
     def set_event_intervals(self, intervals):
-        """Describe set_event_intervals.
+        """Set event intervals.
 
         Args:
-            intervals: Input accepted by this method.
+            intervals: Input used by this operation.
         """
         self.event_intervals = [dict(interval) for interval in intervals]
         self.update_event_interval_artists()
 
     def clear_event_interval_artists(self):
-        """Describe clear_event_interval_artists.
+        """Clear event interval artists.
 
         Args:
             None.
@@ -1138,7 +1137,7 @@ class LfpPanel(QWidget):
         self.event_interval_artists = []
 
     def update_event_interval_artists(self):
-        """Describe update_event_interval_artists.
+        """Update event interval artists.
 
         Args:
             None.
@@ -1174,7 +1173,7 @@ class LfpPanel(QWidget):
             canvas.draw_idle()
 
     def update_current_time_marker(self):
-        """Describe update_current_time_marker.
+        """Update current time marker.
 
         Args:
             None.
@@ -1210,10 +1209,10 @@ class LfpPanel(QWidget):
             self.draw_marker_line(key, canvas, ax, line)
 
     def selected_channel(self, selector):
-        """Describe selected_channel.
+        """Select ed channel.
 
         Args:
-            selector: Input accepted by this method.
+            selector: Input used by this operation.
         """
         channel = selector.currentData()
         if channel is None:
@@ -1225,7 +1224,7 @@ class LfpPanel(QWidget):
             return None
 
     def current_lfp_filter_settings(self):
-        """Describe current_lfp_filter_settings.
+        """Provide current lfp filter settings functionality.
 
         Args:
             None.
@@ -1233,7 +1232,7 @@ class LfpPanel(QWidget):
         return self._applied_lfp_filter_settings
 
     def pending_lfp_filter_settings(self):
-        """Describe pending_lfp_filter_settings.
+        """Provide pending lfp filter settings functionality.
 
         Args:
             None.
@@ -1247,17 +1246,17 @@ class LfpPanel(QWidget):
         )
 
     def mark_lfp_filter_settings_pending(self, *_args):
-        """Describe mark_lfp_filter_settings_pending.
+        """Mark lfp filter settings pending.
 
         Args:
-            *_args: Input accepted by this method.
+            *_args: Input used by this operation.
         """
         self.apply_filter_button.setEnabled(
             self.pending_lfp_filter_settings() != self._applied_lfp_filter_settings
         )
 
     def apply_lfp_filter_settings(self):
-        """Describe apply_lfp_filter_settings.
+        """Apply lfp filter settings.
 
         Args:
             None.
@@ -1283,10 +1282,10 @@ class LfpPanel(QWidget):
         self.refresh_lfp_processing()
 
     def switch_lfp_signal_view(self, *_args):
-        """Describe switch_lfp_signal_view.
+        """Switch lfp signal view.
 
         Args:
-            *_args: Input accepted by this method.
+            *_args: Input used by this operation.
         """
         current = self._applied_lfp_filter_settings
         show_filtered = bool(self.signal_view_selector.currentData())
@@ -1305,10 +1304,10 @@ class LfpPanel(QWidget):
         self.invalidate_current_time_backgrounds("lfp")
 
     def set_line_noise_hz(self, line_noise_hz):
-        """Describe set_line_noise_hz.
+        """Set line noise hz.
 
         Args:
-            line_noise_hz: Input accepted by this method.
+            line_noise_hz: Input used by this operation.
         """
         next_value = 60.0 if line_noise_hz is None else float(line_noise_hz)
         if self.line_noise_hz == next_value:
@@ -1330,10 +1329,10 @@ class LfpPanel(QWidget):
         self.mark_lfp_filter_settings_pending()
 
     def refresh_lfp_processing(self, *_args):
-        """Describe refresh_lfp_processing.
+        """Refresh lfp processing.
 
         Args:
-            *_args: Input accepted by this method.
+            *_args: Input used by this operation.
         """
         if not self.lfp_path:
             return
@@ -1348,7 +1347,7 @@ class LfpPanel(QWidget):
             self.set_shared_xlim(*current_xlim, source="timeline")
 
     def current_lfp_record_xlim(self):
-        """Describe current_lfp_record_xlim.
+        """Provide current lfp record xlim functionality.
 
         Args:
             None.
@@ -1364,7 +1363,7 @@ class LfpPanel(QWidget):
         return left, right
 
     def available_lfp_channels(self):
-        """Describe available_lfp_channels.
+        """Provide available lfp channels functionality.
 
         Args:
             None.
@@ -1373,13 +1372,13 @@ class LfpPanel(QWidget):
         return [int(channel) for channel in channels]
 
     def load_lfp_segment(self, channel, left, right, settings):
-        """Describe load_lfp_segment.
+        """Load lfp segment.
 
         Args:
-            channel: Input accepted by this method.
-            left: Input accepted by this method.
-            right: Input accepted by this method.
-            settings: Input accepted by this method.
+            channel: LFP channel identifier.
+            left: Input used by this operation.
+            right: Input used by this operation.
+            settings: Configuration settings for this operation.
         """
         data = read.read_signal_csv(self.lfp_path, requested_channels=[channel])
         column = f"channel_{channel}"
@@ -1403,12 +1402,12 @@ class LfpPanel(QWidget):
         )
 
     def create_time_spinbox(self, value, minimum, maximum):
-        """Describe create_time_spinbox.
+        """Create time spinbox.
 
         Args:
-            value: Input accepted by this method.
-            minimum: Input accepted by this method.
-            maximum: Input accepted by this method.
+            value: New value to store or apply.
+            minimum: Input used by this operation.
+            maximum: Input used by this operation.
         """
         spinbox = QDoubleSpinBox()
         spinbox.setDecimals(4)
@@ -1419,7 +1418,7 @@ class LfpPanel(QWidget):
         return spinbox
 
     def full_lfp_record_xlim(self):
-        """Describe full_lfp_record_xlim.
+        """Provide full lfp record xlim functionality.
 
         Args:
             None.
@@ -1445,14 +1444,14 @@ class LfpPanel(QWidget):
         high_spin,
         notch_checkbox,
     ):
-        """Describe settings_from_processing_controls.
+        """Set tings from processing controls.
 
         Args:
-            signal_selector: Input accepted by this method.
-            bandpass_checkbox: Input accepted by this method.
-            low_spin: Input accepted by this method.
-            high_spin: Input accepted by this method.
-            notch_checkbox: Input accepted by this method.
+            signal_selector: Input used by this operation.
+            bandpass_checkbox: Input used by this operation.
+            low_spin: Input used by this operation.
+            high_spin: Input used by this operation.
+            notch_checkbox: Input used by this operation.
         """
         line_noise_hz = self.line_noise_hz if notch_checkbox.isChecked() else None
         if line_noise_hz is not None:
@@ -1561,17 +1560,17 @@ class LfpPanel(QWidget):
         figure,
         size,
     ):
-        """Describe open_lfp_analysis_dialog.
+        """Open lfp analysis dialog.
 
         Args:
-            title: Input accepted by this method.
-            channel: Input accepted by this method.
-            left: Input accepted by this method.
-            right: Input accepted by this method.
-            segment: Input accepted by this method.
-            settings: Input accepted by this method.
-            figure: Input accepted by this method.
-            size: Input accepted by this method.
+            title: Dialog title displayed to the user.
+            channel: LFP channel identifier.
+            left: Input used by this operation.
+            right: Input used by this operation.
+            segment: Input used by this operation.
+            settings: Configuration settings for this operation.
+            figure: Matplotlib figure to use or update.
+            size: Input used by this operation.
         """
         from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 
@@ -1602,21 +1601,21 @@ class LfpPanel(QWidget):
         dialog.show()
 
     def forget_spectrum_dialog(self, dialog):
-        """Describe forget_spectrum_dialog.
+        """Remove the reference to spectrum dialog.
 
         Args:
-            dialog: Input accepted by this method.
+            dialog: Input used by this operation.
         """
         if dialog in self.spectrum_dialogs:
             self.spectrum_dialogs.remove(dialog)
 
     def create_power_spectrum_figure(self, channel, frequencies, power):
-        """Describe create_power_spectrum_figure.
+        """Create power spectrum figure.
 
         Args:
-            channel: Input accepted by this method.
-            frequencies: Input accepted by this method.
-            power: Input accepted by this method.
+            channel: LFP channel identifier.
+            frequencies: Input used by this operation.
+            power: Input used by this operation.
         """
         figure = Figure(figsize=(7.6, 4.4), constrained_layout=True)
         ax = figure.add_subplot(111)
@@ -1629,14 +1628,14 @@ class LfpPanel(QWidget):
         return figure
 
     def create_lfp_waveform_figure(self, channel, segment, settings, time_mode,info):
-        """Describe create_lfp_waveform_figure.
+        """Create lfp waveform figure.
 
         Args:
-            channel: Input accepted by this method.
-            segment: Input accepted by this method.
-            settings: Input accepted by this method.
-            time_mode: Input accepted by this method.
-            info: Input accepted by this method.
+            channel: LFP channel identifier.
+            segment: Input used by this operation.
+            settings: Configuration settings for this operation.
+            time_mode: Input used by this operation.
+            info: Metadata or state information to store or use.
         """
         duration_sec = abs(
             float(segment.record_time_s[-1]) - float(segment.record_time_s[0])
@@ -1669,13 +1668,13 @@ class LfpPanel(QWidget):
         return figure
 
     def annotate_lfp_figure(self, figure, channel, segment, settings):
-        """Describe annotate_lfp_figure.
+        """Provide annotate lfp figure functionality.
 
         Args:
-            figure: Input accepted by this method.
-            channel: Input accepted by this method.
-            segment: Input accepted by this method.
-            settings: Input accepted by this method.
+            figure: Matplotlib figure to use or update.
+            channel: LFP channel identifier.
+            segment: Input used by this operation.
+            settings: Configuration settings for this operation.
         """
         filename = self.lfp_info.get("filename", "LFP") if self.lfp_info else "LFP"
         time_mode = "Sync time" if self.sync_time_origin_sec is not None else "Time"
@@ -1701,15 +1700,15 @@ class LfpPanel(QWidget):
         power,
         time_mode,
     ):
-        """Describe create_spectrogram_figure.
+        """Create spectrogram figure.
 
         Args:
-            channel: Input accepted by this method.
-            segment: Input accepted by this method.
-            frequencies: Input accepted by this method.
-            times: Input accepted by this method.
-            power: Input accepted by this method.
-            time_mode: Input accepted by this method.
+            channel: LFP channel identifier.
+            segment: Input used by this operation.
+            frequencies: Input used by this operation.
+            times: Input used by this operation.
+            power: Input used by this operation.
+            time_mode: Input used by this operation.
         """
         figure = Figure(figsize=(8.0, 4.8), constrained_layout=True)
         ax = figure.add_subplot(111)
@@ -1731,7 +1730,7 @@ class LfpPanel(QWidget):
         return figure
 
     def plot_lfp(self):
-        """Describe plot_lfp.
+        """Plot lfp.
 
         Args:
             None.
@@ -1771,7 +1770,7 @@ class LfpPanel(QWidget):
         self.update_current_time_marker()
 
     def plot_axis(self):
-        """Describe plot_axis.
+        """Plot axis.
 
         Args:
             None.
@@ -1802,10 +1801,10 @@ class LfpPanel(QWidget):
         self.update_current_time_marker()
 
     def set_lfp_info(self, info):
-        """Describe set_lfp_info.
+        """Set lfp info.
 
         Args:
-            info: Input accepted by this method.
+            info: Metadata or state information to store or use.
         """
         self.lfp_info = info
         self.lfp_fig = None
@@ -1834,10 +1833,10 @@ class LfpPanel(QWidget):
         self.plot_lfp()
 
     def set_axis_info(self, info):
-        """Describe set_axis_info.
+        """Set axis info.
 
         Args:
-            info: Input accepted by this method.
+            info: Metadata or state information to store or use.
         """
         self.axis_info = info
         self.axis_fig = None
@@ -1846,11 +1845,11 @@ class LfpPanel(QWidget):
         self.plot_axis()
 
     def set_plot_step(self, plot_name, step):
-        """Describe set_plot_step.
+        """Set plot step.
 
         Args:
-            plot_name: Input accepted by this method.
-            step: Input accepted by this method.
+            plot_name: Input used by this operation.
+            step: Input used by this operation.
         """
         step_attribute, path_attribute, figure_attribute, callback_attribute, plot = {
             "lfp": (

@@ -80,13 +80,10 @@ class TtlPanel(QWidget):
 
     @property
     def info(self):
-        """Describe info.
+        """Provide info functionality.
 
         Args:
             None.
-
-        Returns:
-            The value produced by this function, if any.
         """
         if self.sync_state.time_marker_info is None:
             return self.empty_info()
@@ -94,24 +91,18 @@ class TtlPanel(QWidget):
 
     @info.setter
     def info(self, info):
-        """Describe info.
+        """Provide info functionality.
 
         Args:
-            info: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            info: Metadata or state information to store or use.
         """
         self.sync_state.time_marker_info = info
 
     def empty_info(self):
-        """Describe empty_info.
+        """Provide empty info functionality.
 
         Args:
             None.
-
-        Returns:
-            The value produced by this function, if any.
         """
         return {
             "path": None,
@@ -123,25 +114,19 @@ class TtlPanel(QWidget):
         }
 
     def set_markers(self, info):
-        """Describe set_markers.
+        """Set markers.
 
         Args:
-            info: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            info: Metadata or state information to store or use.
         """
         self.info = info
         self.refresh_table()
 
     def paused_video_time_for_ttl(self):
-        """Describe paused_video_time_for_ttl.
+        """Pause d video time for ttl.
 
         Args:
             None.
-
-        Returns:
-            The value produced by this function, if any.
         """
         if self.video_player is None or not self.video_player.has_video():
             raise ValueError("Please import a video or enter a TTL time manually.")
@@ -150,13 +135,10 @@ class TtlPanel(QWidget):
         return self.video_player.current_time_sec()
 
     def add_ttl_marker(self):
-        """Describe add_ttl_marker.
+        """Add ttl marker.
 
         Args:
             None.
-
-        Returns:
-            The value produced by this function, if any.
         """
         text = self.record_time_input.text().strip()
 
@@ -189,13 +171,10 @@ class TtlPanel(QWidget):
         self.markers_changed.emit(self.info)
 
     def remove_selected_marker(self):
-        """Describe remove_selected_marker.
+        """Remove selected marker.
 
         Args:
             None.
-
-        Returns:
-            The value produced by this function, if any.
         """
         selected_rows = self.table.selectionModel().selectedRows()
         if not selected_rows:
@@ -235,13 +214,10 @@ class TtlPanel(QWidget):
         }
 
     def parse_record_time_us(self, text):
-        """Describe parse_record_time_us.
+        """Parse record time us.
 
         Args:
-            text: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            text: Text displayed to the user.
         """
         if not text:
             raise ValueError("Please enter a TTL record time.")
@@ -273,13 +249,10 @@ class TtlPanel(QWidget):
         return int((seconds * 1_000_000).to_integral_value(rounding=ROUND_HALF_UP))
 
     def create_record_time_marker(self, record_time):
-        """Describe create_record_time_marker.
+        """Create record time marker.
 
         Args:
-            record_time: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            record_time: Input used by this operation.
         """
         return {
             "local_time_us": None,
@@ -290,13 +263,10 @@ class TtlPanel(QWidget):
         }
 
     def refresh_table(self):
-        """Describe refresh_table.
+        """Refresh table.
 
         Args:
             None.
-
-        Returns:
-            The value produced by this function, if any.
         """
         self.table.setRowCount(0)
 

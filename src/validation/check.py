@@ -111,26 +111,20 @@ def check(info: dict, output_path: str | Path | None = None) -> Path:
 
 
 def default_output_path(file_path: Path) -> Path:
-    """Perform ``default_output_path``.
+    """Provide default output path functionality.
 
     Args:
-        file_path: Input accepted by this function.
-
-    Returns:
-        The value produced by this function, if any.
+        file_path: Input used by this operation.
     """
     output_dir = file_path.parent.parent / "output_data"
     return output_dir / f"{file_path.stem}_check_report.csv"
 
 
 def first_sample_rate(info: dict) -> float:
-    """Perform ``first_sample_rate``.
+    """Provide first sample rate functionality.
 
     Args:
-        info: Input accepted by this function.
-
-    Returns:
-        The value produced by this function, if any.
+        info: Metadata or state information to store or use.
     """
     sample_rate = info.get("sample_rates", [None])[0]
     if sample_rate is None:
@@ -139,15 +133,12 @@ def first_sample_rate(info: dict) -> float:
 
 
 def channel_label(column_index: int, channels: list[int], column_name: str) -> str:
-    """Perform ``channel_label``.
+    """Provide channel label functionality.
 
     Args:
-        column_index: Input accepted by this function.
-        channels: Input accepted by this function.
-        column_name: Input accepted by this function.
-
-    Returns:
-        The value produced by this function, if any.
+        column_index: Input used by this operation.
+        channels: Available LFP channel identifiers.
+        column_name: Input used by this operation.
     """
     if column_index == 0:
         return "Time[us]"
@@ -160,13 +151,10 @@ def channel_label(column_index: int, channels: list[int], column_name: str) -> s
 
 
 def find_data_header(file_path: Path) -> tuple[int, int]:
-    """Perform ``find_data_header``.
+    """Find data header.
 
     Args:
-        file_path: Input accepted by this function.
-
-    Returns:
-        The value produced by this function, if any.
+        file_path: Input used by this operation.
     """
     with file_path.open("r", encoding="utf-8-sig", newline="") as file:
         reader = csv.reader(file)

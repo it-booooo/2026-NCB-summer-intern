@@ -32,15 +32,12 @@ def sample_rate_for_channel(
     time_us,
     channel: int | None = None,
 ) -> float:
-    """Describe sample_rate_for_channel.
+    """Provide sample rate for channel functionality.
 
     Args:
-        info: Input accepted by this function.
-        time_us: Input accepted by this function.
-        channel: Input accepted by this function.
-
-    Returns:
-        The value produced by this function, if any.
+        info: Metadata or state information to store or use.
+        time_us: Input used by this operation.
+        channel: LFP channel identifier.
     """
     if info is not None:
         channels = [int(item) for item in info.get("channels", [])]
@@ -60,13 +57,10 @@ def sample_rate_for_channel(
 
 
 def infer_sample_rate_hz(time_us) -> float:
-    """Describe infer_sample_rate_hz.
+    """Infer sample rate hz.
 
     Args:
-        time_us: Input accepted by this function.
-
-    Returns:
-        The value produced by this function, if any.
+        time_us: Input used by this operation.
     """
     time_values = np.asarray(time_us, dtype=float)
     if time_values.size < 2:
@@ -89,15 +83,12 @@ def prepare_lfp_signal(
     sample_rate_hz: float,
     settings: LfpFilterSettings | None,
 ) -> np.ndarray:
-    """Describe prepare_lfp_signal.
+    """Prepare lfp signal.
 
     Args:
-        values: Input accepted by this function.
-        sample_rate_hz: Input accepted by this function.
-        settings: Input accepted by this function.
-
-    Returns:
-        The value produced by this function, if any.
+        values: Signal values to process.
+        sample_rate_hz: Input used by this operation.
+        settings: Configuration settings for this operation.
     """
     signal_values = _finite_signal(values)
     if settings is None or not settings.show_filtered:
@@ -129,14 +120,11 @@ def compute_power_spectrum(
     values,
     sample_rate_hz: float,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Describe compute_power_spectrum.
+    """Compute power spectrum.
 
     Args:
-        values: Input accepted by this function.
-        sample_rate_hz: Input accepted by this function.
-
-    Returns:
-        The value produced by this function, if any.
+        values: Signal values to process.
+        sample_rate_hz: Input used by this operation.
     """
     _validate_sample_rate(sample_rate_hz)
     signal_values = _finite_signal(values)
@@ -168,14 +156,11 @@ def compute_time_frequency(
     values,
     sample_rate_hz: float,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Describe compute_time_frequency.
+    """Compute time frequency.
 
     Args:
-        values: Input accepted by this function.
-        sample_rate_hz: Input accepted by this function.
-
-    Returns:
-        The value produced by this function, if any.
+        values: Signal values to process.
+        sample_rate_hz: Input used by this operation.
     """
     _validate_sample_rate(sample_rate_hz)
     signal_values = _finite_signal(values)
@@ -205,18 +190,15 @@ def prepare_lfp_segment(
     end_s: float,
     settings: LfpFilterSettings | None,
 ) -> LfpSegment:
-    """Describe prepare_lfp_segment.
+    """Prepare lfp segment.
 
     Args:
-        time_us: Input accepted by this function.
-        values: Input accepted by this function.
-        sample_rate_hz: Input accepted by this function.
-        start_s: Input accepted by this function.
-        end_s: Input accepted by this function.
-        settings: Input accepted by this function.
-
-    Returns:
-        The value produced by this function, if any.
+        time_us: Input used by this operation.
+        values: Signal values to process.
+        sample_rate_hz: Input used by this operation.
+        start_s: Start time of the selected range, in seconds.
+        end_s: End time of the selected range, in seconds.
+        settings: Configuration settings for this operation.
     """
     start_s = float(start_s)
     end_s = float(end_s)
@@ -244,13 +226,10 @@ def prepare_lfp_segment(
 
 
 def filter_description(settings: LfpFilterSettings | None) -> str:
-    """Describe filter_description.
+    """Provide filter description functionality.
 
     Args:
-        settings: Input accepted by this function.
-
-    Returns:
-        The value produced by this function, if any.
+        settings: Configuration settings for this operation.
     """
     if settings is None or not settings.show_filtered:
         return "Raw"

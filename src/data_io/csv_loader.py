@@ -10,14 +10,11 @@ from ..time_utils import record_time_parts
 
 
 def read_csv_preview(path, max_rows=8):
-    """Describe read_csv_preview.
+    """Read csv preview.
 
     Args:
-        path: Input accepted by this function.
-        max_rows: Input accepted by this function.
-
-    Returns:
-        The value produced by this function, if any.
+        path: File path to read from or write to.
+        max_rows: Input used by this operation.
     """
     rows = []
 
@@ -34,13 +31,10 @@ def read_csv_preview(path, max_rows=8):
 
 
 def parse_signal_csv_metadata(path):
-    """Describe parse_signal_csv_metadata.
+    """Parse signal csv metadata.
 
     Args:
-        path: Input accepted by this function.
-
-    Returns:
-        The value produced by this function, if any.
+        path: File path to read from or write to.
     """
     channels = []
     sample_rates = []
@@ -76,13 +70,10 @@ def parse_signal_csv_metadata(path):
 
 
 def parse_lfp_csv_info(path):
-    """Describe parse_lfp_csv_info.
+    """Parse lfp csv info.
 
     Args:
-        path: Input accepted by this function.
-
-    Returns:
-        The value produced by this function, if any.
+        path: File path to read from or write to.
     """
     metadata = parse_signal_csv_metadata(path)
     channels = metadata["channels"]
@@ -102,13 +93,10 @@ def parse_lfp_csv_info(path):
 
 
 def parse_signal_csv_units(path):
-    """Describe parse_signal_csv_units.
+    """Parse signal csv units.
 
     Args:
-        path: Input accepted by this function.
-
-    Returns:
-        The value produced by this function, if any.
+        path: File path to read from or write to.
     """
     rows = read_csv_preview(path, max_rows=8)
     value_unit = ""
@@ -131,13 +119,10 @@ def parse_signal_csv_units(path):
 
 
 def normalize_unit(unit):
-    """Describe normalize_unit.
+    """Normalize unit.
 
     Args:
-        unit: Input accepted by this function.
-
-    Returns:
-        The value produced by this function, if any.
+        unit: Input used by this operation.
     """
     unit = unit.strip()
     if not unit:
@@ -167,13 +152,10 @@ def _time_marker_info(path, time_column_name=None, markers=None):
 
 
 def parse_time_marker_csv_info(path):
-    """Describe parse_time_marker_csv_info.
+    """Parse time marker csv info.
 
     Args:
-        path: Input accepted by this function.
-
-    Returns:
-        The value produced by this function, if any.
+        path: File path to read from or write to.
     """
     rows = []
     with open(path, "r", encoding="utf-8-sig", newline="") as csv_file:

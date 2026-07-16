@@ -379,13 +379,10 @@ def _batch_capacity(runtime, frame_bytes, frame_step, sample_count):
 
 
 def opencl_status():
-    """Describe opencl_status.
+    """Open cl status.
 
     Args:
         None.
-
-    Returns:
-        The value produced by this function, if any.
     """
     try:
         runtime = _opencl_runtime()
@@ -481,22 +478,19 @@ def compute_led_brightness_curve_opencl(
     progress_callback=None,
     acceleration_info=None,
 ):
-    """Describe compute_led_brightness_curve_opencl.
+    """Compute led brightness curve opencl.
 
     Args:
-        video_path: Input accepted by this function.
-        roi: Input accepted by this function.
-        rotate_180: Input accepted by this function.
-        using_fps: Input accepted by this function.
-        frame_step: Input accepted by this function.
-        start_frame: Input accepted by this function.
-        end_frame: Input accepted by this function.
-        should_stop: Input accepted by this function.
-        progress_callback: Input accepted by this function.
-        acceleration_info: Input accepted by this function.
-
-    Returns:
-        The value produced by this function, if any.
+        video_path: Path of the video being processed.
+        roi: LED region of interest as (x, y, width, height).
+        rotate_180: Input used by this operation.
+        using_fps: Frame rate used for time conversion.
+        frame_step: Input used by this operation.
+        start_frame: First video frame to process.
+        end_frame: Last video frame to process.
+        should_stop: Callback that returns true when processing should stop.
+        progress_callback: Callback receiving scan progress updates.
+        acceleration_info: Input used by this operation.
     """
     import cv2
     import numpy as np
@@ -591,13 +585,10 @@ def compute_led_brightness_curve_opencl(
             )
 
         def emit_progress(frame_index):
-            """Describe emit_progress.
+            """Emit progress.
 
             Args:
-                frame_index: Input accepted by this function.
-
-            Returns:
-                The value produced by this function, if any.
+                frame_index: Zero-based video frame index.
             """
             if progress_callback is None:
                 return
@@ -609,13 +600,10 @@ def compute_led_brightness_curve_opencl(
             progress_callback(completed_frames, scan_total_frames)
 
         def flush_batch():
-            """Describe flush_batch.
+            """Flush batch.
 
             Args:
                 None.
-
-            Returns:
-                The value produced by this function, if any.
             """
             nonlocal batch_count, batches_processed, frames_processed, max_batch_used
             if batch_count <= 0:

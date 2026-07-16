@@ -8,13 +8,10 @@ class LedControllerMixin:
     """LED ROI selection, background detection, and status handling."""
 
     def show_opencl_status(self):
-        """Perform ``show_opencl_status``.
+        """Show opencl status.
 
         Args:
             None.
-
-        Returns:
-            The value produced by this function, if any.
         """
         try:
             from .detection.led_opencl import opencl_status
@@ -64,13 +61,10 @@ class LedControllerMixin:
         )
 
     def select_led_roi(self):
-        """Perform ``select_led_roi``.
+        """Select led roi.
 
         Args:
             None.
-
-        Returns:
-            The value produced by this function, if any.
         """
         if not self.video_player.has_video():
             QMessageBox.warning(self, "No video", "Please import a video first.")
@@ -78,26 +72,20 @@ class LedControllerMixin:
         self.video_player.start_roi_selection()
 
     def set_led_roi(self, roi):
-        """Perform ``set_led_roi``.
+        """Set led roi.
 
         Args:
-            roi: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            roi: LED region of interest as (x, y, width, height).
         """
         self.led_state.roi = roi
         self.sync_panel.set_led_roi(roi)
         self.start_led_detection()
 
     def start_led_detection(self):
-        """Perform ``start_led_detection``.
+        """Start led detection.
 
         Args:
             None.
-
-        Returns:
-            The value produced by this function, if any.
         """
         if not self.video_player.has_video() or self.led_state.roi is None:
             return
@@ -202,14 +190,11 @@ class LedControllerMixin:
         self.led_worker.start()
 
     def led_cache_key(self, scan_start_frame, scan_end_frame):
-        """Perform ``led_cache_key``.
+        """Provide led cache key functionality.
 
         Args:
-            scan_start_frame: Input accepted by this function.
-            scan_end_frame: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            scan_start_frame: Input used by this operation.
+            scan_end_frame: Input used by this operation.
         """
         return (
             self.video_player.video_path,
@@ -222,13 +207,10 @@ class LedControllerMixin:
         )
 
     def stop_led_detection(self, wait=False):
-        """Perform ``stop_led_detection``.
+        """Stop led detection.
 
         Args:
-            wait: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            wait: Input used by this operation.
         """
         if self.led_worker is None:
             return True
@@ -249,18 +231,15 @@ class LedControllerMixin:
         stats,
         cache_key,
     ):
-        """Perform ``finish_led_detection``.
+        """Finish led detection.
 
         Args:
-            worker: Input accepted by this function.
-            points: Input accepted by this function.
-            threshold: Input accepted by this function.
-            events: Input accepted by this function.
-            stats: Input accepted by this function.
-            cache_key: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            worker: Input used by this operation.
+            points: Brightness or analysis points used by the operation.
+            threshold: Input used by this operation.
+            events: Event records to display, analyze, or export.
+            stats: Input used by this operation.
+            cache_key: Input used by this operation.
         """
         if self.led_worker is not None and worker is not self.led_worker:
             return
@@ -299,15 +278,12 @@ class LedControllerMixin:
             )
 
     def update_led_detection_progress(self, worker, current_frame, total_frames):
-        """Perform ``update_led_detection_progress``.
+        """Update led detection progress.
 
         Args:
-            worker: Input accepted by this function.
-            current_frame: Input accepted by this function.
-            total_frames: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            worker: Input used by this operation.
+            current_frame: Input used by this operation.
+            total_frames: Input used by this operation.
         """
         if self.led_worker is not None and worker is not self.led_worker:
             return
@@ -315,14 +291,11 @@ class LedControllerMixin:
         self.sync_panel.update_led_detection_progress(current_frame, total_frames)
 
     def update_led_detection_stage(self, worker, text):
-        """Perform ``update_led_detection_stage``.
+        """Update led detection stage.
 
         Args:
-            worker: Input accepted by this function.
-            text: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            worker: Input used by this operation.
+            text: Text displayed to the user.
         """
         if self.led_worker is not None and worker is not self.led_worker:
             return
@@ -330,14 +303,11 @@ class LedControllerMixin:
         self.sync_panel.set_led_detection_stage(text)
 
     def fail_led_detection(self, worker, message):
-        """Perform ``fail_led_detection``.
+        """Report failure for led detection.
 
         Args:
-            worker: Input accepted by this function.
-            message: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            worker: Input used by this operation.
+            message: Input used by this operation.
         """
         if self.led_worker is not None and worker is not self.led_worker:
             return
@@ -347,13 +317,10 @@ class LedControllerMixin:
         QMessageBox.warning(self, "LED detection failed", message)
 
     def cleanup_led_worker(self):
-        """Perform ``cleanup_led_worker``.
+        """Provide cleanup led worker functionality.
 
         Args:
             None.
-
-        Returns:
-            The value produced by this function, if any.
         """
         worker = self.sender()
         if worker is not None:

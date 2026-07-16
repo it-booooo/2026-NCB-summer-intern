@@ -3,13 +3,10 @@ from time import perf_counter
 
 
 def coarse_scan_step_for_fps(fps):
-    """Describe coarse_scan_step_for_fps.
+    """Provide coarse scan step for fps functionality.
 
     Args:
-        fps: Input accepted by this function.
-
-    Returns:
-        The value produced by this function, if any.
+        fps: Video frame rate in frames per second.
     """
     return max(int(round(float(fps or 30.0) * 2.0 / 3.0)), 1)
 
@@ -45,13 +42,10 @@ class LedDetectionWorker(QThread):
         self.cached_points = cached_points
 
     def run(self):
-        """Describe run.
+        """Provide run functionality.
 
         Args:
             None.
-
-        Returns:
-            The value produced by this function, if any.
         """
         try:
             from .led_detector import (

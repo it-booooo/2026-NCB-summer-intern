@@ -88,13 +88,10 @@ class EventEditDialog(QDialog):
         layout.addWidget(buttons)
 
     def sync_frame_from_time(self, video_time_sec):
-        """Describe sync_frame_from_time.
+        """Synchronize frame from time.
 
         Args:
-            video_time_sec: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            video_time_sec: Input used by this operation.
         """
         if self.updating_video_position or self.fps <= 0:
             return
@@ -112,13 +109,10 @@ class EventEditDialog(QDialog):
             self.updating_video_position = False
 
     def sync_time_from_frame(self, frame_index):
-        """Describe sync_time_from_frame.
+        """Synchronize time from frame.
 
         Args:
-            frame_index: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            frame_index: Zero-based video frame index.
         """
         if self.updating_video_position or self.fps <= 0:
             return
@@ -130,13 +124,10 @@ class EventEditDialog(QDialog):
             self.updating_video_position = False
 
     def accept(self):
-        """Describe accept.
+        """Provide accept functionality.
 
         Args:
             None.
-
-        Returns:
-            The value produced by this function, if any.
         """
         if not self.event_type_input.currentText().strip():
             QMessageBox.warning(self, "Invalid event type", "Event type cannot be empty.")
@@ -144,13 +135,10 @@ class EventEditDialog(QDialog):
         super().accept()
 
     def values(self):
-        """Describe values.
+        """Provide values functionality.
 
         Args:
             None.
-
-        Returns:
-            The value produced by this function, if any.
         """
         return {
             "event_type": self.event_type_input.currentText().strip(),
@@ -171,25 +159,19 @@ class NoteEditor(QLineEdit):
         self.setClearButtonEnabled(True)
 
     def focusInEvent(self, event):
-        """Describe focusInEvent.
+        """Provide focus in event functionality.
 
         Args:
-            event: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            event: Event record to process.
         """
         self.selection_requested.emit()
         super().focusInEvent(event)
 
     def set_row_selected(self, selected):
-        """Describe set_row_selected.
+        """Set row selected.
 
         Args:
-            selected: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            selected: Input used by this operation.
         """
         if selected:
             self.setStyleSheet(
@@ -270,37 +252,28 @@ class EventTable(QTableWidget):
 
     @property
     def sync_time_origin_sec(self):
-        """Describe sync_time_origin_sec.
+        """Synchronize time origin sec.
 
         Args:
             None.
-
-        Returns:
-            The value produced by this function, if any.
         """
         return self.sync_state.video_time_origin_sec
 
     @sync_time_origin_sec.setter
     def sync_time_origin_sec(self, origin_sec):
-        """Describe sync_time_origin_sec.
+        """Synchronize time origin sec.
 
         Args:
-            origin_sec: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            origin_sec: Input used by this operation.
         """
         self.sync_state.video_time_origin_sec = origin_sec
 
     @property
     def video_fps(self):
-        """Describe video_fps.
+        """Provide video fps functionality.
 
         Args:
             None.
-
-        Returns:
-            The value produced by this function, if any.
         """
         if self.video_state.metadata is not None:
             return self.video_state.metadata.using_fps
@@ -308,27 +281,21 @@ class EventTable(QTableWidget):
 
     @property
     def video_total_frames(self):
-        """Describe video_total_frames.
+        """Provide video total frames functionality.
 
         Args:
             None.
-
-        Returns:
-            The value produced by this function, if any.
         """
         if self.video_state.metadata is not None:
             return self.video_state.metadata.total_frames
         return self._standalone_video_total_frames
 
     def set_video_timing(self, fps, total_frames=None):
-        """Describe set_video_timing.
+        """Set video timing.
 
         Args:
-            fps: Input accepted by this function.
-            total_frames: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            fps: Video frame rate in frames per second.
+            total_frames: Input used by this operation.
         """
         if self.video_state.metadata is None:
             self._standalone_video_fps = float(fps) if fps else None
@@ -340,13 +307,10 @@ class EventTable(QTableWidget):
             self._standalone_video_total_frames = None
 
     def set_sync_time_origin(self, origin_sec):
-        """Describe set_sync_time_origin.
+        """Set sync time origin.
 
         Args:
-            origin_sec: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            origin_sec: Input used by this operation.
         """
         next_origin = None if origin_sec is None else float(origin_sec)
         self.sync_time_origin_sec = next_origin
@@ -359,24 +323,18 @@ class EventTable(QTableWidget):
         self.refresh_time_display()
 
     def format_display_time(self, video_time_sec):
-        """Describe format_display_time.
+        """Format display time.
 
         Args:
-            video_time_sec: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            video_time_sec: Input used by this operation.
         """
         return f"{relative_time(video_time_sec, self.sync_time_origin_sec):.3f}"
 
     def refresh_time_display(self):
-        """Describe refresh_time_display.
+        """Refresh time display.
 
         Args:
             None.
-
-        Returns:
-            The value produced by this function, if any.
         """
         for row in range(self.rowCount()):
             time_item = self.item(row, self.VIDEO_TIME_COLUMN)
@@ -387,13 +345,10 @@ class EventTable(QTableWidget):
             time_item.setText(self.format_display_time(video_time_sec))
 
     def item_video_time_sec(self, item):
-        """Describe item_video_time_sec.
+        """Provide item video time sec functionality.
 
         Args:
-            item: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            item: Input used by this operation.
         """
         if item is None:
             return 0.0
@@ -413,14 +368,11 @@ class EventTable(QTableWidget):
         return absolute_time(display_time, self.sync_time_origin_sec)
 
     def handle_cell_clicked(self, row, column):
-        """Describe handle_cell_clicked.
+        """Handle cell clicked.
 
         Args:
-            row: Input accepted by this function.
-            column: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            row: Input used by this operation.
+            column: Input used by this operation.
         """
         if column != self.VIDEO_TIME_COLUMN:
             return
@@ -439,17 +391,14 @@ class EventTable(QTableWidget):
         note="",
         source="manual",
     ):
-        """Describe add_event.
+        """Add event.
 
         Args:
-            event_type: Input accepted by this function.
-            video_time_sec: Input accepted by this function.
-            frame_index: Input accepted by this function.
-            note: Input accepted by this function.
-            source: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            event_type: Input used by this operation.
+            video_time_sec: Input used by this operation.
+            frame_index: Zero-based video frame index.
+            note: Input used by this operation.
+            source: Input used by this operation.
         """
         event = {
             "event_type": str(event_type),
@@ -489,13 +438,10 @@ class EventTable(QTableWidget):
         self.events_changed.emit()
 
     def clear_events(self, emit=True):
-        """Describe clear_events.
+        """Clear events.
 
         Args:
-            emit: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            emit: Input used by this operation.
         """
         self.event_state.events.clear()
         self.setRowCount(0)
@@ -504,13 +450,10 @@ class EventTable(QTableWidget):
             self.events_changed.emit()
 
     def select_note_editor_row(self, editor):
-        """Describe select_note_editor_row.
+        """Select note editor row.
 
         Args:
-            editor: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            editor: Input used by this operation.
         """
         for row in range(self.rowCount()):
             if self.cellWidget(row, self.NOTE_COLUMN) is editor:
@@ -519,14 +462,11 @@ class EventTable(QTableWidget):
                 return
 
     def update_note_state(self, editor, text):
-        """Describe update_note_state.
+        """Update note state.
 
         Args:
-            editor: Input accepted by this function.
-            text: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            editor: Input used by this operation.
+            text: Text displayed to the user.
         """
         for row in range(self.rowCount()):
             if self.cellWidget(row, self.NOTE_COLUMN) is editor:
@@ -535,13 +475,10 @@ class EventTable(QTableWidget):
                 return
 
     def update_note_selection_styles(self):
-        """Describe update_note_selection_styles.
+        """Update note selection styles.
 
         Args:
             None.
-
-        Returns:
-            The value produced by this function, if any.
         """
         selected_rows = {
             index.row() for index in self.selectionModel().selectedRows()
@@ -552,13 +489,10 @@ class EventTable(QTableWidget):
                 note_widget.set_row_selected(row in selected_rows)
 
     def edit_selected_event(self):
-        """Describe edit_selected_event.
+        """Edit selected event.
 
         Args:
             None.
-
-        Returns:
-            The value produced by this function, if any.
         """
         row = self.currentRow()
         if row < 0:
@@ -590,17 +524,14 @@ class EventTable(QTableWidget):
         frame_index,
         note,
     ):
-        """Describe update_event.
+        """Update event.
 
         Args:
-            row: Input accepted by this function.
-            event_type: Input accepted by this function.
-            video_time_sec: Input accepted by this function.
-            frame_index: Input accepted by this function.
-            note: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            row: Input used by this operation.
+            event_type: Input used by this operation.
+            video_time_sec: Input used by this operation.
+            frame_index: Zero-based video frame index.
+            note: Input used by this operation.
         """
         if row < 0 or row >= self.rowCount():
             raise IndexError("Event row is out of range.")
@@ -629,13 +560,10 @@ class EventTable(QTableWidget):
         self.events_changed.emit()
 
     def delete_selected_rows(self):
-        """Describe delete_selected_rows.
+        """Delete selected rows.
 
         Args:
             None.
-
-        Returns:
-            The value produced by this function, if any.
         """
         current_row = self.currentRow()
 
@@ -654,13 +582,10 @@ class EventTable(QTableWidget):
             self.events_changed.emit()
 
     def delete_events_by_source(self, source):
-        """Describe delete_events_by_source.
+        """Delete events by source.
 
         Args:
-            source: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            source: Input used by this operation.
         """
         removed = False
         for row in range(self.rowCount() - 1, -1, -1):
@@ -676,13 +601,10 @@ class EventTable(QTableWidget):
             self.events_changed.emit()
 
     def event_at(self, row):
-        """Describe event_at.
+        """Provide event at functionality.
 
         Args:
-            row: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            row: Input used by this operation.
         """
         if row < 0 or row >= self.rowCount():
             raise IndexError("Event row is out of range.")
@@ -690,12 +612,9 @@ class EventTable(QTableWidget):
         return dict(self.event_state.events[row])
 
     def events(self):
-        """Describe events.
+        """Provide events functionality.
 
         Args:
             None.
-
-        Returns:
-            The value produced by this function, if any.
         """
         return [dict(event) for event in self.event_state.events]

@@ -32,13 +32,10 @@ class SyncControllerMixin:
     """TTL, event marker, and video-to-record-time synchronization logic."""
 
     def reset_sync_state_for_new_video(self):
-        """Perform ``reset_sync_state_for_new_video``.
+        """Reset sync state for new video.
 
         Args:
             None.
-
-        Returns:
-            The value produced by this function, if any.
         """
         self.sync_state.time_marker_info = None
         self.led_state.roi = None
@@ -60,25 +57,19 @@ class SyncControllerMixin:
         self.sync_panel.set_led_detection_status("LED detection: Not analyzed")
 
     def set_ttl_markers(self, info):
-        """Perform ``set_ttl_markers``.
+        """Set ttl markers.
 
         Args:
-            info: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            info: Metadata or state information to store or use.
         """
         self.sync_state.time_marker_info = info
         self.update_time_offset()
 
     def add_event(self, event_type):
-        """Perform ``add_event``.
+        """Add event.
 
         Args:
-            event_type: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            event_type: Input used by this operation.
         """
         if not self.video_player.has_video():
             QMessageBox.warning(self, "No video", "Please import a video first.")
@@ -92,13 +83,10 @@ class SyncControllerMixin:
         )
 
     def seek_video_marker_time(self, video_time_sec):
-        """Perform ``seek_video_marker_time``.
+        """Seek video marker time.
 
         Args:
-            video_time_sec: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            video_time_sec: Input used by this operation.
         """
         if not self.video_player.has_video():
             return
@@ -111,13 +99,10 @@ class SyncControllerMixin:
         self.video_player.update_seek_inputs_from_current_frame()
 
     def seek_video_record_time(self, record_time_sec):
-        """Perform ``seek_video_record_time``.
+        """Seek video record time.
 
         Args:
-            record_time_sec: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            record_time_sec: Input used by this operation.
         """
         if (
             not self.video_player.has_video()
@@ -129,13 +114,10 @@ class SyncControllerMixin:
         self._seek_video_time(video_time_sec)
 
     def add_led_events(self, led_events):
-        """Perform ``add_led_events``.
+        """Add led events.
 
         Args:
-            led_events: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            led_events: Input used by this operation.
         """
         for event in led_events:
             self.event_table.add_event(
@@ -147,13 +129,10 @@ class SyncControllerMixin:
             )
 
     def first_video_led_time_sec(self):
-        """Perform ``first_video_led_time_sec``.
+        """Provide first video led time sec functionality.
 
         Args:
             None.
-
-        Returns:
-            The value produced by this function, if any.
         """
         led_events = [
             event
@@ -170,13 +149,10 @@ class SyncControllerMixin:
         return first_led_event["video_time_sec"]
 
     def clear_time_offset(self):
-        """Perform ``clear_time_offset``.
+        """Clear time offset.
 
         Args:
             None.
-
-        Returns:
-            The value produced by this function, if any.
         """
         self.sync_panel.offset_label.setText(
             "Time offset (video - TTL): Not calculated"
@@ -189,13 +165,10 @@ class SyncControllerMixin:
         self.update_event_intervals()
 
     def update_time_offset(self):
-        """Perform ``update_time_offset``.
+        """Update time offset.
 
         Args:
             None.
-
-        Returns:
-            The value produced by this function, if any.
         """
         video_led_sec = self.first_video_led_time_sec()
         ttl_marker_sec = (
@@ -223,13 +196,10 @@ class SyncControllerMixin:
         self.update_event_intervals()
 
     def update_event_intervals(self):
-        """Perform ``update_event_intervals``.
+        """Update event intervals.
 
         Args:
             None.
-
-        Returns:
-            The value produced by this function, if any.
         """
         if self.sync_state.time_offset_sec is None:
             self.lfp_panel.set_event_intervals([])
@@ -260,13 +230,10 @@ class SyncControllerMixin:
         self.lfp_panel.set_event_intervals(record_intervals)
 
     def update_waveform_current_time(self):
-        """Perform ``update_waveform_current_time``.
+        """Update waveform current time.
 
         Args:
             None.
-
-        Returns:
-            The value produced by this function, if any.
         """
         video_time_sec = self.video_player.current_time_sec()
         if (

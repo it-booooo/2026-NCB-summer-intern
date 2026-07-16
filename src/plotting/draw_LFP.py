@@ -47,16 +47,13 @@ def LFP(
     info: dict | None = None,
     filter_settings: signal_func.LfpFilterSettings | None = None,
 ) -> LfpFigure:
-    """Describe LFP.
+    """Initialize the LFP plotting component.
 
     Args:
-        channels: Input accepted by this function.
-        step: Input accepted by this function.
-        info: Input accepted by this function.
-        filter_settings: Input accepted by this function.
-
-    Returns:
-        The value produced by this function, if any.
+        channels: Available LFP channel identifiers.
+        step: Input used by this operation.
+        info: Metadata or state information to store or use.
+        filter_settings: Input used by this operation.
     """
     if info is None:
         raise ValueError("Please provide LFP data information.")
@@ -172,13 +169,10 @@ def LFP(
     navigation = install_x_navigation(fig, ax, full_xlim)
 
     def set_lfp_channel(channel: int) -> None:
-        """Describe set_lfp_channel.
+        """Set lfp channel.
 
         Args:
-            channel: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            channel: LFP channel identifier.
         """
         nonlocal selected_channel
 
@@ -199,13 +193,10 @@ def LFP(
         fig.canvas.draw_idle()
 
     def set_lfp_signal_view(filtered: bool) -> None:
-        """Describe set_lfp_signal_view.
+        """Set lfp signal view.
 
         Args:
-            filtered: Input accepted by this function.
-
-        Returns:
-            The value produced by this function, if any.
+            filtered: Input used by this operation.
         """
         nonlocal show_filtered
         show_filtered = bool(filtered)
