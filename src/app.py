@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 from .exporters import ExportController
 from .importers import ImportController
 from .led_controller import LedControllerMixin
+from .state import AppState
 from .sync_controller import SyncControllerMixin
 from .ui import EventTable, LfpPanel, MarkerPanel, SyncPanel, TtlPanel
 from .video import VideoPlayer
@@ -24,33 +25,53 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
 
     WAVEFORM_AREA_HEIGHT = 320
 
-    def __init__(self):
+    def __init__(self, app_state=None):
         super().__init__()
+        self.app_state = app_state or AppState()
+        self.video_state = self.app_state.video
+        self.data_state = self.app_state.data
+        self.sync_state = self.app_state.sync
+        self.led_state = self.app_state.led
+        self.event_state = self.app_state.events
+
         self.setWindowTitle("Pig Behavior Video-LFP Synchronization Tool")
         self.resize(1280, 720)
         self.setMinimumSize(1100, 640)
         self.setWindowIcon(QIcon("input_data/icon.png"))
 
-        self.video_player = VideoPlayer()
-        self.event_table = EventTable()
-        self.lfp_panel = LfpPanel()
-        self.sync_panel = SyncPanel()
-        self.ttl_panel = TtlPanel(self.paused_video_time_for_ttl)
+        self.video_player = VideoPlayer(
+            self.video_state,
+            self.sync_state,
+            self.led_state,
+        )
+        self.event_table = EventTable(
+            self.event_state,
+            self.video_state,
+            self.sync_state,
+        )
+        self.lfp_panel = LfpPanel(self.data_state, self.sync_state)
+        self.sync_panel = SyncPanel(self.led_state)
+        self.ttl_panel = TtlPanel(
+            self.video_player,
+            self.sync_state,
+        )
         self.marker_panel = MarkerPanel(
             self.event_table,
             self.add_event,
             self.select_led_roi,
         )
-        self.import_controller = ImportController(self)
-        self.export_controller = ExportController(self)
-        self.lfp_info = None
-        self.axis_info = None
-        self.timeMarker_info = None
-        self.led_roi = None
+        self.import_controller = ImportController(
+            self,
+            self.data_state,
+            self.sync_state,
+            self.led_state,
+        )
+        self.export_controller = ExportController(
+            self,
+            self.data_state,
+            self.event_state,
+        )
         self.led_worker = None
-        self.led_brightness_cache = {}
-        self.time_offset_sec = None
-        self.loading_video = False
 
         self.video_player.roi_selected.connect(self.set_led_roi)
         self.video_player.frame_changed.connect(self.update_waveform_current_time)
@@ -62,12 +83,57 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
         self.create_menu()
         self.create_layout()
 
-    def paused_video_time_for_ttl(self):
-        if not self.video_player.has_video():
-            raise ValueError("Please import a video or enter a TTL time manually.")
-        if self.video_player.is_playing:
-            raise ValueError("Pause the video before adding its current time as TTL.")
-        return self.video_player.current_time_sec()
+    @property
+    def lfp_info(self):
+        return self.data_state.lfp_info
+
+    @lfp_info.setter
+    def lfp_info(self, info):
+        self.data_state.lfp_info = info
+
+    @property
+    def axis_info(self):
+        return self.data_state.axis_info
+
+    @axis_info.setter
+    def axis_info(self, info):
+        self.data_state.axis_info = info
+
+    @property
+    def timeMarker_info(self):
+        return self.sync_state.time_marker_info
+
+    @timeMarker_info.setter
+    def timeMarker_info(self, info):
+        self.sync_state.time_marker_info = info
+
+    @property
+    def led_roi(self):
+        return self.led_state.roi
+
+    @led_roi.setter
+    def led_roi(self, roi):
+        self.led_state.roi = roi
+
+    @property
+    def led_brightness_cache(self):
+        return self.led_state.brightness_cache
+
+    @property
+    def time_offset_sec(self):
+        return self.sync_state.time_offset_sec
+
+    @time_offset_sec.setter
+    def time_offset_sec(self, value):
+        self.sync_state.time_offset_sec = value
+
+    @property
+    def loading_video(self):
+        return self.sync_state.loading_video
+
+    @loading_video.setter
+    def loading_video(self, loading):
+        self.sync_state.loading_video = bool(loading)
 
     def add_action(self, menu, text, callback, description=""):
         action = QAction(text, self)

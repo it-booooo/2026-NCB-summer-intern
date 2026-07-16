@@ -11,8 +11,17 @@ class ImportController:
         "axis": "Import 3-axis (.csv)",
     }
 
-    def __init__(self, window):
+    def __init__(
+        self,
+        window,
+        data_state=None,
+        sync_state=None,
+        led_state=None,
+    ):
         self.window = window
+        self.data_state = data_state or window.data_state
+        self.sync_state = sync_state or window.sync_state
+        self.led_state = led_state or window.led_state
 
     def actions(self):
         return [
@@ -59,14 +68,14 @@ class ImportController:
         if not path:
             return
 
-        window.loading_video = True
+        self.sync_state.loading_video = True
         try:
             loaded = window.video_player.load_video(path)
         finally:
-            window.loading_video = False
+            self.sync_state.loading_video = False
 
         if loaded:
-            window.led_brightness_cache.clear()
+            self.led_state.brightness_cache.clear()
             window.reset_sync_state_for_new_video()
             window.event_table.set_video_timing(
                 window.video_player.fps,
@@ -82,10 +91,10 @@ class ImportController:
 
         info = data_io.parse_lfp_csv_info(path)
         if signal_type == "lfp":
-            window.lfp_info = info
+            self.data_state.lfp_info = info
             window.lfp_panel.set_lfp_info(info)
         else:
-            window.axis_info = info
+            self.data_state.axis_info = info
             window.lfp_panel.set_axis_info(info)
 
         window.update_waveform_current_time()

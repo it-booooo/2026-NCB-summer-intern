@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..led_status import format_led_detection_status
+from ..state import LedState
 from ..video.video_utils import format_time, parse_time_input, time_sec_to_frame
 
 
@@ -75,8 +76,9 @@ class RoiPlotIndicator(QLabel):
 
 
 class SyncPanel(QWidget):
-    def __init__(self):
+    def __init__(self, led_state=None):
         super().__init__()
+        self.led_state = led_state or LedState()
 
         self.led_roi_label = QLabel("LED ROI: Not selected")
         self.analysis_info_button = QPushButton("Analysis Info")
@@ -121,11 +123,6 @@ class SyncPanel(QWidget):
         self.roi_plot_indicator = RoiPlotIndicator(self)
 
         self.offset_label = QLabel("Time offset: Not calculated")
-        self.analysis_points = None
-        self.analysis_threshold = 0.0
-        self.analysis_events = None
-        self.analysis_stats = None
-        self.analysis_status = None
 
         self.led_scan_start_input.returnPressed.connect(
             self.normalize_led_scan_range_inputs
@@ -191,11 +188,52 @@ class SyncPanel(QWidget):
         layout.addLayout(self.embedded_panels_layout, stretch=1)
         self.setLayout(layout)
 
+    @property
+    def analysis_points(self):
+        return self.led_state.analysis_points
+
+    @analysis_points.setter
+    def analysis_points(self, points):
+        self.led_state.analysis_points = points
+
+    @property
+    def analysis_threshold(self):
+        return self.led_state.analysis_threshold
+
+    @analysis_threshold.setter
+    def analysis_threshold(self, threshold):
+        self.led_state.analysis_threshold = float(threshold)
+
+    @property
+    def analysis_events(self):
+        return self.led_state.analysis_events
+
+    @analysis_events.setter
+    def analysis_events(self, events):
+        self.led_state.analysis_events = events
+
+    @property
+    def analysis_stats(self):
+        return self.led_state.analysis_stats
+
+    @analysis_stats.setter
+    def analysis_stats(self, stats):
+        self.led_state.analysis_stats = stats
+
+    @property
+    def analysis_status(self):
+        return self.led_state.analysis_status
+
+    @analysis_status.setter
+    def analysis_status(self, status):
+        self.led_state.analysis_status = status
+
     def set_embedded_panels(self, ttl_group, marker_group):
         self.embedded_panels_layout.addWidget(ttl_group, stretch=1)
         self.embedded_panels_layout.addWidget(marker_group, stretch=1)
 
     def set_led_roi(self, roi):
+        self.led_state.roi = roi
         x, y, width, height = roi
         self.led_roi_label.setText(
             f"LED ROI: x={x}, y={y}, width={width}, height={height}"

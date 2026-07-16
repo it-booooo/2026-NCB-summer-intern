@@ -9,6 +9,7 @@ from ..plotting.plot_utils import (
     format_time_tick,
     resolve_plot_step,
 )
+from ..state import DataState, SyncState
 from ..time_utils import relative_time
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
@@ -205,36 +206,28 @@ class LfpPanel(QWidget):
     PLAYBACK_CURSOR_FRACTION = 0.35
     PLAYBACK_EDGE_MARGIN_FRACTION = 0.18
 
-    def __init__(self):
+    def __init__(self, data_state=None, sync_state=None):
         super().__init__()
+        self.data_state = data_state or DataState()
+        self.sync_state = sync_state or SyncState()
         self.setMinimumHeight(270)
 
-        self.lfp_path = None
-        self.axis_path = None
         self.lfp_canvas = None
         self.axis_canvas = None
         self.timeline_canvas = None
         self.timeline_fig = None
         self.timeline_slider = None
         self.timeline_full_xlim = None
-        self.lfp_info = None
-        self.axis_info = None
         self.lfp_fig = None
         self.axis_fig = None
-        self.lfp_step = None
-        self.axis_step = None
         self.updating_timeline = False
         self.lfp_callback_connected = False
         self.axis_callback_connected = False
-        self.current_record_time_sec = None
         self.current_time_lines = {}
         self.current_time_backgrounds = {}
-        self.event_intervals = []
         self.event_interval_artists = []
-        self.sync_time_origin_sec = None
         self.click_seek_state = None
         self.spectrum_dialogs = []
-        self.line_noise_hz = 60.0
 
         self.lfp_file_label = QLabel("LFP CSV: Not imported")
         self.axis_file_label = QLabel("3-axis CSV: Not imported")
@@ -386,6 +379,78 @@ class LfpPanel(QWidget):
             self.switch_lfp_signal_view
         )
         self.apply_filter_button.setEnabled(False)
+
+    @property
+    def lfp_info(self):
+        return self.data_state.lfp_info
+
+    @lfp_info.setter
+    def lfp_info(self, info):
+        self.data_state.lfp_info = info
+
+    @property
+    def axis_info(self):
+        return self.data_state.axis_info
+
+    @axis_info.setter
+    def axis_info(self, info):
+        self.data_state.axis_info = info
+
+    @property
+    def lfp_path(self):
+        return self.lfp_info.get("path") if self.lfp_info else None
+
+    @property
+    def axis_path(self):
+        return self.axis_info.get("path") if self.axis_info else None
+
+    @property
+    def lfp_step(self):
+        return self.data_state.lfp_step
+
+    @lfp_step.setter
+    def lfp_step(self, step):
+        self.data_state.lfp_step = step
+
+    @property
+    def axis_step(self):
+        return self.data_state.axis_step
+
+    @axis_step.setter
+    def axis_step(self, step):
+        self.data_state.axis_step = step
+
+    @property
+    def line_noise_hz(self):
+        return self.data_state.line_noise_hz
+
+    @line_noise_hz.setter
+    def line_noise_hz(self, frequency):
+        self.data_state.line_noise_hz = float(frequency)
+
+    @property
+    def sync_time_origin_sec(self):
+        return self.sync_state.record_time_origin_sec
+
+    @sync_time_origin_sec.setter
+    def sync_time_origin_sec(self, origin_sec):
+        self.sync_state.record_time_origin_sec = origin_sec
+
+    @property
+    def current_record_time_sec(self):
+        return self.sync_state.current_record_time_sec
+
+    @current_record_time_sec.setter
+    def current_record_time_sec(self, time_sec):
+        self.sync_state.current_record_time_sec = time_sec
+
+    @property
+    def event_intervals(self):
+        return self.sync_state.event_intervals
+
+    @event_intervals.setter
+    def event_intervals(self, intervals):
+        self.sync_state.event_intervals = list(intervals)
 
     def create_frequency_spinbox(self, value):
         spinbox = QDoubleSpinBox()
@@ -1307,7 +1372,6 @@ class LfpPanel(QWidget):
 
     def set_lfp_info(self, info):
         self.lfp_info = info
-        self.lfp_path = info["path"]
         self.lfp_fig = None
         self.lfp_callback_connected = False
         self.lfp_file_label.setText(f"LFP CSV: {info['filename']}")
@@ -1335,7 +1399,6 @@ class LfpPanel(QWidget):
 
     def set_axis_info(self, info):
         self.axis_info = info
-        self.axis_path = info["path"]
         self.axis_fig = None
         self.axis_callback_connected = False
         self.axis_file_label.setText(f"3-axis CSV: {info['filename']} (channel 260)")

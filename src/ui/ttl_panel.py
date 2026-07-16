@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..state import SyncState
 from ..time_utils import record_time_parts
 
 
@@ -21,10 +22,10 @@ class TtlPanel(QWidget):
     HEADERS = ["#", "Local time", "Record time"]
     markers_changed = Signal(dict)
 
-    def __init__(self, video_time_provider=None):
+    def __init__(self, video_player=None, sync_state=None):
         super().__init__()
-        self.info = self.empty_info()
-        self.video_time_provider = video_time_provider
+        self.sync_state = sync_state or SyncState()
+        self.video_player = video_player
 
         self.record_time_input = QLineEdit()
         self.record_time_input.setPlaceholderText("HH:MM:SS.ffffff")
@@ -77,6 +78,16 @@ class TtlPanel(QWidget):
         layout.addWidget(self.table)
         self.setLayout(layout)
 
+    @property
+    def info(self):
+        if self.sync_state.time_marker_info is None:
+            return self.empty_info()
+        return self.sync_state.time_marker_info
+
+    @info.setter
+    def info(self, info):
+        self.sync_state.time_marker_info = info
+
     def empty_info(self):
         return {
             "path": None,
@@ -88,8 +99,15 @@ class TtlPanel(QWidget):
         }
 
     def set_markers(self, info):
-        self.info = info or self.empty_info()
+        self.info = info
         self.refresh_table()
+
+    def paused_video_time_for_ttl(self):
+        if self.video_player is None or not self.video_player.has_video():
+            raise ValueError("Please import a video or enter a TTL time manually.")
+        if self.video_player.is_playing:
+            raise ValueError("Pause the video before adding its current time as TTL.")
+        return self.video_player.current_time_sec()
 
     def add_ttl_marker(self):
         text = self.record_time_input.text().strip()
@@ -102,9 +120,7 @@ class TtlPanel(QWidget):
                 return
         else:
             try:
-                if self.video_time_provider is None:
-                    raise ValueError("Please enter a TTL time manually.")
-                video_time_sec = self.video_time_provider()
+                video_time_sec = self.paused_video_time_for_ttl()
                 record_time = int(
                     (Decimal(str(video_time_sec)) * 1_000_000).to_integral_value(
                         rounding=ROUND_HALF_UP

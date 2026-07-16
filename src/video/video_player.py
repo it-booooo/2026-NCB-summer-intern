@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..state import LedState, SyncState, VideoState
 from ..time_utils import absolute_time, relative_time
 from .video_utils import (
     format_time,
@@ -26,8 +27,9 @@ from .video_utils import (
 class RoiVideoLabel(QLabel):
     roi_selected = Signal(tuple)
 
-    def __init__(self, text):
+    def __init__(self, text, led_state=None):
         super().__init__(text)
+        self.led_state = led_state or LedState()
         self.selecting_roi = False
         self.drag_start = None
         self.drag_end = None
@@ -37,7 +39,14 @@ class RoiVideoLabel(QLabel):
 
         # 儲存已完成選取的 LED ROI，座標格式是影片原始 frame 座標：
         # (x, y, width, height)
-        self.saved_roi = None
+
+    @property
+    def saved_roi(self):
+        return self.led_state.roi
+
+    @saved_roi.setter
+    def saved_roi(self, roi):
+        self.led_state.roi = roi
 
     def set_roi_selection_enabled(self, enabled):
         self.selecting_roi = enabled
@@ -192,21 +201,16 @@ class VideoPlayer(QWidget):
         "Rotate 180°": 100,
     }
 
-    def __init__(self):
+    def __init__(self, video_state=None, sync_state=None, led_state=None):
         super().__init__()
+        self.video_state = video_state or VideoState()
+        self.sync_state = sync_state or SyncState()
+        self.led_state = led_state or LedState()
 
         self.cap = None
-        self.video_path = ""
-        self.metadata = None
-        self.fps = None
-        self.total_frames = 0
-        self.current_frame = 0
-        self.is_playing = False
-        self.rotate_180_enabled = False
         self.current_pixmap = None
-        self.sync_time_origin_sec = None
 
-        self.video_label = RoiVideoLabel("No video loaded")
+        self.video_label = RoiVideoLabel("No video loaded", self.led_state)
         self.video_label.setAlignment(Qt.AlignCenter)
         self.video_label.setMinimumSize(360, 203)
         self.video_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
@@ -306,6 +310,58 @@ class VideoPlayer(QWidget):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.play_next_frame)
 
+    @property
+    def metadata(self):
+        return self.video_state.metadata
+
+    @metadata.setter
+    def metadata(self, metadata):
+        self.video_state.metadata = metadata
+
+    @property
+    def video_path(self):
+        return self.metadata.path if self.metadata is not None else ""
+
+    @property
+    def fps(self):
+        return self.metadata.using_fps if self.metadata is not None else None
+
+    @property
+    def total_frames(self):
+        return self.metadata.total_frames if self.metadata is not None else 0
+
+    @property
+    def current_frame(self):
+        return self.video_state.current_frame
+
+    @current_frame.setter
+    def current_frame(self, frame_index):
+        self.video_state.current_frame = int(frame_index)
+
+    @property
+    def is_playing(self):
+        return self.video_state.is_playing
+
+    @is_playing.setter
+    def is_playing(self, is_playing):
+        self.video_state.is_playing = bool(is_playing)
+
+    @property
+    def rotate_180_enabled(self):
+        return self.video_state.rotate_180_enabled
+
+    @rotate_180_enabled.setter
+    def rotate_180_enabled(self, enabled):
+        self.video_state.rotate_180_enabled = bool(enabled)
+
+    @property
+    def sync_time_origin_sec(self):
+        return self.sync_state.video_time_origin_sec
+
+    @sync_time_origin_sec.setter
+    def sync_time_origin_sec(self, origin_sec):
+        self.sync_state.video_time_origin_sec = origin_sec
+
     def start_roi_selection(self):
         if self.has_video() and self.current_pixmap is not None:
             self.pause()
@@ -318,11 +374,13 @@ class VideoPlayer(QWidget):
 
     def set_led_roi(self, roi):
         """讓外部也可以設定 LED ROI，並確保影片上會持續顯示。"""
+        self.led_state.roi = roi
         self.video_label.set_saved_roi(roi)
         self.update_video_display()
 
     def clear_led_roi(self):
         """清除 LED ROI。之後如果要做 Clear ROI 按鈕，可以直接呼叫這個。"""
+        self.led_state.roi = None
         self.video_label.clear_saved_roi()
         self.update_video_display()
 
@@ -355,9 +413,6 @@ class VideoPlayer(QWidget):
 
     def set_sync_time_origin(self, origin_sec):
         next_origin = None if origin_sec is None else max(float(origin_sec), 0.0)
-        if self.sync_time_origin_sec == next_origin:
-            return
-
         self.sync_time_origin_sec = next_origin
         self.update_time_display()
 
@@ -399,9 +454,6 @@ class VideoPlayer(QWidget):
         self.metadata = metadata
         self.cap = new_cap
 
-        self.video_path = path
-        self.fps = self.metadata.using_fps
-        self.total_frames = self.metadata.total_frames
         self.current_frame = 0
         self.is_playing = False
         self.rotate_180_enabled = False

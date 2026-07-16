@@ -62,12 +62,12 @@ class LedControllerMixin:
         self.video_player.start_roi_selection()
 
     def set_led_roi(self, roi):
-        self.led_roi = roi
+        self.led_state.roi = roi
         self.sync_panel.set_led_roi(roi)
         self.start_led_detection()
 
     def start_led_detection(self):
-        if not self.video_player.has_video() or self.led_roi is None:
+        if not self.video_player.has_video() or self.led_state.roi is None:
             return
 
         try:
@@ -94,7 +94,7 @@ class LedControllerMixin:
         detect_multiple = self.sync_panel.detect_multiple_led_events()
         max_events = 1
         if detect_multiple:
-            if self.timeMarker_info is None:
+            if self.sync_state.time_marker_info is None:
                 QMessageBox.warning(
                     self,
                     "TTL marker required",
@@ -102,7 +102,9 @@ class LedControllerMixin:
                 )
                 return
 
-            max_events = int(self.timeMarker_info.get("marker_count") or 0)
+            max_events = int(
+                self.sync_state.time_marker_info.get("marker_count") or 0
+            )
             if max_events <= 0:
                 QMessageBox.warning(
                     self,
@@ -121,7 +123,7 @@ class LedControllerMixin:
                 return
 
         cache_key = self.led_cache_key(scan_start_frame, scan_end_frame)
-        cached_points = self.led_brightness_cache.get(cache_key)
+        cached_points = self.led_state.brightness_cache.get(cache_key)
 
         self.sync_panel.set_led_detection_status(
             "LED detection: using cached ROI brightness data."
@@ -131,7 +133,7 @@ class LedControllerMixin:
         self.sync_panel.begin_led_detection_progress()
         self.led_worker = LedDetectionWorker(
             video_path=self.video_player.video_path,
-            roi=self.led_roi,
+            roi=self.led_state.roi,
             rotate_180=self.video_player.rotate_180_enabled,
             fps=self.video_player.fps,
             scan_start_frame=scan_start_frame,
@@ -170,7 +172,7 @@ class LedControllerMixin:
     def led_cache_key(self, scan_start_frame, scan_end_frame):
         return (
             self.video_player.video_path,
-            tuple(self.led_roi) if self.led_roi is not None else None,
+            tuple(self.led_state.roi) if self.led_state.roi is not None else None,
             bool(self.video_player.rotate_180_enabled),
             float(self.video_player.fps or 0.0),
             int(scan_start_frame),
@@ -205,7 +207,7 @@ class LedControllerMixin:
         stats = dict(stats or {})
         stats["scan_outcome"] = "events_found" if events else "no_events"
         if points and cache_key is not None and not cache_hit:
-            self.led_brightness_cache[cache_key] = points
+            self.led_state.brightness_cache[cache_key] = points
 
         status = format_led_detection_status(points, threshold, events, stats)
         if cache_hit:

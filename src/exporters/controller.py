@@ -10,8 +10,10 @@ from .writers import export_events_csv, export_events_excel
 class ExportController:
     """Own all save dialogs, export validation, and output generation."""
 
-    def __init__(self, window):
+    def __init__(self, window, data_state=None, event_state=None):
         self.window = window
+        self.data_state = data_state or window.data_state
+        self.event_state = event_state or window.event_state
         self.last_lfp_export_directory = None
 
     def actions(self):
@@ -46,7 +48,7 @@ class ExportController:
 
     def export_markers(self, file_type):
         # UI 流程只負責選擇格式與路徑；實際寫檔由 writers 模組處理。
-        events = self.window.event_table.events()
+        events = [dict(event) for event in self.event_state.events]
         if not events:
             QMessageBox.information(
                 self.window, "No markers", "There are no markers to export."
@@ -66,11 +68,11 @@ class ExportController:
     def export_check_results(self):
         exports = []
 
-        if self.window.lfp_info is not None:
-            exports.append(("LFP", self.window.lfp_info))
+        if self.data_state.lfp_info is not None:
+            exports.append(("LFP", self.data_state.lfp_info))
 
-        if self.window.axis_info is not None:
-            exports.append(("3-axis", self.window.axis_info))
+        if self.data_state.axis_info is not None:
+            exports.append(("3-axis", self.data_state.axis_info))
 
         if not exports:
             QMessageBox.information(
@@ -132,12 +134,12 @@ class ExportController:
 
     def export_waveform_image(self):
         window = self.window
-        if window.axis_info is None:
+        if self.data_state.axis_info is None:
             QMessageBox.information(
                 window, "No 3-axis data", "Please import 3-axis CSV data first."
             )
             return
-        stem = window.axis_info.get("filename", "axis").rsplit(".", 1)[0]
+        stem = self.data_state.axis_info.get("filename", "axis").rsplit(".", 1)[0]
         path, _ = QFileDialog.getSaveFileName(
             window,
             "Export 3-axis Waveform Image",
@@ -148,7 +150,9 @@ class ExportController:
             return
         try:
             figure = plotting.accelerator(
-                info=window.axis_info, compact=False, step=window.lfp_panel.axis_step
+                info=self.data_state.axis_info,
+                compact=False,
+                step=window.lfp_panel.axis_step,
             )
             figure.savefig(path, dpi=300)
         except Exception as error:
@@ -231,7 +235,7 @@ class ExportController:
                     segment,
                     options.settings,
                     time_mode,
-                    self.window.lfp_info,
+                    self.data_state.lfp_info,
                 )
 
             if "power_spectrum" in options.image_types:

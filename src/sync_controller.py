@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import QMessageBox
 
-from src.video import video_player
+
 
 
 def pair_event_intervals(events, start_type, end_type, interval_type):
@@ -32,9 +32,9 @@ class SyncControllerMixin:
     """TTL, event marker, and video-to-record-time synchronization logic."""
 
     def reset_sync_state_for_new_video(self):
-        self.timeMarker_info = None
-        self.led_roi = None
-        self.time_offset_sec = None
+        self.sync_state.time_marker_info = None
+        self.led_state.roi = None
+        self.sync_state.time_offset_sec = None
 
         self.ttl_panel.set_markers(None)
         self.event_table.clear_events(emit=False)
@@ -52,7 +52,7 @@ class SyncControllerMixin:
         self.sync_panel.set_led_detection_status("LED detection: Not analyzed")
 
     def set_ttl_markers(self, info):
-        self.timeMarker_info = info
+        self.sync_state.time_marker_info = info
         self.update_time_offset()
 
     def add_event(self, event_type):
@@ -79,10 +79,13 @@ class SyncControllerMixin:
         self.video_player.update_seek_inputs_from_current_frame()
 
     def seek_video_record_time(self, record_time_sec):
-        if not self.video_player.has_video() or self.time_offset_sec is None:
+        if (
+            not self.video_player.has_video()
+            or self.sync_state.time_offset_sec is None
+        ):
             return
 
-        video_time_sec = float(record_time_sec) + self.time_offset_sec
+        video_time_sec = float(record_time_sec) + self.sync_state.time_offset_sec
         self._seek_video_time(video_time_sec)
 
     def add_led_events(self, led_events):
@@ -114,7 +117,7 @@ class SyncControllerMixin:
         self.sync_panel.offset_label.setText(
             "Time offset (video - TTL): Not calculated"
         )
-        self.time_offset_sec = None
+        self.sync_state.time_offset_sec = None
         self.video_player.set_sync_time_origin(None)
         self.lfp_panel.set_sync_time_origin(None)
         self.event_table.set_sync_time_origin(None)
@@ -124,8 +127,8 @@ class SyncControllerMixin:
     def update_time_offset(self):
         video_led_sec = self.first_video_led_time_sec()
         ttl_marker_sec = (
-            self.timeMarker_info.get("first_marker_sec")
-            if self.timeMarker_info is not None
+            self.sync_state.time_marker_info.get("first_marker_sec")
+            if self.sync_state.time_marker_info is not None
             else None
         )
         if video_led_sec is None or ttl_marker_sec is None:
@@ -133,11 +136,11 @@ class SyncControllerMixin:
             return
 
         previous_video_origin_sec = self.video_player.sync_time_origin_sec
-        self.time_offset_sec = video_led_sec - ttl_marker_sec
+        self.sync_state.time_offset_sec = video_led_sec - ttl_marker_sec
         self.video_player.set_sync_time_origin(video_led_sec)
         self.lfp_panel.set_sync_time_origin(ttl_marker_sec)
         self.event_table.set_sync_time_origin(video_led_sec)
-        self.sync_panel.set_offset(self.time_offset_sec)
+        self.sync_panel.set_offset(self.sync_state.time_offset_sec)
         if (
             previous_video_origin_sec is None
             or abs(previous_video_origin_sec - video_led_sec) > 1e-6
@@ -148,7 +151,7 @@ class SyncControllerMixin:
         self.update_event_intervals()
 
     def update_event_intervals(self):
-        if self.time_offset_sec is None:
+        if self.sync_state.time_offset_sec is None:
             self.lfp_panel.set_event_intervals([])
             return
 
@@ -164,10 +167,12 @@ class SyncControllerMixin:
                 {
                     **interval,
                     "record_start_sec": (
-                        interval["video_start_sec"] - self.time_offset_sec
+                        interval["video_start_sec"]
+                        - self.sync_state.time_offset_sec
                     ),
                     "record_end_sec": (
-                        interval["video_end_sec"] - self.time_offset_sec
+                        interval["video_end_sec"]
+                        - self.sync_state.time_offset_sec
                     ),
                 }
             )
@@ -176,10 +181,13 @@ class SyncControllerMixin:
 
     def update_waveform_current_time(self):
         video_time_sec = self.video_player.current_time_sec()
-        if self.loading_video or self.time_offset_sec is None:
+        if (
+            self.sync_state.loading_video
+            or self.sync_state.time_offset_sec is None
+        ):
             return
 
-        record_time_sec = video_time_sec - self.time_offset_sec
+        record_time_sec = video_time_sec - self.sync_state.time_offset_sec
         self.lfp_panel.set_current_time_marker(
             record_time_sec,
             follow_playback=self.video_player.is_playing,

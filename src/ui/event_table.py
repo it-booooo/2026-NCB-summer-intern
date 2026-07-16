@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from ..state import EventState, SyncState, VideoState
 from ..time_utils import absolute_time, relative_time
 
 
@@ -168,11 +169,13 @@ class EventTable(QTableWidget):
     SOURCE_ROLE = Qt.UserRole + 2
     VIDEO_TIME_ROLE = Qt.UserRole + 3
 
-    def __init__(self):
+    def __init__(self, event_state=None, video_state=None, sync_state=None):
         super().__init__(0, len(self.DISPLAY_HEADERS))
-        self.sync_time_origin_sec = None
-        self.video_fps = None
-        self.video_total_frames = None
+        self.event_state = event_state or EventState()
+        self.video_state = video_state or VideoState()
+        self.sync_state = sync_state or SyncState()
+        self._standalone_video_fps = None
+        self._standalone_video_total_frames = None
 
         self.setHorizontalHeaderLabels(self.DISPLAY_HEADERS)
 
@@ -206,17 +209,49 @@ class EventTable(QTableWidget):
         self.cellClicked.connect(self.handle_cell_clicked)
         self.itemSelectionChanged.connect(self.update_note_selection_styles)
 
+        initial_events = list(self.event_state.events)
+        self.event_state.events.clear()
+        for event in initial_events:
+            self.add_event(
+                event_type=event.get("event_type", ""),
+                video_time_sec=event.get("video_time_sec", 0.0),
+                frame_index=event.get("frame_index", 0),
+                note=event.get("note", ""),
+                source=event.get("source", "manual"),
+            )
+
+    @property
+    def sync_time_origin_sec(self):
+        return self.sync_state.video_time_origin_sec
+
+    @sync_time_origin_sec.setter
+    def sync_time_origin_sec(self, origin_sec):
+        self.sync_state.video_time_origin_sec = origin_sec
+
+    @property
+    def video_fps(self):
+        if self.video_state.metadata is not None:
+            return self.video_state.metadata.using_fps
+        return self._standalone_video_fps
+
+    @property
+    def video_total_frames(self):
+        if self.video_state.metadata is not None:
+            return self.video_state.metadata.total_frames
+        return self._standalone_video_total_frames
+
     def set_video_timing(self, fps, total_frames=None):
-        self.video_fps = float(fps) if fps else None
-        self.video_total_frames = (
-            int(total_frames) if total_frames is not None else None
-        )
+        if self.video_state.metadata is None:
+            self._standalone_video_fps = float(fps) if fps else None
+            self._standalone_video_total_frames = (
+                int(total_frames) if total_frames is not None else None
+            )
+        else:
+            self._standalone_video_fps = None
+            self._standalone_video_total_frames = None
 
     def set_sync_time_origin(self, origin_sec):
         next_origin = None if origin_sec is None else float(origin_sec)
-        if self.sync_time_origin_sec == next_origin:
-            return
-
         self.sync_time_origin_sec = next_origin
         self.setHorizontalHeaderItem(
             self.VIDEO_TIME_COLUMN,
@@ -274,32 +309,45 @@ class EventTable(QTableWidget):
         note="",
         source="manual",
     ):
+        event = {
+            "event_type": str(event_type),
+            "video_time_sec": float(video_time_sec),
+            "frame_index": int(frame_index),
+            "note": str(note),
+            "source": source or "manual",
+        }
+        self.event_state.events.append(event)
+
         row = self.rowCount()
         self.insertRow(row)
 
         fixed_values = [
-            event_type,
-            self.format_display_time(video_time_sec),
+            event["event_type"],
+            self.format_display_time(event["video_time_sec"]),
         ]
 
         for column, value in enumerate(fixed_values):
             item = QTableWidgetItem(value)
             item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
             if column == self.EVENT_TYPE_COLUMN:
-                item.setData(self.FRAME_ROLE, int(frame_index))
-                item.setData(self.SOURCE_ROLE, source)
+                item.setData(self.FRAME_ROLE, event["frame_index"])
+                item.setData(self.SOURCE_ROLE, event["source"])
             elif column == self.VIDEO_TIME_COLUMN:
-                item.setData(self.VIDEO_TIME_ROLE, float(video_time_sec))
+                item.setData(self.VIDEO_TIME_ROLE, event["video_time_sec"])
             self.setItem(row, column, item)
 
-        note_editor = NoteEditor(note)
+        note_editor = NoteEditor(event["note"])
         note_editor.selection_requested.connect(
             lambda editor=note_editor: self.select_note_editor_row(editor)
+        )
+        note_editor.textChanged.connect(
+            lambda text, editor=note_editor: self.update_note_state(editor, text)
         )
         self.setCellWidget(row, self.NOTE_COLUMN, note_editor)
         self.events_changed.emit()
 
     def clear_events(self, emit=True):
+        self.event_state.events.clear()
         self.setRowCount(0)
         self.update_note_selection_styles()
         if emit:
@@ -310,6 +358,13 @@ class EventTable(QTableWidget):
             if self.cellWidget(row, self.NOTE_COLUMN) is editor:
                 self.setCurrentCell(row, self.NOTE_COLUMN)
                 self.selectRow(row)
+                return
+
+    def update_note_state(self, editor, text):
+        for row in range(self.rowCount()):
+            if self.cellWidget(row, self.NOTE_COLUMN) is editor:
+                if row < len(self.event_state.events):
+                    self.event_state.events[row]["note"] = str(text)
                 return
 
     def update_note_selection_styles(self):
@@ -366,12 +421,24 @@ class EventTable(QTableWidget):
         if note_widget is not None:
             note_widget.setText(str(note))
 
+        state_event = self.event_state.events[row]
+        state_event.update(
+            {
+                "event_type": str(event_type),
+                "video_time_sec": float(video_time_sec),
+                "frame_index": int(frame_index),
+                "note": str(note),
+            }
+        )
+
         self.events_changed.emit()
 
     def delete_selected_rows(self):
         current_row = self.currentRow()
 
         if current_row >= 0:
+            if current_row < len(self.event_state.events):
+                del self.event_state.events[current_row]
             self.removeRow(current_row)
             if self.rowCount() > 0:
                 next_row = min(current_row, self.rowCount() - 1)
@@ -388,6 +455,8 @@ class EventTable(QTableWidget):
         for row in range(self.rowCount() - 1, -1, -1):
             event_item = self.item(row, self.EVENT_TYPE_COLUMN)
             if event_item is not None and event_item.data(self.SOURCE_ROLE) == source:
+                if row < len(self.event_state.events):
+                    del self.event_state.events[row]
                 self.removeRow(row)
                 removed = True
 
@@ -399,22 +468,7 @@ class EventTable(QTableWidget):
         if row < 0 or row >= self.rowCount():
             raise IndexError("Event row is out of range.")
 
-        event_item = self.item(row, self.EVENT_TYPE_COLUMN)
-        time_item = self.item(row, self.VIDEO_TIME_COLUMN)
-        note_widget = self.cellWidget(row, self.NOTE_COLUMN)
-        video_time_sec = time_item.data(self.VIDEO_TIME_ROLE)
-        if video_time_sec is None:
-            video_time_sec = float(time_item.text() if time_item else 0)
-        frame_index = event_item.data(self.FRAME_ROLE) if event_item is not None else 0
-        source = event_item.data(self.SOURCE_ROLE) if event_item is not None else None
-
-        return {
-            "event_type": event_item.text() if event_item else "",
-            "video_time_sec": float(video_time_sec),
-            "frame_index": int(frame_index or 0),
-            "note": note_widget.text() if note_widget else "",
-            "source": source or "manual",
-        }
+        return dict(self.event_state.events[row])
 
     def events(self):
-        return [self.event_at(row) for row in range(self.rowCount())]
+        return [dict(event) for event in self.event_state.events]
