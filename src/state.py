@@ -34,6 +34,7 @@ class DataState:
     lfp_step: int | None = None
     axis_step: int | None = None
     line_noise_hz: float = 60.0
+    timeline_xlim: tuple[float, float] | None = None
 
 
 @dataclass

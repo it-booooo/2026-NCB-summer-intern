@@ -6,7 +6,6 @@ from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 
 from .. import signal_processing as signal_func
-from ..data_io import csv_loader as csv_func
 from ..data_io import readers as read
 from .plot_utils import format_signal_label, install_x_navigation, resolve_plot_step
 

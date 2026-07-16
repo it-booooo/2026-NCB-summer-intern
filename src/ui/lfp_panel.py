@@ -705,6 +705,8 @@ class LfpPanel(QWidget):
         if self.updating_timeline:
             return
 
+        left, right = float(left), float(right)
+        self.data_state.timeline_xlim = (left, right)
         self.updating_timeline = True
 
         if self.lfp_fig is not None and source != "lfp":
@@ -731,18 +733,6 @@ class LfpPanel(QWidget):
 
         left, right = value
         self.set_shared_xlim(float(left), float(right), source=source)
-
-    def current_timeline_xlim(self):
-        """Provide current timeline xlim functionality.
-
-        Args:
-            None.
-        """
-        if self.timeline_slider is None:
-            return None
-
-        left, right = self.timeline_slider.val
-        return float(left), float(right)
 
     def should_follow_video_playback(self):
         """Provide should follow video playback functionality.
@@ -881,7 +871,7 @@ class LfpPanel(QWidget):
         if full_width <= 0:
             return
 
-        current_xlim = self.current_timeline_xlim() or full_xlim
+        current_xlim = self.data_state.timeline_xlim or full_xlim
         left, right = current_xlim
         current_width = max(right - left, 1e-6)
         default_width = min(self.DEFAULT_PLAYBACK_WINDOW_SEC, full_width)
@@ -1040,7 +1030,7 @@ class LfpPanel(QWidget):
             return
 
         if self.timeline_full_xlim == full_xlim and self.timeline_slider is not None:
-            current_xlim = self.current_timeline_xlim()
+            current_xlim = self.data_state.timeline_xlim
             if current_xlim is not None:
                 self.set_shared_xlim(*current_xlim, source="timeline")
             return
@@ -1337,7 +1327,7 @@ class LfpPanel(QWidget):
         if not self.lfp_path:
             return
 
-        current_xlim = self.current_timeline_xlim()
+        current_xlim = self.data_state.timeline_xlim
         self.lfp_fig = None
         self.lfp_callback_connected = False
         self.invalidate_current_time_backgrounds("lfp")
@@ -1352,7 +1342,7 @@ class LfpPanel(QWidget):
         Args:
             None.
         """
-        selected_xlim = self.current_timeline_xlim()
+        selected_xlim = self.data_state.timeline_xlim
         if selected_xlim is None and self.lfp_fig is not None:
             selected_xlim = self.lfp_fig.lfp_full_xlim
 
@@ -1875,7 +1865,7 @@ class LfpPanel(QWidget):
         if not getattr(self, path_attribute):
             return
 
-        current_xlim = self.current_timeline_xlim()
+        current_xlim = self.data_state.timeline_xlim
         setattr(self, figure_attribute, None)
         setattr(self, callback_attribute, False)
         plot()
