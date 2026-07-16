@@ -6,7 +6,7 @@ from pathlib import Path
 
 from pyqtgraph import units
 
-from ..time_utils import record_time_parts
+from ..synchronization.time_conversion import record_time_parts
 
 
 def read_csv_preview(path, max_rows=8):

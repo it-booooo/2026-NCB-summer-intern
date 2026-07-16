@@ -14,8 +14,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..state import SyncState
-from ..time_utils import record_time_parts
+from ..app_state import SyncState
+from ..synchronization.time_conversion import record_time_parts
 
 
 class TtlPanel(QWidget):

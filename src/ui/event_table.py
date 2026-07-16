@@ -15,8 +15,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from ..state import EventState, SyncState, VideoState
-from ..time_utils import absolute_time, relative_time
+from ..app_state import EventState, SyncState, VideoState
+from ..synchronization.time_conversion import absolute_time, relative_time
 
 
 DEFAULT_EVENT_TYPES = [

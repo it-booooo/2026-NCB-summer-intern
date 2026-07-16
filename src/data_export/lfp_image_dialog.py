@@ -17,8 +17,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from ..signal_processing import LfpFilterSettings
-from ..time_utils import absolute_time, relative_time
+from ..signal_data import LfpFilterSettings
+from ..synchronization.time_conversion import absolute_time, relative_time
 
 
 @dataclass(frozen=True)

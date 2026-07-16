@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import QMessageBox
 
-from .detection.led_worker import LedDetectionWorker, coarse_scan_step_for_fps
-from .led_status import format_led_detection_status
+from .led_worker import LedDetectionWorker, coarse_scan_step_for_fps
+from .status_text import format_led_detection_status
 
 
 class LedControllerMixin:
@@ -14,7 +14,7 @@ class LedControllerMixin:
             None.
         """
         try:
-            from .detection.led_opencl import opencl_status
+            from .led_opencl import opencl_status
 
             status = opencl_status()
         except Exception as error:

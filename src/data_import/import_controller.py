@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import QFileDialog, QMessageBox
 
-from .. import data_io
+from .. import signal_data
 
 
 class ImportController:
@@ -104,7 +104,7 @@ class ImportController:
         if not path:
             return
 
-        info = data_io.parse_lfp_csv_info(path)
+        info = signal_data.parse_lfp_csv_info(path)
         if signal_type == "lfp":
             self.data_state.lfp_info = info
             window.lfp_panel.set_lfp_info(info)
@@ -124,6 +124,6 @@ class ImportController:
         path = self.open_csv_file("Import Time Marker (.csv)")
         if not path:
             return
-        info = data_io.parse_time_marker_csv_info(path)
+        info = signal_data.parse_time_marker_csv_info(path)
         window.set_ttl_markers(info)
         window.ttl_panel.set_markers(info)

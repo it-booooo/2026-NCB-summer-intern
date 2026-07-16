@@ -4,9 +4,9 @@ from typing import Callable, cast
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 
-from ..data_io import csv_loader as csv_func
-from ..data_io import readers as read
-from .plot_utils import format_signal_label, install_x_navigation, resolve_plot_step
+from ..signal_data import csv_loader as csv_func
+from ..signal_data import readers as read
+from .chart_helpers import format_signal_label, install_x_navigation, resolve_plot_step
 
 
 class AcceleratorFigure(Figure):
@@ -68,7 +68,7 @@ def accelerator(
     else:
         ax = fig.add_subplot(111)
 
-    # Convert microseconds to seconds for plotting.
+    # Convert microseconds to seconds for charts.
     data["time_s"] = data["time_us"] / 1e6
     plot_step = resolve_plot_step(len(data), step)
     if plot_step == 0 or len(data) <= plot_step:

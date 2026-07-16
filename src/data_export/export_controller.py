@@ -2,9 +2,9 @@ from pathlib import Path
 
 from PySide6.QtWidgets import QDialog, QFileDialog, QInputDialog, QMessageBox
 
-from .. import plotting, signal_processing, validation
+from .. import charts, signal_data, data_validation
 from .lfp_image_dialog import LfpImageExportDialog
-from .writers import export_events_csv, export_events_excel
+from .file_writers import export_events_csv, export_events_excel
 
 
 class ExportController:
@@ -129,7 +129,7 @@ class ExportController:
             return
 
         try:
-            output_path = validation.check(
+            output_path = data_validation.check(
                 info=info,
                 output_path=path,
             )
@@ -169,7 +169,7 @@ class ExportController:
         if not path:
             return
         try:
-            figure = plotting.accelerator(
+            figure = charts.accelerator(
                 info=self.data_state.axis_info,
                 compact=False,
                 step=self.data_state.axis_step,
@@ -265,7 +265,7 @@ class ExportController:
                 )
 
             if "power_spectrum" in options.image_types:
-                frequencies, power = signal_processing.compute_power_spectrum(
+                frequencies, power = signal_data.compute_power_spectrum(
                     segment.values,
                     segment.sample_rate_hz,
                 )
@@ -276,7 +276,7 @@ class ExportController:
                 )
 
             if "spectrogram" in options.image_types:
-                frequencies, times, power = signal_processing.compute_time_frequency(
+                frequencies, times, power = signal_data.compute_time_frequency(
                     segment.values,
                     segment.sample_rate_hz,
                 )

@@ -11,13 +11,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .exporters import ExportController
-from .importers import ImportController
-from .led_controller import LedControllerMixin
-from .state import AppState
-from .sync_controller import SyncControllerMixin
+from .data_export import ExportController
+from .data_import import ImportController
+from .led_detection.led_controller import LedControllerMixin
+from .app_state import AppState
+from .synchronization.sync_controller import SyncControllerMixin
 from .ui import EventTable, LfpPanel, MarkerPanel, SyncPanel, TtlPanel
-from .video import VideoPlayer
+from .video_player import VideoPlayer
 
 
 class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):

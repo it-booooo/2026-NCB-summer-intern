@@ -1,27 +1,29 @@
-# Python cache
+# Python caches and virtual environments
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+.venv/
+.ruff_cache/
 
+# Build artifacts
 build/
 dist/
 *.exe
 *.spec
 *.param
-
-# VS Code
-.vscode/
-.venv/
 .build_deps/
 .opencl_temp/
-*.py[cod]
 
-# Generated images
+# Editor settings
+.vscode/
+
+# Runtime input/output data
+input_data/*
+output_data/
+
+# Generated media and tabular data
 *.png
-
 *.csv
-
 *.mp4
 
-.venv/
+# Versioned application asset
+!input_data/icon.png

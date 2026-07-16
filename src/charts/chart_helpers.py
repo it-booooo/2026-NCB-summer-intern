@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Callable
 
-from ..time_utils import relative_time
+from ..synchronization.time_conversion import relative_time
 
 
 TARGET_PLOT_POINTS = 5000

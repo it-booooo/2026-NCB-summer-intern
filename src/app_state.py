@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from .video.video_utils import VideoMetadata
+    from .video_player.video_helpers import VideoMetadata
 
 
 @dataclass

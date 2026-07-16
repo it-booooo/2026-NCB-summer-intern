@@ -1,5 +1,5 @@
 """User-facing file import workflows."""
 
-from .controller import ImportController
+from .import_controller import ImportController
 
 __all__ = ["ImportController"]

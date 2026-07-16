@@ -1,5 +1,5 @@
 """Input data validation and report generation."""
 
-from .check import check
+from .input_checks import check
 
 __all__ = ["check"]

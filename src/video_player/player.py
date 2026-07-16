@@ -12,9 +12,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..state import LedState, SyncState, VideoState
-from ..time_utils import absolute_time, relative_time
-from .video_utils import (
+from ..app_state import LedState, SyncState, VideoState
+from ..synchronization.time_conversion import absolute_time, relative_time
+from .video_helpers import (
     format_time,
     frame_to_time_sec,
     parse_time_input,

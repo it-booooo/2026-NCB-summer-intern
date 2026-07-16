@@ -14,9 +14,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..led_status import format_led_detection_status
-from ..state import LedState
-from ..video.video_utils import format_time, parse_time_input, time_sec_to_frame
+from ..led_detection.status_text import format_led_detection_status
+from ..app_state import LedState
+from ..video_player.video_helpers import format_time, parse_time_input, time_sec_to_frame
 
 
 class RoiPlotIndicator(QLabel):
