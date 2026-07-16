@@ -420,167 +420,6 @@ class LfpPanel(QWidget):
         )
         self.apply_filter_button.setEnabled(False)
 
-    @property
-    def lfp_info(self):
-        """Provide lfp info functionality.
-
-        Args:
-            None.
-        """
-        return self.data_state.lfp_info
-
-    @lfp_info.setter
-    def lfp_info(self, info):
-        """Provide lfp info functionality.
-
-        Args:
-            info: Metadata or state information to store or use.
-        """
-        self.data_state.lfp_info = info
-
-    @property
-    def axis_info(self):
-        """Provide axis info functionality.
-
-        Args:
-            None.
-        """
-        return self.data_state.axis_info
-
-    @axis_info.setter
-    def axis_info(self, info):
-        """Provide axis info functionality.
-
-        Args:
-            info: Metadata or state information to store or use.
-        """
-        self.data_state.axis_info = info
-
-    @property
-    def lfp_path(self):
-        """Provide lfp path functionality.
-
-        Args:
-            None.
-        """
-        return self.lfp_info.get("path") if self.lfp_info else None
-
-    @property
-    def axis_path(self):
-        """Provide axis path functionality.
-
-        Args:
-            None.
-        """
-        return self.axis_info.get("path") if self.axis_info else None
-
-    @property
-    def lfp_step(self):
-        """Provide lfp step functionality.
-
-        Args:
-            None.
-        """
-        return self.data_state.lfp_step
-
-    @lfp_step.setter
-    def lfp_step(self, step):
-        """Provide lfp step functionality.
-
-        Args:
-            step: Input used by this operation.
-        """
-        self.data_state.lfp_step = step
-
-    @property
-    def axis_step(self):
-        """Provide axis step functionality.
-
-        Args:
-            None.
-        """
-        return self.data_state.axis_step
-
-    @axis_step.setter
-    def axis_step(self, step):
-        """Provide axis step functionality.
-
-        Args:
-            step: Input used by this operation.
-        """
-        self.data_state.axis_step = step
-
-    @property
-    def line_noise_hz(self):
-        """Provide line noise hz functionality.
-
-        Args:
-            None.
-        """
-        return self.data_state.line_noise_hz
-
-    @line_noise_hz.setter
-    def line_noise_hz(self, frequency):
-        """Provide line noise hz functionality.
-
-        Args:
-            frequency: Input used by this operation.
-        """
-        self.data_state.line_noise_hz = float(frequency)
-
-    @property
-    def sync_time_origin_sec(self):
-        """Synchronize time origin sec.
-
-        Args:
-            None.
-        """
-        return self.sync_state.record_time_origin_sec
-
-    @sync_time_origin_sec.setter
-    def sync_time_origin_sec(self, origin_sec):
-        """Synchronize time origin sec.
-
-        Args:
-            origin_sec: Input used by this operation.
-        """
-        self.sync_state.record_time_origin_sec = origin_sec
-
-    @property
-    def current_record_time_sec(self):
-        """Provide current record time sec functionality.
-
-        Args:
-            None.
-        """
-        return self.sync_state.current_record_time_sec
-
-    @current_record_time_sec.setter
-    def current_record_time_sec(self, time_sec):
-        """Provide current record time sec functionality.
-
-        Args:
-            time_sec: Time value in seconds.
-        """
-        self.sync_state.current_record_time_sec = time_sec
-
-    @property
-    def event_intervals(self):
-        """Provide event intervals functionality.
-
-        Args:
-            None.
-        """
-        return self.sync_state.event_intervals
-
-    @event_intervals.setter
-    def event_intervals(self, intervals):
-        """Provide event intervals functionality.
-
-        Args:
-            intervals: Input used by this operation.
-        """
-        self.sync_state.event_intervals = list(intervals)
 
     def create_frequency_spinbox(self, value):
         """Create frequency spinbox.
@@ -603,7 +442,7 @@ class LfpPanel(QWidget):
         Args:
             None.
         """
-        return f"{self.line_noise_hz:g} Hz" if self.line_noise_hz else "not set"
+        return f"{self.data_state.line_noise_hz:g} Hz" if self.data_state.line_noise_hz else "not set"
 
     def update_notch_control_text(self):
         """Update notch control text.
@@ -749,10 +588,10 @@ class LfpPanel(QWidget):
             origin_sec: Input used by this operation.
         """
         next_origin = None if origin_sec is None else float(origin_sec)
-        if self.sync_time_origin_sec == next_origin:
+        if self.sync_state.record_time_origin_sec == next_origin:
             return
 
-        self.sync_time_origin_sec = next_origin
+        self.sync_state.record_time_origin_sec = next_origin
         self.apply_sync_time_axis_formatters()
 
     def apply_sync_time_axis_formatters(self):
@@ -762,7 +601,7 @@ class LfpPanel(QWidget):
             None.
         """
         formatter = FuncFormatter(
-            lambda value, pos: format_time_tick(value, self.sync_time_origin_sec)
+            lambda value, pos: format_time_tick(value, self.sync_state.record_time_origin_sec)
         )
 
         for _key, fig, canvas in self.figure_items():
@@ -773,7 +612,7 @@ class LfpPanel(QWidget):
             canvas.draw_idle()
 
         if self.timeline_slider is not None:
-            self.timeline_slider.set_time_origin(self.sync_time_origin_sec)
+            self.timeline_slider.set_time_origin(self.sync_state.record_time_origin_sec)
 
         self.invalidate_current_time_backgrounds()
 
@@ -857,7 +696,7 @@ class LfpPanel(QWidget):
             None.
         """
         if (
-            self.current_record_time_sec is None
+            self.sync_state.current_record_time_sec is None
             or not self.should_follow_video_playback()
         ):
             return
@@ -887,7 +726,7 @@ class LfpPanel(QWidget):
             next_left, next_right = full_left, full_right
         else:
             cursor_time = min(
-                max(float(self.current_record_time_sec), full_left),
+                max(float(self.sync_state.current_record_time_sec), full_left),
                 full_right,
             )
             margin = target_width * self.PLAYBACK_EDGE_MARGIN_FRACTION
@@ -1054,7 +893,7 @@ class LfpPanel(QWidget):
             full_xlim,
             full_xlim,
         )
-        slider.set_time_origin(self.sync_time_origin_sec)
+        slider.set_time_origin(self.sync_state.record_time_origin_sec)
         slider.on_changed(lambda value: self.on_plot_xlim_changed(value, "timeline"))
 
         canvas = FigureCanvas(fig)
@@ -1081,7 +920,7 @@ class LfpPanel(QWidget):
             record_time_sec: Input used by this operation.
             follow_playback: Input used by this operation.
         """
-        self.current_record_time_sec = record_time_sec
+        self.sync_state.current_record_time_sec = record_time_sec
 
         if follow_playback:
             self.follow_current_time_marker()
@@ -1094,7 +933,7 @@ class LfpPanel(QWidget):
         Args:
             None.
         """
-        self.current_record_time_sec = None
+        self.sync_state.current_record_time_sec = None
         for line in self.current_time_lines.values():
             line.remove()
         self.current_time_lines = {}
@@ -1110,7 +949,7 @@ class LfpPanel(QWidget):
         Args:
             intervals: Input used by this operation.
         """
-        self.event_intervals = [dict(interval) for interval in intervals]
+        self.sync_state.event_intervals = [dict(interval) for interval in intervals]
         self.update_event_interval_artists()
 
     def clear_event_interval_artists(self):
@@ -1139,7 +978,7 @@ class LfpPanel(QWidget):
                 continue
 
             ax = fig.axes[0]
-            for interval in self.event_intervals:
+            for interval in self.sync_state.event_intervals:
                 start_sec = float(interval["record_start_sec"])
                 end_sec = float(interval["record_end_sec"])
                 if end_sec <= start_sec:
@@ -1168,7 +1007,7 @@ class LfpPanel(QWidget):
         Args:
             None.
         """
-        if self.current_record_time_sec is None:
+        if self.sync_state.current_record_time_sec is None:
             return
 
         for key, fig, canvas in self.figure_items():
@@ -1179,7 +1018,7 @@ class LfpPanel(QWidget):
             line = self.current_time_lines.get(key)
             if line is None or line.axes is not ax:
                 line = ax.axvline(
-                    self.current_record_time_sec,
+                    self.sync_state.current_record_time_sec,
                     color="#d62728",
                     linestyle="--",
                     linewidth=1.0,
@@ -1191,8 +1030,8 @@ class LfpPanel(QWidget):
             else:
                 line.set_xdata(
                     [
-                        self.current_record_time_sec,
-                        self.current_record_time_sec,
+                        self.sync_state.current_record_time_sec,
+                        self.sync_state.current_record_time_sec,
                     ]
                 )
 
@@ -1300,10 +1139,10 @@ class LfpPanel(QWidget):
             line_noise_hz: Input used by this operation.
         """
         next_value = 60.0 if line_noise_hz is None else float(line_noise_hz)
-        if self.line_noise_hz == next_value:
+        if self.data_state.line_noise_hz == next_value:
             return
 
-        self.line_noise_hz = next_value
+        self.data_state.line_noise_hz = next_value
         self.update_notch_control_text()
         if self._applied_lfp_filter_settings.line_noise_hz is not None:
             current = self._applied_lfp_filter_settings
@@ -1324,7 +1163,7 @@ class LfpPanel(QWidget):
         Args:
             *_args: Input used by this operation.
         """
-        if not self.lfp_path:
+        if not (self.data_state.lfp_info and self.data_state.lfp_info.get("path")):
             return
 
         current_xlim = self.data_state.timeline_xlim
@@ -1358,7 +1197,7 @@ class LfpPanel(QWidget):
         Args:
             None.
         """
-        channels = self.lfp_info.get("channels", []) if self.lfp_info else []
+        channels = self.data_state.lfp_info.get("channels", []) if self.data_state.lfp_info else []
         return [int(channel) for channel in channels]
 
     def load_lfp_segment(self, channel, left, right, settings):
@@ -1370,7 +1209,7 @@ class LfpPanel(QWidget):
             right: Input used by this operation.
             settings: Configuration settings for this operation.
         """
-        data = read.read_signal_csv(self.lfp_path, requested_channels=[channel])
+        data = read.read_signal_csv(self.data_state.lfp_info["path"], requested_channels=[channel])
         column = f"channel_{channel}"
         if column not in data:
             raise ValueError(f"LFP CSV does not include channel {channel}.")
@@ -1378,7 +1217,7 @@ class LfpPanel(QWidget):
         time_us = data["time_us"].to_numpy(dtype=float)
         values = data[column].to_numpy(dtype=float)
         sample_rate_hz = signal_func.sample_rate_for_channel(
-            self.lfp_info,
+            self.data_state.lfp_info,
             time_us,
             channel,
         )
@@ -1416,10 +1255,10 @@ class LfpPanel(QWidget):
         if self.lfp_fig is not None:
             return self.lfp_fig.lfp_full_xlim
 
-        if not self.lfp_path:
+        if not (self.data_state.lfp_info and self.data_state.lfp_info.get("path")):
             raise ValueError("Please import LFP CSV data first.")
 
-        data = read.read_signal_csv(self.lfp_path)
+        data = read.read_signal_csv(self.data_state.lfp_info["path"])
         time_s = data["time_us"].to_numpy(dtype=float) / 1e6
         if time_s.size == 0:
             raise ValueError("LFP CSV does not contain samples.")
@@ -1443,7 +1282,7 @@ class LfpPanel(QWidget):
             high_spin: Input used by this operation.
             notch_checkbox: Input used by this operation.
         """
-        line_noise_hz = self.line_noise_hz if notch_checkbox.isChecked() else None
+        line_noise_hz = self.data_state.line_noise_hz if notch_checkbox.isChecked() else None
         if line_noise_hz is not None:
             line_noise_hz = float(line_noise_hz)
 
@@ -1457,7 +1296,7 @@ class LfpPanel(QWidget):
 
     def _prepare_lfp_analysis(self, failure_title):
         """Validate the current selection and load one shared analysis segment."""
-        if not self.lfp_path:
+        if not (self.data_state.lfp_info and self.data_state.lfp_info.get("path")):
             QMessageBox.information(
                 self,
                 "No LFP data",
@@ -1522,7 +1361,7 @@ class LfpPanel(QWidget):
                     frequencies,
                     times,
                     power,
-                    "sync time" if self.sync_time_origin_sec is not None else "time",
+                    "sync time" if self.sync_state.record_time_origin_sec is not None else "time",
                 )
         except Exception as error:
             QMessageBox.warning(self, failure_title, str(error))
@@ -1569,9 +1408,9 @@ class LfpPanel(QWidget):
         dialog.setWindowTitle(title)
         dialog.resize(*size)
 
-        display_left = relative_time(left, self.sync_time_origin_sec)
-        display_right = relative_time(right, self.sync_time_origin_sec)
-        time_mode = "sync time" if self.sync_time_origin_sec is not None else "time"
+        display_left = relative_time(left, self.sync_state.record_time_origin_sec)
+        display_right = relative_time(right, self.sync_state.record_time_origin_sec)
+        time_mode = "sync time" if self.sync_state.record_time_origin_sec is not None else "time"
         status = QLabel(
             f"Channel {channel} | {signal_func.filter_description(settings)} | "
             f"{time_mode}: {display_left:.2f}-{display_right:.2f} s | "
@@ -1634,16 +1473,16 @@ class LfpPanel(QWidget):
         figure = Figure(figsize=(figure_width, 4.8), constrained_layout=True)
         ax = figure.add_subplot(111)
 
-        plot_step = resolve_plot_step(segment.sample_count, self.lfp_step)
+        plot_step = resolve_plot_step(segment.sample_count, self.data_state.lfp_step)
         if plot_step == 0 or segment.sample_count <= plot_step:
             plot_index = slice(None)
         else:
             plot_index = slice(None, None, plot_step)
 
-        if self.sync_time_origin_sec is None:
+        if self.sync_state.record_time_origin_sec is None:
             plot_times = segment.record_time_s
         else:
-            plot_times = segment.record_time_s - self.sync_time_origin_sec
+            plot_times = segment.record_time_s - self.sync_state.record_time_origin_sec
 
         ax.plot(
             plot_times[plot_index],
@@ -1666,13 +1505,13 @@ class LfpPanel(QWidget):
             segment: Input used by this operation.
             settings: Configuration settings for this operation.
         """
-        filename = self.lfp_info.get("filename", "LFP") if self.lfp_info else "LFP"
-        time_mode = "Sync time" if self.sync_time_origin_sec is not None else "Time"
+        filename = self.data_state.lfp_info.get("filename", "LFP") if self.data_state.lfp_info else "LFP"
+        time_mode = "Sync time" if self.sync_state.record_time_origin_sec is not None else "Time"
         display_left = relative_time(
-            float(segment.record_time_s[0]), self.sync_time_origin_sec
+            float(segment.record_time_s[0]), self.sync_state.record_time_origin_sec
         )
         display_right = relative_time(
-            float(segment.record_time_s[-1]), self.sync_time_origin_sec
+            float(segment.record_time_s[-1]), self.sync_state.record_time_origin_sec
         )
         processing = signal_func.filter_description(settings)
         figure.suptitle(
@@ -1703,7 +1542,7 @@ class LfpPanel(QWidget):
         figure = Figure(figsize=(8.0, 4.8), constrained_layout=True)
         ax = figure.add_subplot(111)
         plot_times = times + relative_time(
-            float(segment.record_time_s[0]), self.sync_time_origin_sec
+            float(segment.record_time_s[0]), self.sync_state.record_time_origin_sec
         )
         power_db = 10.0 * np.log10(np.maximum(power, np.finfo(float).tiny))
         mesh = ax.pcolormesh(
@@ -1725,7 +1564,7 @@ class LfpPanel(QWidget):
         Args:
             None.
         """
-        if not self.lfp_path:
+        if not (self.data_state.lfp_info and self.data_state.lfp_info.get("path")):
             return
 
         channel = self.selected_channel(self.lfp_channel_selector)
@@ -1733,9 +1572,9 @@ class LfpPanel(QWidget):
         try:
             if self.lfp_fig is None:
                 self.lfp_fig = draw.LFP(
-                    info=self.lfp_info,
+                    info=self.data_state.lfp_info,
                     channels=channel,
-                    step=self.lfp_step,
+                    step=self.data_state.lfp_step,
                     filter_settings=self.current_lfp_filter_settings(),
                 )
                 created_figure = True
@@ -1765,14 +1604,14 @@ class LfpPanel(QWidget):
         Args:
             None.
         """
-        if not self.axis_path:
+        if not (self.data_state.axis_info and self.data_state.axis_info.get("path")):
             return
 
         try:
             self.axis_fig = draw.accelerator(
-                info=self.axis_info,
+                info=self.data_state.axis_info,
                 compact=True,
-                step=self.axis_step,
+                step=self.data_state.axis_step,
             )
         except Exception as error:
             QMessageBox.warning(self, "3-axis plot failed", str(error))
@@ -1796,7 +1635,7 @@ class LfpPanel(QWidget):
         Args:
             info: Metadata or state information to store or use.
         """
-        self.lfp_info = info
+        self.data_state.lfp_info = info
         self.lfp_fig = None
         self.lfp_callback_connected = False
         self.lfp_file_label.setText(f"LFP CSV: {info['filename']}")
@@ -1828,7 +1667,7 @@ class LfpPanel(QWidget):
         Args:
             info: Metadata or state information to store or use.
         """
-        self.axis_info = info
+        self.data_state.axis_info = info
         self.axis_fig = None
         self.axis_callback_connected = False
         self.axis_file_label.setText(f"3-axis CSV: {info['filename']} (channel 260)")
@@ -1841,28 +1680,29 @@ class LfpPanel(QWidget):
             plot_name: Input used by this operation.
             step: Input used by this operation.
         """
-        step_attribute, path_attribute, figure_attribute, callback_attribute, plot = {
+        step_attribute, info_attribute, figure_attribute, callback_attribute, plot = {
             "lfp": (
                 "lfp_step",
-                "lfp_path",
+                "lfp_info",
                 "lfp_fig",
                 "lfp_callback_connected",
                 self.plot_lfp,
             ),
             "axis": (
                 "axis_step",
-                "axis_path",
+                "axis_info",
                 "axis_fig",
                 "axis_callback_connected",
                 self.plot_axis,
             ),
         }[plot_name]
         step = None if step is None else max(int(step), 0)
-        if getattr(self, step_attribute) == step:
+        if getattr(self.data_state, step_attribute) == step:
             return
 
-        setattr(self, step_attribute, step)
-        if not getattr(self, path_attribute):
+        setattr(self.data_state, step_attribute, step)
+        info = getattr(self.data_state, info_attribute)
+        if not (info and info.get("path")):
             return
 
         current_xlim = self.data_state.timeline_xlim

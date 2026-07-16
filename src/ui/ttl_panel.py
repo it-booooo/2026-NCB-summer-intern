@@ -78,26 +78,6 @@ class TtlPanel(QWidget):
         layout.addWidget(self.table)
         self.setLayout(layout)
 
-    @property
-    def info(self):
-        """Provide info functionality.
-
-        Args:
-            None.
-        """
-        if self.sync_state.time_marker_info is None:
-            return self.empty_info()
-        return self.sync_state.time_marker_info
-
-    @info.setter
-    def info(self, info):
-        """Provide info functionality.
-
-        Args:
-            info: Metadata or state information to store or use.
-        """
-        self.sync_state.time_marker_info = info
-
     def empty_info(self):
         """Provide empty info functionality.
 
@@ -119,7 +99,7 @@ class TtlPanel(QWidget):
         Args:
             info: Metadata or state information to store or use.
         """
-        self.info = info
+        self.sync_state.time_marker_info = info
         self.refresh_table()
 
     def paused_video_time_for_ttl(self):
@@ -130,7 +110,7 @@ class TtlPanel(QWidget):
         """
         if self.video_player is None or not self.video_player.has_video():
             raise ValueError("Please import a video or enter a TTL time manually.")
-        if self.video_player.is_playing:
+        if self.video_player.video_state.is_playing:
             raise ValueError("Pause the video before adding its current time as TTL.")
         return self.video_player.current_time_sec()
 
@@ -161,14 +141,15 @@ class TtlPanel(QWidget):
                 return
 
         marker = self.create_record_time_marker(record_time)
-        markers = list(self.info.get("markers", []))
+        info = self.sync_state.time_marker_info or self.empty_info()
+        markers = list(info.get("markers", []))
         markers.append(marker)
         markers.sort(key=lambda item: item["record_time"])
         self._update_marker_info(markers, ensure_filename=True)
 
         self.record_time_input.clear()
         self.refresh_table()
-        self.markers_changed.emit(self.info)
+        self.markers_changed.emit(self.sync_state.time_marker_info)
 
     def remove_selected_marker(self):
         """Remove selected marker.
@@ -186,7 +167,8 @@ class TtlPanel(QWidget):
             return
 
         row = selected_rows[0].row()
-        markers = list(self.info.get("markers", []))
+        info = self.sync_state.time_marker_info or self.empty_info()
+        markers = list(info.get("markers", []))
         if row < 0 or row >= len(markers):
             return
 
@@ -194,7 +176,7 @@ class TtlPanel(QWidget):
         self._update_marker_info(markers)
 
         self.refresh_table()
-        self.markers_changed.emit(self.info)
+        self.markers_changed.emit(self.sync_state.time_marker_info)
 
     def _update_marker_info(self, markers, ensure_filename=False):
         """Keep the marker list and its derived summary fields consistent."""
@@ -206,10 +188,11 @@ class TtlPanel(QWidget):
             ),
         }
         if ensure_filename:
-            updates["filename"] = self.info.get("filename") or "Manual TTL"
+            info = self.sync_state.time_marker_info or self.empty_info()
+            updates["filename"] = info.get("filename") or "Manual TTL"
 
-        self.info = {
-            **self.info,
+        self.sync_state.time_marker_info = {
+            **(self.sync_state.time_marker_info or self.empty_info()),
             **updates,
         }
 
@@ -270,7 +253,8 @@ class TtlPanel(QWidget):
         """
         self.table.setRowCount(0)
 
-        markers = self.info.get("markers", [])
+        info = self.sync_state.time_marker_info or self.empty_info()
+        markers = info.get("markers", [])
 
         for row, marker in enumerate(markers):
             self.table.insertRow(row)

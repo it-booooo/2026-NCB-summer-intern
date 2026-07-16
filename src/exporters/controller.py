@@ -172,7 +172,7 @@ class ExportController:
             figure = plotting.accelerator(
                 info=self.data_state.axis_info,
                 compact=False,
-                step=window.lfp_panel.axis_step,
+                step=self.data_state.axis_step,
             )
             figure.savefig(path, dpi=300)
         except Exception as error:
@@ -193,7 +193,8 @@ class ExportController:
             None.
         """
         panel = self.window.lfp_panel
-        if not panel.lfp_path:
+        lfp_path = self.data_state.lfp_info.get("path") if self.data_state.lfp_info else None
+        if not lfp_path:
             QMessageBox.information(
                 self.window, "No LFP data", "Please import LFP CSV data first."
             )
@@ -201,7 +202,7 @@ class ExportController:
 
         default_directory = self.last_lfp_export_directory
         if default_directory is None or not Path(default_directory).is_dir():
-            default_directory = Path(panel.lfp_path).parent
+            default_directory = Path(lfp_path).parent
 
         try:
             dialog = LfpImageExportDialog(
@@ -251,7 +252,7 @@ class ExportController:
                 options.settings,
             )
             time_mode = (
-                "Sync time" if panel.sync_time_origin_sec is not None else "Time"
+                "Sync time" if panel.sync_state.record_time_origin_sec is not None else "Time"
             )
 
             if "waveform" in options.image_types:
@@ -326,7 +327,8 @@ class ExportController:
     def _lfp_filename(self, channel, settings, suffix):
         # 將通道、處理模式與同步後的時間範圍編入預設檔名，方便辨識輸出內容。
         panel = self.window.lfp_panel
-        filename = panel.lfp_info.get("filename", "lfp") if panel.lfp_info else "lfp"
+        info = self.data_state.lfp_info
+        filename = info.get("filename", "lfp") if info else "lfp"
         stem = filename.rsplit(".", 1)[0]
         mode = "processed" if settings.show_filtered else "raw"
         middle = f"_{suffix}" if suffix else ""

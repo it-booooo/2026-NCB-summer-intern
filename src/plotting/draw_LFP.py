@@ -26,12 +26,8 @@ def _filter_settings_for_view(filter_settings, show_filtered):
     """Return one complete filter configuration for a raw/filtered view."""
     return signal_func.LfpFilterSettings(
         show_filtered=bool(show_filtered),
-        bandpass_enabled=bool(
-            filter_settings and filter_settings.bandpass_enabled
-        ),
-        bandpass_low_hz=(
-            filter_settings.bandpass_low_hz if filter_settings else 1.0
-        ),
+        bandpass_enabled=bool(filter_settings and filter_settings.bandpass_enabled),
+        bandpass_low_hz=(filter_settings.bandpass_low_hz if filter_settings else 1.0),
         bandpass_high_hz=(
             filter_settings.bandpass_high_hz if filter_settings else 100.0
         ),
@@ -66,7 +62,6 @@ def LFP(
         raise FileNotFoundError(f"LFP CSV file not found: {input_file}")
 
     data = read.read_signal_csv(str(input_file))
-
 
     time_s = data["time_us"].to_numpy(dtype=float) / 1e6
 

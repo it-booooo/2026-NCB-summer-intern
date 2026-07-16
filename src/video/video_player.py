@@ -40,24 +40,6 @@ class RoiVideoLabel(QLabel):
         # 儲存已完成選取的 LED ROI，座標格式是影片原始 frame 座標：
         # (x, y, width, height)
 
-    @property
-    def saved_roi(self):
-        """Provide saved roi functionality.
-
-        Args:
-            None.
-        """
-        return self.led_state.roi
-
-    @saved_roi.setter
-    def saved_roi(self, roi):
-        """Provide saved roi functionality.
-
-        Args:
-            roi: LED region of interest as (x, y, width, height).
-        """
-        self.led_state.roi = roi
-
     def set_roi_selection_enabled(self, enabled):
         """Set roi selection enabled.
 
@@ -78,7 +60,7 @@ class RoiVideoLabel(QLabel):
         Args:
             roi: LED region of interest as (x, y, width, height).
         """
-        self.saved_roi = roi
+        self.led_state.roi = roi
         self.update()
 
     def clear_saved_roi(self):
@@ -87,7 +69,7 @@ class RoiVideoLabel(QLabel):
         Args:
             None.
         """
-        self.saved_roi = None
+        self.led_state.roi = None
         self.update()
 
     def set_display_geometry(self, display_rect, frame_size):
@@ -212,8 +194,8 @@ class RoiVideoLabel(QLabel):
         painter = QPainter(self)
 
         # 1. 永久顯示已儲存的 LED ROI
-        if self.saved_roi is not None:
-            saved_rect = self.roi_to_display_rect(self.saved_roi)
+        if self.led_state.roi is not None:
+            saved_rect = self.roi_to_display_rect(self.led_state.roi)
             if saved_rect is not None:
                 painter.setPen(QPen(Qt.green, 2, Qt.SolidLine))
                 painter.drawRect(saved_rect)
@@ -368,123 +350,6 @@ class VideoPlayer(QWidget):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.play_next_frame)
 
-    @property
-    def metadata(self):
-        """Provide metadata functionality.
-
-        Args:
-            None.
-        """
-        return self.video_state.metadata
-
-    @metadata.setter
-    def metadata(self, metadata):
-        """Provide metadata functionality.
-
-        Args:
-            metadata: Input used by this operation.
-        """
-        self.video_state.metadata = metadata
-
-    @property
-    def video_path(self):
-        """Provide video path functionality.
-
-        Args:
-            None.
-        """
-        return self.metadata.path if self.metadata is not None else ""
-
-    @property
-    def fps(self):
-        """Provide fps functionality.
-
-        Args:
-            None.
-        """
-        return self.metadata.using_fps if self.metadata is not None else None
-
-    @property
-    def total_frames(self):
-        """Provide total frames functionality.
-
-        Args:
-            None.
-        """
-        return self.metadata.total_frames if self.metadata is not None else 0
-
-    @property
-    def current_frame(self):
-        """Provide current frame functionality.
-
-        Args:
-            None.
-        """
-        return self.video_state.current_frame
-
-    @current_frame.setter
-    def current_frame(self, frame_index):
-        """Provide current frame functionality.
-
-        Args:
-            frame_index: Zero-based video frame index.
-        """
-        self.video_state.current_frame = int(frame_index)
-
-    @property
-    def is_playing(self):
-        """Determine whether playing.
-
-        Args:
-            None.
-        """
-        return self.video_state.is_playing
-
-    @is_playing.setter
-    def is_playing(self, is_playing):
-        """Determine whether playing.
-
-        Args:
-            is_playing: Input used by this operation.
-        """
-        self.video_state.is_playing = bool(is_playing)
-
-    @property
-    def rotate_180_enabled(self):
-        """Provide rotate 180 enabled functionality.
-
-        Args:
-            None.
-        """
-        return self.video_state.rotate_180_enabled
-
-    @rotate_180_enabled.setter
-    def rotate_180_enabled(self, enabled):
-        """Provide rotate 180 enabled functionality.
-
-        Args:
-            enabled: Whether the feature should be enabled.
-        """
-        self.video_state.rotate_180_enabled = bool(enabled)
-
-    @property
-    def sync_time_origin_sec(self):
-        """Synchronize time origin sec.
-
-        Args:
-            None.
-        """
-        return self.sync_state.video_time_origin_sec
-
-    @sync_time_origin_sec.setter
-    def sync_time_origin_sec(self, origin_sec):
-        """Synchronize time origin sec.
-
-        Args:
-            origin_sec: Input used by this operation.
-        """
-        self.sync_state.video_time_origin_sec = origin_sec
-
     def start_roi_selection(self):
         """Start roi selection.
 
@@ -550,7 +415,8 @@ class VideoPlayer(QWidget):
         Args:
             None.
         """
-        return frame_to_time_sec(self.current_frame, self.fps)
+        fps = self.video_state.metadata.using_fps if self.video_state.metadata else None
+        return frame_to_time_sec(self.video_state.current_frame, fps)
 
     def total_time_sec(self):
         """Provide total time sec functionality.
@@ -558,7 +424,8 @@ class VideoPlayer(QWidget):
         Args:
             None.
         """
-        return self.total_frames / self.fps if self.fps else 0.0
+        metadata = self.video_state.metadata
+        return metadata.total_frames / metadata.using_fps if metadata and metadata.using_fps else 0.0
 
     def current_display_time_sec(self):
         """Provide current display time sec functionality.
@@ -566,7 +433,9 @@ class VideoPlayer(QWidget):
         Args:
             None.
         """
-        return relative_time(self.current_time_sec(), self.sync_time_origin_sec)
+        return relative_time(
+            self.current_time_sec(), self.sync_state.video_time_origin_sec
+        )
 
     def display_total_time_sec(self):
         """Provide display total time sec functionality.
@@ -575,7 +444,9 @@ class VideoPlayer(QWidget):
             None.
         """
         total_sec = self.total_time_sec()
-        return max(relative_time(total_sec, self.sync_time_origin_sec), 0.0)
+        return max(
+            relative_time(total_sec, self.sync_state.video_time_origin_sec), 0.0
+        )
 
     def format_display_time(self, seconds):
         """Format display time.
@@ -593,7 +464,7 @@ class VideoPlayer(QWidget):
             origin_sec: Input used by this operation.
         """
         next_origin = None if origin_sec is None else max(float(origin_sec), 0.0)
-        self.sync_time_origin_sec = next_origin
+        self.sync_state.video_time_origin_sec = next_origin
         self.update_time_display()
 
     def frame_to_time_sec(self, frame_index):
@@ -602,7 +473,8 @@ class VideoPlayer(QWidget):
         Args:
             frame_index: Zero-based video frame index.
         """
-        return frame_to_time_sec(frame_index, self.fps)
+        fps = self.video_state.metadata.using_fps if self.video_state.metadata else None
+        return frame_to_time_sec(frame_index, fps)
 
     def time_sec_to_frame(self, time_sec):
         """Convert time to sec to frame.
@@ -610,7 +482,10 @@ class VideoPlayer(QWidget):
         Args:
             time_sec: Time value in seconds.
         """
-        return time_sec_to_frame(time_sec, self.fps, self.total_frames)
+        metadata = self.video_state.metadata
+        fps = metadata.using_fps if metadata else None
+        total_frames = metadata.total_frames if metadata else 0
+        return time_sec_to_frame(time_sec, fps, total_frames)
 
     def load_video(self, path):
         """Load video.
@@ -646,19 +521,19 @@ class VideoPlayer(QWidget):
         if self.cap is not None:
             self.cap.release()
 
-        self.metadata = metadata
+        self.video_state.metadata = metadata
         self.cap = new_cap
 
-        self.current_frame = 0
-        self.is_playing = False
-        self.rotate_180_enabled = False
-        self.sync_time_origin_sec = None
+        self.video_state.current_frame = 0
+        self.video_state.is_playing = False
+        self.video_state.rotate_180_enabled = False
+        self.sync_state.video_time_origin_sec = None
 
         # 換影片時清掉舊影片的 LED ROI，避免座標套到新影片。
         self.clear_led_roi()
 
-        self.slider.setRange(0, max(self.total_frames - 1, 0))
-        self.slider.setEnabled(self.total_frames > 0)
+        self.slider.setRange(0, max(metadata.total_frames - 1, 0))
+        self.slider.setEnabled(metadata.total_frames > 0)
         self.set_controls_enabled(True)
         self.time_seek_input.clear()
         self.frame_seek_input.clear()
@@ -680,14 +555,16 @@ class VideoPlayer(QWidget):
         if not self.has_video():
             return
 
-        if self.is_playing:
+        if self.video_state.is_playing:
             self.pause()
             return
 
-        self.is_playing = True
+        self.video_state.is_playing = True
         self.play_button.setText("Pause")
 
-        interval_ms = int(1000 / self.fps) if self.fps else 33
+        metadata = self.video_state.metadata
+        fps = metadata.using_fps if metadata else None
+        interval_ms = int(1000 / fps) if fps else 33
         self.timer.start(max(interval_ms, 1))
 
     def pause(self):
@@ -696,7 +573,7 @@ class VideoPlayer(QWidget):
         Args:
             None.
         """
-        self.is_playing = False
+        self.video_state.is_playing = False
         self.timer.stop()
         self.play_button.setText("Play")
 
@@ -708,10 +585,10 @@ class VideoPlayer(QWidget):
         """
         if self.has_video():
             self.pause()
-            if self.sync_time_origin_sec is None:
+            if self.sync_state.video_time_origin_sec is None:
                 self.seek_frame(0)
             else:
-                self.seek_time_sec(self.sync_time_origin_sec)
+                self.seek_time_sec(self.sync_state.video_time_origin_sec)
 
     def play_next_frame(self):
         """Play next frame.
@@ -719,21 +596,23 @@ class VideoPlayer(QWidget):
         Args:
             None.
         """
-        if not self.has_video() or self.current_frame >= self.total_frames - 1:
+        metadata = self.video_state.metadata
+        total_frames = metadata.total_frames if metadata else 0
+        if not self.has_video() or self.video_state.current_frame >= total_frames - 1:
             self.pause()
             return
 
         success, frame = self.cap.read()
 
         if success:
-            self.display_frame(frame, self.current_frame + 1)
+            self.display_frame(frame, self.video_state.current_frame + 1)
         else:
             self.pause()
 
     def step_frame(self, offset):
         """Pause playback and move by a relative number of frames."""
         self.pause()
-        self.seek_frame(self.current_frame + int(offset))
+        self.seek_frame(self.video_state.current_frame + int(offset))
 
     def seek_frame(self, frame_index):
         """Seek frame.
@@ -741,10 +620,12 @@ class VideoPlayer(QWidget):
         Args:
             frame_index: Zero-based video frame index.
         """
-        if not self.has_video() or self.total_frames <= 0:
+        metadata = self.video_state.metadata
+        total_frames = metadata.total_frames if metadata else 0
+        if not self.has_video() or total_frames <= 0:
             return
 
-        frame_index = max(0, min(int(frame_index), self.total_frames - 1))
+        frame_index = max(0, min(int(frame_index), total_frames - 1))
         self.show_frame(frame_index)
 
     def seek_time_sec(self, time_sec):
@@ -762,7 +643,7 @@ class VideoPlayer(QWidget):
             None.
         """
         self.time_seek_input.setText(format_time(self.current_time_sec()))
-        self.frame_seek_input.setText(str(self.current_frame))
+        self.frame_seek_input.setText(str(self.video_state.current_frame))
         self.mark_seek_input_valid(self.time_seek_input, True)
         self.mark_seek_input_valid(self.frame_seek_input, True)
 
@@ -798,14 +679,16 @@ class VideoPlayer(QWidget):
 
         self.pause()
         if input_type == "time":
-            self.seek_time_sec(absolute_time(value, self.sync_time_origin_sec))
+            self.seek_time_sec(
+                absolute_time(value, self.sync_state.video_time_origin_sec)
+            )
             widget.setText(
                 self.format_display_time(self.current_display_time_sec())
             )
             self.frame_seek_input.clear()
         else:
             self.seek_frame(value)
-            widget.setText(str(self.current_frame))
+            widget.setText(str(self.video_state.current_frame))
             self.time_seek_input.clear()
 
     def toggle_rotate_180(self):
@@ -817,11 +700,13 @@ class VideoPlayer(QWidget):
         if not self.has_video():
             return
 
-        self.rotate_180_enabled = not self.rotate_180_enabled
+        self.video_state.rotate_180_enabled = not self.video_state.rotate_180_enabled
         self.rotate_button.setText(
-            "Rotation: 180°" if self.rotate_180_enabled else "Rotate 180°"
+            "Rotation: 180°"
+            if self.video_state.rotate_180_enabled
+            else "Rotate 180°"
         )
-        self.show_frame(self.current_frame)
+        self.show_frame(self.video_state.current_frame)
 
     def show_frame(self, frame_index):
         """Show frame.
@@ -848,10 +733,10 @@ class VideoPlayer(QWidget):
         """
         import cv2
 
-        if self.rotate_180_enabled:
+        if self.video_state.rotate_180_enabled:
             frame = cv2.rotate(frame, cv2.ROTATE_180)
 
-        self.current_frame = frame_index
+        self.video_state.current_frame = int(frame_index)
 
         self.slider.blockSignals(True)
         self.slider.setValue(frame_index)
@@ -871,11 +756,14 @@ class VideoPlayer(QWidget):
         self.current_pixmap = QPixmap.fromImage(image)
         self.update_video_display()
 
-        detected_fps = self.metadata.detected_fps if self.metadata else 0.0
+        metadata = self.video_state.metadata
+        detected_fps = metadata.detected_fps if metadata else 0.0
+        using_fps = metadata.using_fps if metadata else 0.0
+        total_frames = metadata.total_frames if metadata else 0
 
         self.info_label.setText(
-            f"Frame: {frame_index} / {max(self.total_frames - 1, 0)} | "
-            f"Detected FPS: {detected_fps:.2f} | Using FPS: {self.fps:.2f}"
+            f"Frame: {frame_index} / {max(total_frames - 1, 0)} | "
+            f"Detected FPS: {detected_fps:.2f} | Using FPS: {using_fps:.2f}"
         )
 
         self.update_time_display()
@@ -893,7 +781,7 @@ class VideoPlayer(QWidget):
         current_display_sec = self.current_display_time_sec()
         total_display_sec = self.display_total_time_sec()
 
-        if self.sync_time_origin_sec is None:
+        if self.sync_state.video_time_origin_sec is None:
             self.time_label.setText(
                 f"{format_time(current_display_sec)} / {format_time(total_display_sec)}"
             )

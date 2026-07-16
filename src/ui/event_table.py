@@ -250,46 +250,6 @@ class EventTable(QTableWidget):
                 source=event.get("source", "manual"),
             )
 
-    @property
-    def sync_time_origin_sec(self):
-        """Synchronize time origin sec.
-
-        Args:
-            None.
-        """
-        return self.sync_state.video_time_origin_sec
-
-    @sync_time_origin_sec.setter
-    def sync_time_origin_sec(self, origin_sec):
-        """Synchronize time origin sec.
-
-        Args:
-            origin_sec: Input used by this operation.
-        """
-        self.sync_state.video_time_origin_sec = origin_sec
-
-    @property
-    def video_fps(self):
-        """Provide video fps functionality.
-
-        Args:
-            None.
-        """
-        if self.video_state.metadata is not None:
-            return self.video_state.metadata.using_fps
-        return self._standalone_video_fps
-
-    @property
-    def video_total_frames(self):
-        """Provide video total frames functionality.
-
-        Args:
-            None.
-        """
-        if self.video_state.metadata is not None:
-            return self.video_state.metadata.total_frames
-        return self._standalone_video_total_frames
-
     def set_video_timing(self, fps, total_frames=None):
         """Set video timing.
 
@@ -313,11 +273,13 @@ class EventTable(QTableWidget):
             origin_sec: Input used by this operation.
         """
         next_origin = None if origin_sec is None else float(origin_sec)
-        self.sync_time_origin_sec = next_origin
+        self.sync_state.video_time_origin_sec = next_origin
         self.setHorizontalHeaderItem(
             self.VIDEO_TIME_COLUMN,
             QTableWidgetItem(
-                "sync time" if self.sync_time_origin_sec is not None else "video time"
+                "sync time"
+                if self.sync_state.video_time_origin_sec is not None
+                else "video time"
             ),
         )
         self.refresh_time_display()
@@ -328,7 +290,7 @@ class EventTable(QTableWidget):
         Args:
             video_time_sec: Input used by this operation.
         """
-        return f"{relative_time(video_time_sec, self.sync_time_origin_sec):.3f}"
+        return f"{relative_time(video_time_sec, self.sync_state.video_time_origin_sec):.3f}"
 
     def refresh_time_display(self):
         """Refresh time display.
@@ -365,7 +327,7 @@ class EventTable(QTableWidget):
         except (TypeError, ValueError):
             return 0.0
 
-        return absolute_time(display_time, self.sync_time_origin_sec)
+        return absolute_time(display_time, self.sync_state.video_time_origin_sec)
 
     def handle_cell_clicked(self, row, column):
         """Handle cell clicked.
@@ -505,8 +467,16 @@ class EventTable(QTableWidget):
 
         dialog = EventEditDialog(
             self.event_at(row),
-            fps=self.video_fps,
-            total_frames=self.video_total_frames,
+            fps=(
+                self.video_state.metadata.using_fps
+                if self.video_state.metadata is not None
+                else self._standalone_video_fps
+            ),
+            total_frames=(
+                self.video_state.metadata.total_frames
+                if self.video_state.metadata is not None
+                else self._standalone_video_total_frames
+            ),
             parent=self,
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:

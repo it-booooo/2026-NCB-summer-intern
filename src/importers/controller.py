@@ -93,8 +93,8 @@ class ImportController:
             self.led_state.brightness_cache.clear()
             window.reset_sync_state_for_new_video()
             window.event_table.set_video_timing(
-                window.video_player.fps,
-                window.video_player.total_frames,
+                window.video_state.metadata.using_fps,
+                window.video_state.metadata.total_frames,
             )
 
     def import_signal(self, signal_type):

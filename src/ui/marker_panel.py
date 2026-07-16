@@ -82,7 +82,7 @@ class MarkerPanel(QWidget):
         self.event_table.add_event(
             event_type=event_type,
             video_time_sec=self.video_player.current_time_sec(),
-            frame_index=self.video_player.current_frame,
+            frame_index=self.video_player.video_state.current_frame,
             note="",
         )
 

@@ -193,96 +193,6 @@ class SyncPanel(QWidget):
         layout.addLayout(self.embedded_panels_layout, stretch=1)
         self.setLayout(layout)
 
-    @property
-    def analysis_points(self):
-        """Provide analysis points functionality.
-
-        Args:
-            None.
-        """
-        return self.led_state.analysis_points
-
-    @analysis_points.setter
-    def analysis_points(self, points):
-        """Provide analysis points functionality.
-
-        Args:
-            points: Brightness or analysis points used by the operation.
-        """
-        self.led_state.analysis_points = points
-
-    @property
-    def analysis_threshold(self):
-        """Provide analysis threshold functionality.
-
-        Args:
-            None.
-        """
-        return self.led_state.analysis_threshold
-
-    @analysis_threshold.setter
-    def analysis_threshold(self, threshold):
-        """Provide analysis threshold functionality.
-
-        Args:
-            threshold: Input used by this operation.
-        """
-        self.led_state.analysis_threshold = float(threshold)
-
-    @property
-    def analysis_events(self):
-        """Provide analysis events functionality.
-
-        Args:
-            None.
-        """
-        return self.led_state.analysis_events
-
-    @analysis_events.setter
-    def analysis_events(self, events):
-        """Provide analysis events functionality.
-
-        Args:
-            events: Event records to display, analyze, or export.
-        """
-        self.led_state.analysis_events = events
-
-    @property
-    def analysis_stats(self):
-        """Provide analysis stats functionality.
-
-        Args:
-            None.
-        """
-        return self.led_state.analysis_stats
-
-    @analysis_stats.setter
-    def analysis_stats(self, stats):
-        """Provide analysis stats functionality.
-
-        Args:
-            stats: Input used by this operation.
-        """
-        self.led_state.analysis_stats = stats
-
-    @property
-    def analysis_status(self):
-        """Provide analysis status functionality.
-
-        Args:
-            None.
-        """
-        return self.led_state.analysis_status
-
-    @analysis_status.setter
-    def analysis_status(self, status):
-        """Provide analysis status functionality.
-
-        Args:
-            status: Input used by this operation.
-        """
-        self.led_state.analysis_status = status
-
     def set_embedded_panels(self, ttl_group, marker_group):
         """Set embedded panels.
 
@@ -402,11 +312,11 @@ class SyncPanel(QWidget):
         Args:
             None.
         """
-        self.analysis_points = None
-        self.analysis_threshold = 0.0
-        self.analysis_events = None
-        self.analysis_stats = None
-        self.analysis_status = None
+        self.led_state.analysis_points = None
+        self.led_state.analysis_threshold = 0.0
+        self.led_state.analysis_events = None
+        self.led_state.analysis_stats = None
+        self.led_state.analysis_status = None
         self.analysis_info_button.setEnabled(False)
         self.roi_plot_indicator.set_state("idle")
         self.led_progress_bar.setRange(0, 100)
@@ -423,18 +333,18 @@ class SyncPanel(QWidget):
             stats: Input used by this operation.
             status: Input used by this operation.
         """
-        self.analysis_points = list(points or [])
-        self.analysis_threshold = float(threshold or 0.0)
-        self.analysis_events = list(events or [])
-        self.analysis_stats = dict(stats or {})
-        self.analysis_status = status or format_led_detection_status(
-            self.analysis_points,
-            self.analysis_threshold,
-            self.analysis_events,
-            self.analysis_stats,
+        self.led_state.analysis_points = list(points or [])
+        self.led_state.analysis_threshold = float(threshold or 0.0)
+        self.led_state.analysis_events = list(events or [])
+        self.led_state.analysis_stats = dict(stats or {})
+        self.led_state.analysis_status = status or format_led_detection_status(
+            self.led_state.analysis_points,
+            self.led_state.analysis_threshold,
+            self.led_state.analysis_events,
+            self.led_state.analysis_stats,
         )
         self.roi_plot_indicator.set_state(
-            "done" if self.analysis_points else "empty"
+            "done" if self.led_state.analysis_points else "empty"
         )
         self.analysis_info_button.setEnabled(True)
 
@@ -444,7 +354,7 @@ class SyncPanel(QWidget):
         Args:
             None.
         """
-        if self.analysis_status is None:
+        if self.led_state.analysis_status is None:
             return
 
         from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
@@ -460,7 +370,7 @@ class SyncPanel(QWidget):
         status_grid.setColumnStretch(0, 1)
         status_grid.setColumnStretch(1, 1)
         status_grid.setColumnStretch(2, 1)
-        status_items = self.analysis_status.split(" | ")
+        status_items = self.led_state.analysis_status.split(" | ")
         for index, text in enumerate(status_items):
             label = QLabel(text)
             label.setWordWrap(True)
@@ -474,9 +384,9 @@ class SyncPanel(QWidget):
         canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         ax = figure.add_subplot(111)
-        points = self.analysis_points or []
-        events = self.analysis_events or []
-        stats = self.analysis_stats or {}
+        points = self.led_state.analysis_points or []
+        events = self.led_state.analysis_events or []
+        stats = self.led_state.analysis_stats or {}
         times = [point.video_time_sec for point in points]
         delta_times = [points[index].video_time_sec for index in range(1, len(points))]
         delta_values = [
@@ -496,7 +406,7 @@ class SyncPanel(QWidget):
             ax.set_xlim(0.0, 1.0)
             ax.set_ylim(-1.0, 1.0)
         ax.axhline(0.0, color="gray", linestyle=":", linewidth=0.7)
-        threshold_value = stats.get("threshold", self.analysis_threshold)
+        threshold_value = stats.get("threshold", self.led_state.analysis_threshold)
         if threshold_value > 0:
             ax.axhline(threshold_value, color="gray", linestyle="--", linewidth=0.6)
             ax.axhline(-threshold_value, color="gray", linestyle="--", linewidth=0.6)

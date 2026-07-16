@@ -46,8 +46,8 @@ class LfpImageExportDialog(QDialog):
             raise ValueError("The imported LFP CSV does not list available channels.")
 
         full_left, full_right = panel.full_lfp_record_xlim()
-        display_full_left = relative_time(full_left, panel.sync_time_origin_sec)
-        display_full_right = relative_time(full_right, panel.sync_time_origin_sec)
+        display_full_left = relative_time(full_left, panel.sync_state.record_time_origin_sec)
+        display_full_right = relative_time(full_right, panel.sync_state.record_time_origin_sec)
         display_min, display_max = sorted((display_full_left, display_full_right))
 
         self.channel_selector = QComboBox()
@@ -89,7 +89,7 @@ class LfpImageExportDialog(QDialog):
         bandpass_layout.addWidget(QLabel("High"))
         bandpass_layout.addWidget(self.high_spin)
 
-        time_label = "Sync time" if panel.sync_time_origin_sec is not None else "Time"
+        time_label = "Sync time" if panel.sync_state.record_time_origin_sec is not None else "Time"
         settings_form = QFormLayout()
         settings_form.addRow("Channel", self.channel_selector)
         settings_form.addRow(f"Start {time_label}", self.start_spin)
@@ -256,9 +256,9 @@ class LfpImageExportDialog(QDialog):
             None.
         """
         start = absolute_time(
-            self.start_spin.value(), self.panel.sync_time_origin_sec
+            self.start_spin.value(), self.panel.sync_state.record_time_origin_sec
         )
-        end = absolute_time(self.end_spin.value(), self.panel.sync_time_origin_sec)
+        end = absolute_time(self.end_spin.value(), self.panel.sync_state.record_time_origin_sec)
         left, right = sorted((start, end))
         settings = self.panel.settings_from_processing_controls(
             self.signal_selector,

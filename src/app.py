@@ -188,9 +188,7 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
             "lfp": ("Set LFP step", "lfp_step"),
             "axis": ("Set 3-axis step", "axis_step"),
         }[plot_name]
-        accepted, step = self.ask_step(
-            title, getattr(self.lfp_panel, step_attribute)
-        )
+        accepted, step = self.ask_step(title, getattr(self.app_state.data, step_attribute))
         if accepted:
             self.lfp_panel.set_plot_step(plot_name, step)
 
@@ -202,7 +200,7 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
         """
         items = ["60 Hz", "50 Hz"]
         values = [60.0, 50.0]
-        current_index = 1 if self.lfp_panel.line_noise_hz == 50.0 else 0
+        current_index = 1 if self.app_state.data.line_noise_hz == 50.0 else 0
         text, accepted = QInputDialog.getItem(
             self,
             "Set power noise frequency",

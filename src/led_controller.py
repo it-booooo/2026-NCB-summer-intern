@@ -93,8 +93,8 @@ class LedControllerMixin:
         try:
             scan_start_sec, scan_end_sec, scan_start_frame, scan_end_frame = (
                 self.sync_panel.led_scan_range_sec(
-                    self.video_player.fps,
-                    self.video_player.total_frames,
+                    self.video_state.metadata.using_fps,
+                    self.video_state.metadata.total_frames,
                 )
             )
         except ValueError as error:
@@ -152,10 +152,10 @@ class LedControllerMixin:
         )
         self.sync_panel.begin_led_detection_progress()
         self.led_worker = LedDetectionWorker(
-            video_path=self.video_player.video_path,
+            video_path=self.video_state.metadata.path,
             roi=self.led_state.roi,
-            rotate_180=self.video_player.rotate_180_enabled,
-            fps=self.video_player.fps,
+            rotate_180=self.video_state.rotate_180_enabled,
+            fps=self.video_state.metadata.using_fps,
             scan_start_frame=scan_start_frame,
             scan_end_frame=scan_end_frame,
             detect_multiple=detect_multiple,
@@ -197,13 +197,13 @@ class LedControllerMixin:
             scan_end_frame: Input used by this operation.
         """
         return (
-            self.video_player.video_path,
+            self.video_state.metadata.path,
             tuple(self.led_state.roi) if self.led_state.roi is not None else None,
-            bool(self.video_player.rotate_180_enabled),
-            float(self.video_player.fps or 0.0),
+            bool(self.video_state.rotate_180_enabled),
+            float(self.video_state.metadata.using_fps or 0.0),
             int(scan_start_frame),
             int(scan_end_frame),
-            coarse_scan_step_for_fps(self.video_player.fps),
+            coarse_scan_step_for_fps(self.video_state.metadata.using_fps),
         )
 
     def stop_led_detection(self, wait=False):

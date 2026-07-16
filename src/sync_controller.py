@@ -78,7 +78,7 @@ class SyncControllerMixin:
         self.event_table.add_event(
             event_type=event_type,
             video_time_sec=self.video_player.current_time_sec(),
-            frame_index=self.video_player.current_frame,
+            frame_index=self.video_state.current_frame,
             note="",
         )
 
@@ -143,7 +143,7 @@ class SyncControllerMixin:
             return None
 
         first_led_event = min(led_events, key=lambda event: event["frame_index"])
-        if self.video_player.has_video() and self.video_player.fps:
+        if self.video_player.has_video() and self.video_state.metadata.using_fps:
             return self.video_player.frame_to_time_sec(first_led_event["frame_index"])
 
         return first_led_event["video_time_sec"]
@@ -180,7 +180,7 @@ class SyncControllerMixin:
             self.clear_time_offset()
             return
 
-        previous_video_origin_sec = self.video_player.sync_time_origin_sec
+        previous_video_origin_sec = self.sync_state.video_time_origin_sec
         self.sync_state.time_offset_sec = video_led_sec - ttl_marker_sec
         self.video_player.set_sync_time_origin(video_led_sec)
         self.lfp_panel.set_sync_time_origin(ttl_marker_sec)
@@ -245,5 +245,5 @@ class SyncControllerMixin:
         record_time_sec = video_time_sec - self.sync_state.time_offset_sec
         self.lfp_panel.set_current_time_marker(
             record_time_sec,
-            follow_playback=self.video_player.is_playing,
+            follow_playback=self.video_state.is_playing,
         )
