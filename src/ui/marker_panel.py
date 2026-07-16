@@ -1,5 +1,6 @@
 from PySide6.QtWidgets import (
     QGridLayout,
+    QMessageBox,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -10,13 +11,12 @@ class MarkerPanel(QWidget):
     def __init__(
         self,
         event_table,
-        add_event_callback,
-        select_led_roi_callback,
+        video_player,
     ):
         super().__init__()
 
         self.event_table = event_table
-        self.add_event_callback = add_event_callback
+        self.video_player = video_player
 
         led_on_button = QPushButton("LED On")
         led_off_button = QPushButton("LED Off")
@@ -41,12 +41,12 @@ class MarkerPanel(QWidget):
 
         select_roi_button.setToolTip("Select LED area and run brightness detection")
 
-        led_on_button.clicked.connect(lambda: self.add_event_callback("LED_on"))
-        led_off_button.clicked.connect(lambda: self.add_event_callback("LED_off"))
-        select_roi_button.clicked.connect(select_led_roi_callback)
-        behavior_start_button.clicked.connect(lambda: self.add_event_callback("behavior_start"))
-        behavior_end_button.clicked.connect(lambda: self.add_event_callback("behavior_end"))
-        seizure_button.clicked.connect(lambda: self.add_event_callback("seizure_like_event"))
+        led_on_button.clicked.connect(lambda: self.add_event("LED_on"))
+        led_off_button.clicked.connect(lambda: self.add_event("LED_off"))
+        select_roi_button.clicked.connect(self.select_led_roi)
+        behavior_start_button.clicked.connect(lambda: self.add_event("behavior_start"))
+        behavior_end_button.clicked.connect(lambda: self.add_event("behavior_end"))
+        seizure_button.clicked.connect(lambda: self.add_event("seizure_like_event"))
         edit_button.clicked.connect(self.event_table.edit_selected_event)
         delete_button.clicked.connect(self.event_table.delete_selected_rows)
 
@@ -72,3 +72,24 @@ class MarkerPanel(QWidget):
         layout.addWidget(self.event_table)
 
         self.setLayout(layout)
+
+    def add_event(self, event_type):
+        """Add a manual event at the current video position."""
+        if not self.video_player.has_video():
+            QMessageBox.warning(self, "No video", "Please import a video first.")
+            return
+
+        self.event_table.add_event(
+            event_type=event_type,
+            video_time_sec=self.video_player.current_time_sec(),
+            frame_index=self.video_player.current_frame,
+            note="",
+        )
+
+    def select_led_roi(self):
+        """Start LED ROI selection for the loaded video."""
+        if not self.video_player.has_video():
+            QMessageBox.warning(self, "No video", "Please import a video first.")
+            return
+
+        self.video_player.start_roi_selection()

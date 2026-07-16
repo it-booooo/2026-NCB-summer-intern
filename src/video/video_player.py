@@ -117,7 +117,6 @@ class RoiVideoLabel(QLabel):
         """
         self.display_rect = display_rect
         self.frame_size = frame_size
-        self.update()
 
     def mousePressEvent(self, event):
         """Perform ``mousePressEvent``.
@@ -303,6 +302,7 @@ class VideoPlayer(QWidget):
 
         self.cap = None
         self.current_pixmap = None
+        self._display_update_pending = False
 
         self.video_label = RoiVideoLabel("No video loaded", self.led_state)
         self.video_label.setAlignment(Qt.AlignCenter)
@@ -1096,6 +1096,19 @@ class VideoPlayer(QWidget):
         # 讓 QLabel 的 paintEvent 重新把 LED ROI 畫上去。
         self.video_label.update()
 
+    def schedule_video_display_update(self):
+        """Refresh after Qt has completed the active resize/paint event."""
+        if self._display_update_pending:
+            return
+
+        self._display_update_pending = True
+
+        def refresh_display():
+            self._display_update_pending = False
+            self.update_video_display()
+
+        QTimer.singleShot(0, refresh_display)
+
     def resizeEvent(self, event):
         """Perform ``resizeEvent``.
 
@@ -1106,4 +1119,4 @@ class VideoPlayer(QWidget):
             The value produced by this function, if any.
         """
         super().resizeEvent(event)
-        self.update_video_display()
+        self.schedule_video_display_update()
