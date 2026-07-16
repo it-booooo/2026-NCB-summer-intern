@@ -1,7 +1,5 @@
 from .. import charts as draw
-import numpy as np
 from .. import signal_data as signal_func
-from ..signal_data import readers as read
 from ..charts.chart_helpers import (
     clamp_xlim,
     format_signal_label,
@@ -1001,26 +999,18 @@ class LfpPanel(LfpAnalysisMixin, QWidget):
             right: Input used by this operation.
             settings: Configuration settings for this operation.
         """
-        data = read.read_signal_csv(self.data_state.lfp_info["path"], requested_channels=[channel])
-        column = f"channel_{channel}"
-        if column not in data:
-            raise ValueError(f"LFP CSV does not include channel {channel}.")
+        return self.ensure_lfp_dataset().segment(channel, left, right, settings)
 
-        time_us = data["time_us"].to_numpy(dtype=float)
-        values = data[column].to_numpy(dtype=float)
-        sample_rate_hz = signal_func.sample_rate_for_channel(
-            self.data_state.lfp_info,
-            time_us,
-            channel,
-        )
-        return signal_func.prepare_lfp_segment(
-            time_us,
-            values,
-            sample_rate_hz,
-            left,
-            right,
-            settings,
-        )
+    def ensure_lfp_dataset(self):
+        """Return the dataset for the imported file, loading it only once."""
+        info = self.data_state.lfp_info
+        if not (info and info.get("path")):
+            raise ValueError("Please import LFP CSV data first.")
+        dataset = self.data_state.lfp_dataset
+        if dataset is None or dataset.info.get("path") != info.get("path"):
+            dataset = signal_func.LfpDataset.from_csv(info)
+            self.data_state.lfp_dataset = dataset
+        return dataset
 
     def plot_lfp(self):
         """Plot lfp.
@@ -1040,6 +1030,7 @@ class LfpPanel(LfpAnalysisMixin, QWidget):
                     channels=channel,
                     step=self.data_state.lfp_step,
                     filter_settings=self.current_lfp_filter_settings(),
+                    dataset=self.ensure_lfp_dataset(),
                 )
                 created_figure = True
             elif self.lfp_fig is not None and channel is not None:
@@ -1100,6 +1091,7 @@ class LfpPanel(LfpAnalysisMixin, QWidget):
             info: Metadata or state information to store or use.
         """
         self.data_state.lfp_info = info
+        self.data_state.lfp_dataset = None
         self.lfp_fig = None
         self.lfp_callback_connected = False
         self.lfp_file_label.setText(f"LFP CSV: {info['filename']}")

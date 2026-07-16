@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from .signal_data import LfpDataset
     from .video_player.video_helpers import VideoMetadata
 
 
@@ -30,6 +31,7 @@ class DataState:
     """Imported LFP/3-axis data and cross-component plotting settings."""
 
     lfp_info: dict[str, Any] | None = None
+    lfp_dataset: LfpDataset | None = None
     axis_info: dict[str, Any] | None = None
     lfp_step: int | None = None
     axis_step: int | None = None

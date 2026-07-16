@@ -17,9 +17,10 @@ from .lfp_processing import (
     prepare_lfp_signal,
     sample_rate_for_channel,
 )
+from .lfp_dataset import LfpDataset
 
 __all__ = [
-    "LfpFilterSettings", "LfpSegment", "compute_power_spectrum",
+    "LfpDataset", "LfpFilterSettings", "LfpSegment", "compute_power_spectrum",
     "compute_time_frequency", "filter_description", "parse_lfp_csv_info",
     "parse_signal_csv_metadata", "parse_signal_csv_units",
     "parse_time_marker_csv_info", "prepare_lfp_segment", "prepare_lfp_signal",

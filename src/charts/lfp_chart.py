@@ -6,7 +6,6 @@ from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 
 from .. import signal_data as signal_func
-from ..signal_data import readers as read
 from .chart_helpers import format_signal_label, install_x_navigation, resolve_plot_step
 
 
@@ -41,6 +40,7 @@ def LFP(
     step: int | None = None,
     info: dict | None = None,
     filter_settings: signal_func.LfpFilterSettings | None = None,
+    dataset: signal_func.LfpDataset | None = None,
 ) -> LfpFigure:
     """Initialize the LFP plotting component.
 
@@ -61,7 +61,9 @@ def LFP(
     if not input_file.is_file():
         raise FileNotFoundError(f"LFP CSV file not found: {input_file}")
 
-    data = read.read_signal_csv(str(input_file))
+    if dataset is None:
+        dataset = signal_func.LfpDataset.from_csv(info)
+    data = dataset.data
 
     time_s = data["time_us"].to_numpy(dtype=float) / 1e6
 
@@ -72,12 +74,7 @@ def LFP(
         plot_index = slice(None, None, plot_step)
     x = time_s[plot_index]
 
-    channel_numbers = info.get("channels") or [
-        int(column.removeprefix("channel_"))
-        for column in data.columns
-        if column.startswith("channel_")
-    ]
-    channel_numbers = [int(channel) for channel in channel_numbers]
+    channel_numbers = dataset.channels
 
     if channels is None:
         selected_channel = channel_numbers[0]
@@ -105,18 +102,9 @@ def LFP(
     show_filtered = bool(filter_settings and filter_settings.show_filtered)
 
     for channel in channel_numbers:
-        sample_rate_hz = signal_func.sample_rate_for_channel(
-            info,
-            data["time_us"],
-            channel,
-        )
-        raw_values = data[f"channel_{channel}"].to_numpy(dtype=float)
+        raw_values = dataset.signal_values(channel)
         filtered_settings = _filter_settings_for_view(filter_settings, True)
-        filtered_values = signal_func.prepare_lfp_signal(
-            raw_values,
-            sample_rate_hz,
-            filtered_settings,
-        )
+        filtered_values = dataset.signal_values(channel, filtered_settings)
         for filtered, signal_values in ((False, raw_values), (True, filtered_values)):
             line = ax.plot(
                 x,

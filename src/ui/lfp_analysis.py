@@ -2,12 +2,18 @@
 
 import numpy as np
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QDialog, QDoubleSpinBox, QLabel, QMessageBox, QVBoxLayout
+from PySide6.QtWidgets import (
+    QDialog,
+    QDoubleSpinBox,
+    QLabel,
+    QMessageBox,
+    QScrollArea,
+    QVBoxLayout,
+)
 from matplotlib.figure import Figure
 
 from .. import signal_data as signal_func
 from ..charts.chart_helpers import format_signal_label, resolve_plot_step
-from ..signal_data import readers as read
 from ..synchronization.time_conversion import relative_time
 
 
@@ -40,8 +46,8 @@ class LfpAnalysisMixin:
         if not (self.data_state.lfp_info and self.data_state.lfp_info.get("path")):
             raise ValueError("Please import LFP CSV data first.")
     
-        data = read.read_signal_csv(self.data_state.lfp_info["path"])
-        time_s = data["time_us"].to_numpy(dtype=float) / 1e6
+        dataset = self.ensure_lfp_dataset()
+        time_s = dataset.record_time_s
         if time_s.size == 0:
             raise ValueError("LFP CSV does not contain samples.")
     
@@ -188,8 +194,6 @@ class LfpAnalysisMixin:
         dialog = QDialog(self)
         dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         dialog.setWindowTitle(title)
-        dialog.resize(*size)
-    
         display_left = relative_time(left, self.sync_state.record_time_origin_sec)
         display_right = relative_time(right, self.sync_state.record_time_origin_sec)
         time_mode = "sync time" if self.sync_state.record_time_origin_sec is not None else "time"
@@ -200,10 +204,26 @@ class LfpAnalysisMixin:
         )
     
         canvas = FigureCanvas(figure)
+        canvas_width = round(figure.get_figwidth() * figure.dpi)
+        canvas_height = round(figure.get_figheight() * figure.dpi)
+        canvas.setMinimumSize(canvas_width, canvas_height)
+
+        scroll_area = QScrollArea()
+        scroll_area.setWidget(canvas)
+        scroll_area.setWidgetResizable(False)
+
         layout = QVBoxLayout()
         layout.addWidget(status)
-        layout.addWidget(canvas)
+        layout.addWidget(scroll_area)
         dialog.setLayout(layout)
+
+        available = dialog.screen().availableGeometry()
+        desired_width = canvas_width + 50
+        desired_height = canvas_height + status.sizeHint().height() + 70
+        dialog.resize(
+            min(desired_width, max(size[0], round(available.width() * 0.9))),
+            min(desired_height, max(size[1], round(available.height() * 0.9))),
+        )
     
         self.spectrum_dialogs.append(dialog)
         dialog.destroyed.connect(
@@ -230,11 +250,11 @@ class LfpAnalysisMixin:
         """
         figure = Figure(figsize=(7.6, 4.4), constrained_layout=True)
         ax = figure.add_subplot(111)
-        positive_power = np.maximum(power, np.finfo(float).tiny)
-        ax.semilogy(frequencies, positive_power, linewidth=0.8, color="#1f77b4")
+        power_db = 10.0 * np.log10(np.maximum(power, np.finfo(float).tiny))
+        ax.plot(frequencies, power_db, linewidth=0.8, color="#1f77b4")
         ax.set_title(f"LFP Power Spectrum - Channel {channel}")
         ax.set_xlabel("Frequency (Hz)")
-        ax.set_ylabel("Power spectral density")
+        ax.set_ylabel("PSD (dB/Hz)")
         ax.grid(True, linewidth=0.4, alpha=0.35)
         return figure
     
@@ -321,7 +341,11 @@ class LfpAnalysisMixin:
             power: Input used by this operation.
             time_mode: Input used by this operation.
         """
-        figure = Figure(figsize=(8.0, 4.8), constrained_layout=True)
+        duration_sec = abs(
+            float(segment.record_time_s[-1]) - float(segment.record_time_s[0])
+        )
+        figure_width = min(24.0, 8.0 + duration_sec / 120.0)
+        figure = Figure(figsize=(figure_width, 4.8), constrained_layout=True)
         ax = figure.add_subplot(111)
         plot_times = times + relative_time(
             float(segment.record_time_s[0]), self.sync_state.record_time_origin_sec
