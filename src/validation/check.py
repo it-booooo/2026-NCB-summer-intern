@@ -111,11 +111,27 @@ def check(info: dict, output_path: str | Path | None = None) -> Path:
 
 
 def default_output_path(file_path: Path) -> Path:
+    """Perform ``default_output_path``.
+
+    Args:
+        file_path: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     output_dir = file_path.parent.parent / "output_data"
     return output_dir / f"{file_path.stem}_check_report.csv"
 
 
 def first_sample_rate(info: dict) -> float:
+    """Perform ``first_sample_rate``.
+
+    Args:
+        info: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     sample_rate = info.get("sample_rates", [None])[0]
     if sample_rate is None:
         raise ValueError("Sample Rate not found")
@@ -123,6 +139,16 @@ def first_sample_rate(info: dict) -> float:
 
 
 def channel_label(column_index: int, channels: list[int], column_name: str) -> str:
+    """Perform ``channel_label``.
+
+    Args:
+        column_index: Input accepted by this function.
+        channels: Input accepted by this function.
+        column_name: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     if column_index == 0:
         return "Time[us]"
 
@@ -134,6 +160,14 @@ def channel_label(column_index: int, channels: list[int], column_name: str) -> s
 
 
 def find_data_header(file_path: Path) -> tuple[int, int]:
+    """Perform ``find_data_header``.
+
+    Args:
+        file_path: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     with file_path.open("r", encoding="utf-8-sig", newline="") as file:
         reader = csv.reader(file)
         for row_num, row in enumerate(reader):

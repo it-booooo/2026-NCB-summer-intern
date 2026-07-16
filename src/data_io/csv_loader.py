@@ -10,6 +10,15 @@ from ..time_utils import record_time_parts
 
 
 def read_csv_preview(path, max_rows=8):
+    """Describe read_csv_preview.
+
+    Args:
+        path: Input accepted by this function.
+        max_rows: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     rows = []
 
     with open(path, "r", encoding="utf-8-sig", newline="") as csv_file:
@@ -25,6 +34,14 @@ def read_csv_preview(path, max_rows=8):
 
 
 def parse_signal_csv_metadata(path):
+    """Describe parse_signal_csv_metadata.
+
+    Args:
+        path: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     channels = []
     sample_rates = []
     header_row = None
@@ -59,6 +76,14 @@ def parse_signal_csv_metadata(path):
 
 
 def parse_lfp_csv_info(path):
+    """Describe parse_lfp_csv_info.
+
+    Args:
+        path: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     metadata = parse_signal_csv_metadata(path)
     channels = metadata["channels"]
     units = parse_signal_csv_units(path)
@@ -77,6 +102,14 @@ def parse_lfp_csv_info(path):
 
 
 def parse_signal_csv_units(path):
+    """Describe parse_signal_csv_units.
+
+    Args:
+        path: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     rows = read_csv_preview(path, max_rows=8)
     value_unit = ""
 
@@ -98,6 +131,14 @@ def parse_signal_csv_units(path):
 
 
 def normalize_unit(unit):
+    """Describe normalize_unit.
+
+    Args:
+        unit: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     unit = unit.strip()
     if not unit:
         return ""
@@ -126,6 +167,14 @@ def _time_marker_info(path, time_column_name=None, markers=None):
 
 
 def parse_time_marker_csv_info(path):
+    """Describe parse_time_marker_csv_info.
+
+    Args:
+        path: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     rows = []
     with open(path, "r", encoding="utf-8-sig", newline="") as csv_file:
         rows = list(csv.reader(csv_file))

@@ -1,4 +1,15 @@
 def format_led_detection_status(points, threshold, events, stats):
+    """Perform ``format_led_detection_status``.
+
+    Args:
+        points: Input accepted by this function.
+        threshold: Input accepted by this function.
+        events: Input accepted by this function.
+        stats: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     stats = stats or {}
     interval_count = stats.get("event_count", len(events or []) // 2)
     mode_label = stats.get("mode_label", "Frame delta")
@@ -32,6 +43,14 @@ def format_led_detection_status(points, threshold, events, stats):
 
 
 def format_timing_status(stats):
+    """Perform ``format_timing_status``.
+
+    Args:
+        stats: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     return (
         f" | scan={stats.get('scan_elapsed_sec', 0.0):.1f}s"
         f" detect={stats.get('detect_elapsed_sec', 0.0):.1f}s"
@@ -39,6 +58,14 @@ def format_timing_status(stats):
 
 
 def format_acceleration_status(stats):
+    """Perform ``format_acceleration_status``.
+
+    Args:
+        stats: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     backend = stats.get("brightness_backend")
     status = ""
     if backend == "opencl":

@@ -80,15 +80,39 @@ class TtlPanel(QWidget):
 
     @property
     def info(self):
+        """Describe info.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         if self.sync_state.time_marker_info is None:
             return self.empty_info()
         return self.sync_state.time_marker_info
 
     @info.setter
     def info(self, info):
+        """Describe info.
+
+        Args:
+            info: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.sync_state.time_marker_info = info
 
     def empty_info(self):
+        """Describe empty_info.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         return {
             "path": None,
             "filename": "Manual TTL",
@@ -99,10 +123,26 @@ class TtlPanel(QWidget):
         }
 
     def set_markers(self, info):
+        """Describe set_markers.
+
+        Args:
+            info: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.info = info
         self.refresh_table()
 
     def paused_video_time_for_ttl(self):
+        """Describe paused_video_time_for_ttl.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         if self.video_player is None or not self.video_player.has_video():
             raise ValueError("Please import a video or enter a TTL time manually.")
         if self.video_player.is_playing:
@@ -110,6 +150,14 @@ class TtlPanel(QWidget):
         return self.video_player.current_time_sec()
 
     def add_ttl_marker(self):
+        """Describe add_ttl_marker.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         text = self.record_time_input.text().strip()
 
         if text:
@@ -141,6 +189,14 @@ class TtlPanel(QWidget):
         self.markers_changed.emit(self.info)
 
     def remove_selected_marker(self):
+        """Describe remove_selected_marker.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         selected_rows = self.table.selectionModel().selectedRows()
         if not selected_rows:
             QMessageBox.information(
@@ -179,6 +235,14 @@ class TtlPanel(QWidget):
         }
 
     def parse_record_time_us(self, text):
+        """Describe parse_record_time_us.
+
+        Args:
+            text: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         if not text:
             raise ValueError("Please enter a TTL record time.")
 
@@ -209,6 +273,14 @@ class TtlPanel(QWidget):
         return int((seconds * 1_000_000).to_integral_value(rounding=ROUND_HALF_UP))
 
     def create_record_time_marker(self, record_time):
+        """Describe create_record_time_marker.
+
+        Args:
+            record_time: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         return {
             "local_time_us": None,
             "local_time": None,
@@ -218,6 +290,14 @@ class TtlPanel(QWidget):
         }
 
     def refresh_table(self):
+        """Describe refresh_table.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.table.setRowCount(0)
 
         markers = self.info.get("markers", [])

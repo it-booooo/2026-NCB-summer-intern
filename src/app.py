@@ -85,57 +85,172 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
 
     @property
     def lfp_info(self):
+        """Perform ``lfp_info``.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         return self.data_state.lfp_info
 
     @lfp_info.setter
     def lfp_info(self, info):
+        """Perform ``lfp_info``.
+
+        Args:
+            info: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.data_state.lfp_info = info
 
     @property
     def axis_info(self):
+        """Perform ``axis_info``.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         return self.data_state.axis_info
 
     @axis_info.setter
     def axis_info(self, info):
+        """Perform ``axis_info``.
+
+        Args:
+            info: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.data_state.axis_info = info
 
     @property
     def timeMarker_info(self):
+        """Perform ``timeMarker_info``.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         return self.sync_state.time_marker_info
 
     @timeMarker_info.setter
     def timeMarker_info(self, info):
+        """Perform ``timeMarker_info``.
+
+        Args:
+            info: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.sync_state.time_marker_info = info
 
     @property
     def led_roi(self):
+        """Perform ``led_roi``.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         return self.led_state.roi
 
     @led_roi.setter
     def led_roi(self, roi):
+        """Perform ``led_roi``.
+
+        Args:
+            roi: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.led_state.roi = roi
 
     @property
     def led_brightness_cache(self):
+        """Perform ``led_brightness_cache``.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         return self.led_state.brightness_cache
 
     @property
     def time_offset_sec(self):
+        """Perform ``time_offset_sec``.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         return self.sync_state.time_offset_sec
 
     @time_offset_sec.setter
     def time_offset_sec(self, value):
+        """Perform ``time_offset_sec``.
+
+        Args:
+            value: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.sync_state.time_offset_sec = value
 
     @property
     def loading_video(self):
+        """Perform ``loading_video``.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         return self.sync_state.loading_video
 
     @loading_video.setter
     def loading_video(self, loading):
+        """Perform ``loading_video``.
+
+        Args:
+            loading: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.sync_state.loading_video = bool(loading)
 
     def add_action(self, menu, text, callback, description=""):
+        """Perform ``add_action``.
+
+        Args:
+            menu: Input accepted by this function.
+            text: Input accepted by this function.
+            callback: Input accepted by this function.
+            description: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         action = QAction(text, self)
         action.triggered.connect(callback)
         if description:
@@ -145,6 +260,16 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
         return action
 
     def create_group(self, title, widget, margins=(6, 6, 6, 6)):
+        """Perform ``create_group``.
+
+        Args:
+            title: Input accepted by this function.
+            widget: Input accepted by this function.
+            margins: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         group = QGroupBox(title)
         layout = QVBoxLayout()
         layout.setContentsMargins(*margins)
@@ -153,6 +278,14 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
         return group
 
     def create_menu(self):
+        """Perform ``create_menu``.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         menu_bar = self.menuBar()
         file_menu = menu_bar.addMenu("File")
         settings_menu = menu_bar.addMenu("Settings")
@@ -192,6 +325,15 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
         )
 
     def ask_step(self, title, current_step):
+        """Perform ``ask_step``.
+
+        Args:
+            title: Input accepted by this function.
+            current_step: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         step, accepted = QInputDialog.getInt(
             self,
             title,
@@ -206,6 +348,14 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
         return True, None if step == -1 else step
 
     def set_plot_step(self, plot_name):
+        """Perform ``set_plot_step``.
+
+        Args:
+            plot_name: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         title, step_attribute = {
             "lfp": ("Set LFP step", "lfp_step"),
             "axis": ("Set 3-axis step", "axis_step"),
@@ -217,6 +367,14 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
             self.lfp_panel.set_plot_step(plot_name, step)
 
     def set_power_noise_frequency(self):
+        """Perform ``set_power_noise_frequency``.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         items = ["60 Hz", "50 Hz"]
         values = [60.0, 50.0]
         current_index = 1 if self.lfp_panel.line_noise_hz == 50.0 else 0
@@ -232,6 +390,14 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
             self.lfp_panel.set_line_noise_hz(values[items.index(text)])
 
     def create_layout(self):
+        """Perform ``create_layout``.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         lfp_group = self.create_group(
             "Waveform Area",
             self.lfp_panel,
@@ -274,6 +440,14 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
         self.setCentralWidget(main_content)
 
     def closeEvent(self, event):
+        """Perform ``closeEvent``.
+
+        Args:
+            event: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         if self.stop_led_detection(wait=True):
             event.accept()
             return

@@ -2,6 +2,15 @@ import csv
 
 
 def export_events_csv(path, events):
+    """Describe export_events_csv.
+
+    Args:
+        path: Input accepted by this function.
+        events: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     # 使用 utf-8-sig，讓含有非 ASCII 內容的 CSV 可由 Excel 正確辨識。
     fieldnames = ["event_type", "video_time_sec", "frame_index", "note"]
     with open(path, "w", newline="", encoding="utf-8-sig") as csv_file:
@@ -17,6 +26,15 @@ def export_events_csv(path, events):
 
 
 def export_events_excel(path, events):
+    """Describe export_events_excel.
+
+    Args:
+        path: Input accepted by this function.
+        events: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     from openpyxl import Workbook
     workbook = Workbook()
     sheet = workbook.active

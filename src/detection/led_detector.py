@@ -33,6 +33,15 @@ class LedChangePoint:
 
 
 def apply_roi(frame_bgr, roi=None):
+    """Describe apply_roi.
+
+    Args:
+        frame_bgr: Input accepted by this function.
+        roi: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     if roi is None:
         return frame_bgr
 
@@ -41,6 +50,15 @@ def apply_roi(frame_bgr, roi=None):
 
 
 def resize_roi_by_scale(frame_bgr, scale=0.5):
+    """Describe resize_roi_by_scale.
+
+    Args:
+        frame_bgr: Input accepted by this function.
+        scale: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     if scale >= 1.0:
         return frame_bgr
 
@@ -56,6 +74,15 @@ def resize_roi_by_scale(frame_bgr, scale=0.5):
 
 
 def mean_brightness(frame_bgr, roi=None):
+    """Describe mean_brightness.
+
+    Args:
+        frame_bgr: Input accepted by this function.
+        roi: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     frame_bgr = apply_roi(frame_bgr, roi)
 
     if frame_bgr.size == 0:
@@ -78,6 +105,23 @@ def compute_led_brightness_curve(
     progress_callback=None,
     acceleration_info=None,
 ):
+    """Describe compute_led_brightness_curve.
+
+    Args:
+        video_path: Input accepted by this function.
+        roi: Input accepted by this function.
+        rotate_180: Input accepted by this function.
+        using_fps: Input accepted by this function.
+        frame_step: Input accepted by this function.
+        start_frame: Input accepted by this function.
+        end_frame: Input accepted by this function.
+        should_stop: Input accepted by this function.
+        progress_callback: Input accepted by this function.
+        acceleration_info: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     if acceleration_info is not None:
         acceleration_info.clear()
 
@@ -191,6 +235,14 @@ def compute_led_brightness_curve(
 
 
 def compute_frame_deltas(points):
+    """Describe compute_frame_deltas.
+
+    Args:
+        points: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     if len(points) < 2:
         return []
 
@@ -205,6 +257,15 @@ def compute_frame_deltas(points):
 
 
 def point_for_frame(points, frame_index):
+    """Describe point_for_frame.
+
+    Args:
+        points: Input accepted by this function.
+        frame_index: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     if not points:
         return None
 
@@ -220,6 +281,16 @@ def _overlaps_ranges(start_frame, end_frame, ranges):
 
 
 def event_pair_from_deltas(points, on_delta, off_delta):
+    """Describe event_pair_from_deltas.
+
+    Args:
+        points: Input accepted by this function.
+        on_delta: Input accepted by this function.
+        off_delta: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     on_point = point_for_frame(points, on_delta.frame_index)
     off_point = point_for_frame(points, off_delta.frame_index)
 
@@ -272,6 +343,21 @@ def detect_led_event_pairs_from_frame_deltas(
     max_events=1,
     duration_weight=0.1,
 ):
+    """Describe detect_led_event_pairs_from_frame_deltas.
+
+    Args:
+        points: Input accepted by this function.
+        fps: Input accepted by this function.
+        expected_duration_sec: Input accepted by this function.
+        min_duration_sec: Input accepted by this function.
+        max_duration_sec: Input accepted by this function.
+        min_gap_sec: Input accepted by this function.
+        max_events: Input accepted by this function.
+        duration_weight: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     deltas = compute_frame_deltas(points)
     if not deltas:
         stats = _detection_stats(
@@ -368,6 +454,29 @@ def refine_led_event_pairs_from_frame_deltas(
     duration_weight=0.1,
     acceleration_info=None,
 ):
+    """Describe refine_led_event_pairs_from_frame_deltas.
+
+    Args:
+        video_path: Input accepted by this function.
+        roi: Input accepted by this function.
+        coarse_events: Input accepted by this function.
+        rotate_180: Input accepted by this function.
+        using_fps: Input accepted by this function.
+        window_sec: Input accepted by this function.
+        scan_start_frame: Input accepted by this function.
+        scan_end_frame: Input accepted by this function.
+        should_stop: Input accepted by this function.
+        expected_duration_sec: Input accepted by this function.
+        min_duration_sec: Input accepted by this function.
+        max_duration_sec: Input accepted by this function.
+        min_gap_sec: Input accepted by this function.
+        max_events: Input accepted by this function.
+        duration_weight: Input accepted by this function.
+        acceleration_info: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     max_events = max(int(max_events), 0)
     if not coarse_events or max_events == 0:
         return [], 0.0, _detection_stats(

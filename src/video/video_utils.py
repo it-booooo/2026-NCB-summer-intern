@@ -49,6 +49,16 @@ def open_video_capture(cv2, video_path):
 
 
 def parse_video_metadata(cap, path, using_fps=None):
+    """Describe parse_video_metadata.
+
+    Args:
+        cap: Input accepted by this function.
+        path: Input accepted by this function.
+        using_fps: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     import cv2
 
     if not cap.isOpened():
@@ -88,6 +98,14 @@ def parse_video_metadata(cap, path, using_fps=None):
 
 
 def fourcc_to_string(fourcc_value):
+    """Describe fourcc_to_string.
+
+    Args:
+        fourcc_value: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     if not fourcc_value:
         return "unknown"
 
@@ -99,6 +117,15 @@ def fourcc_to_string(fourcc_value):
 
 
 def read_frame(cap, frame_index):
+    """Describe read_frame.
+
+    Args:
+        cap: Input accepted by this function.
+        frame_index: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     import cv2
 
     if cap is None or not cap.isOpened():
@@ -109,6 +136,15 @@ def read_frame(cap, frame_index):
 
 
 def frame_to_time_sec(frame_index, fps):
+    """Describe frame_to_time_sec.
+
+    Args:
+        frame_index: Input accepted by this function.
+        fps: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     if not fps:
         return 0.0
 
@@ -116,6 +152,16 @@ def frame_to_time_sec(frame_index, fps):
 
 
 def time_sec_to_frame(time_sec, fps, total_frames=None):
+    """Describe time_sec_to_frame.
+
+    Args:
+        time_sec: Input accepted by this function.
+        fps: Input accepted by this function.
+        total_frames: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     if not fps:
         return 0
 
@@ -152,6 +198,14 @@ def parse_time_input(text):
 
 
 def format_time(seconds):
+    """Describe format_time.
+
+    Args:
+        seconds: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     total_ms = int(round(seconds * 1000))
 
     minutes = total_ms // 60000

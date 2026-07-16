@@ -8,16 +8,42 @@ TARGET_PLOT_POINTS = 5000
 
 
 def resolve_plot_step(data_length: int, step: int | None) -> int:
+    """Describe resolve_plot_step.
+
+    Args:
+        data_length: Input accepted by this function.
+        step: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     if step is None:
         return max(data_length // TARGET_PLOT_POINTS, 1)
     return max(int(step), 0)
 
 
 def format_signal_label(unit):
+    """Describe format_signal_label.
+
+    Args:
+        unit: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     return f"Signal ({unit})" if unit else "Signal"
 
 
 def format_time_tick(value, origin_sec=None):
+    """Describe format_time_tick.
+
+    Args:
+        value: Input accepted by this function.
+        origin_sec: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     value = relative_time(value, origin_sec)
     if abs(value) < 0.0005:
         value = 0.0
@@ -65,6 +91,16 @@ def install_x_navigation(fig, ax, full_xlim) -> XNavigation:
     xlim_callbacks: list[Callable[[tuple[float, float]], None]] = []
 
     def set_xlim(left: float, right: float, *, emit: bool = True) -> None:
+        """Describe set_xlim.
+
+        Args:
+            left: Input accepted by this function.
+            right: Input accepted by this function.
+            emit: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         next_xlim = clamp_xlim(left, right, full_xlim)
         ax.set_xlim(next_xlim)
 
@@ -75,12 +111,36 @@ def install_x_navigation(fig, ax, full_xlim) -> XNavigation:
         fig.canvas.draw_idle()
 
     def reset_x_zoom() -> None:
+        """Describe reset_x_zoom.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         set_xlim(*full_xlim)
 
     def add_xlim_callback(callback) -> None:
+        """Describe add_xlim_callback.
+
+        Args:
+            callback: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         xlim_callbacks.append(callback)
 
     def event_xdata(event) -> float | None:
+        """Describe event_xdata.
+
+        Args:
+            event: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         if event.xdata is not None:
             return float(event.xdata)
         if event.x is None or event.y is None:
@@ -88,6 +148,14 @@ def install_x_navigation(fig, ax, full_xlim) -> XNavigation:
         return float(ax.transData.inverted().transform((event.x, event.y))[0])
 
     def zoom_x(event) -> None:
+        """Describe zoom_x.
+
+        Args:
+            event: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         if event.inaxes != ax:
             return
 
@@ -115,11 +183,27 @@ def install_x_navigation(fig, ax, full_xlim) -> XNavigation:
         set_xlim(next_left, next_right)
 
     def handle_double_click(event) -> None:
+        """Describe handle_double_click.
+
+        Args:
+            event: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         if event.inaxes == ax and event.dblclick:
             reset_x_zoom()
             pan_state.clear()
 
     def start_x_pan(event) -> None:
+        """Describe start_x_pan.
+
+        Args:
+            event: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         if event.inaxes != ax or event.button != 1 or event.dblclick:
             return
 
@@ -133,6 +217,14 @@ def install_x_navigation(fig, ax, full_xlim) -> XNavigation:
         pan_state["right"] = right
 
     def drag_x_pan(event) -> None:
+        """Describe drag_x_pan.
+
+        Args:
+            event: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         if not pan_state:
             return
 
@@ -144,6 +236,14 @@ def install_x_navigation(fig, ax, full_xlim) -> XNavigation:
         set_xlim(pan_state["left"] - dx, pan_state["right"] - dx)
 
     def stop_x_pan(event) -> None:
+        """Describe stop_x_pan.
+
+        Args:
+            event: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         pan_state.clear()
 
     fig.canvas.mpl_connect("scroll_event", zoom_x)

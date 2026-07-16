@@ -45,6 +45,14 @@ class RoiPlotIndicator(QLabel):
         self.set_state("idle")
 
     def advance(self):
+        """Describe advance.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.frame_index = (self.frame_index + 1) % len(self.SPINNER_FRAMES)
         self.setText(self.SPINNER_FRAMES[self.frame_index])
 
@@ -190,49 +198,146 @@ class SyncPanel(QWidget):
 
     @property
     def analysis_points(self):
+        """Describe analysis_points.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         return self.led_state.analysis_points
 
     @analysis_points.setter
     def analysis_points(self, points):
+        """Describe analysis_points.
+
+        Args:
+            points: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.led_state.analysis_points = points
 
     @property
     def analysis_threshold(self):
+        """Describe analysis_threshold.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         return self.led_state.analysis_threshold
 
     @analysis_threshold.setter
     def analysis_threshold(self, threshold):
+        """Describe analysis_threshold.
+
+        Args:
+            threshold: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.led_state.analysis_threshold = float(threshold)
 
     @property
     def analysis_events(self):
+        """Describe analysis_events.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         return self.led_state.analysis_events
 
     @analysis_events.setter
     def analysis_events(self, events):
+        """Describe analysis_events.
+
+        Args:
+            events: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.led_state.analysis_events = events
 
     @property
     def analysis_stats(self):
+        """Describe analysis_stats.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         return self.led_state.analysis_stats
 
     @analysis_stats.setter
     def analysis_stats(self, stats):
+        """Describe analysis_stats.
+
+        Args:
+            stats: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.led_state.analysis_stats = stats
 
     @property
     def analysis_status(self):
+        """Describe analysis_status.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         return self.led_state.analysis_status
 
     @analysis_status.setter
     def analysis_status(self, status):
+        """Describe analysis_status.
+
+        Args:
+            status: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.led_state.analysis_status = status
 
     def set_embedded_panels(self, ttl_group, marker_group):
+        """Describe set_embedded_panels.
+
+        Args:
+            ttl_group: Input accepted by this function.
+            marker_group: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.embedded_panels_layout.addWidget(ttl_group, stretch=1)
         self.embedded_panels_layout.addWidget(marker_group, stretch=1)
 
     def set_led_roi(self, roi):
+        """Describe set_led_roi.
+
+        Args:
+            roi: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.led_state.roi = roi
         x, y, width, height = roi
         self.led_roi_label.setText(
@@ -240,6 +345,14 @@ class SyncPanel(QWidget):
         )
 
     def format_scan_input(self, widget):
+        """Describe format_scan_input.
+
+        Args:
+            widget: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         text = widget.text().strip()
         if not text:
             widget.setStyleSheet("")
@@ -255,17 +368,42 @@ class SyncPanel(QWidget):
         return True
 
     def normalize_led_scan_range_inputs(self):
+        """Describe normalize_led_scan_range_inputs.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         start_ok = self.format_scan_input(self.led_scan_start_input)
         end_ok = self.format_scan_input(self.led_scan_end_input)
         if start_ok and end_ok:
             self.mark_scan_range_valid(True)
 
     def mark_scan_range_valid(self, is_valid):
+        """Describe mark_scan_range_valid.
+
+        Args:
+            is_valid: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         style = "" if is_valid else "border: 1px solid #c0392b;"
         self.led_scan_start_input.setStyleSheet(style)
         self.led_scan_end_input.setStyleSheet(style)
 
     def led_scan_range_sec(self, fps, total_frames):
+        """Describe led_scan_range_sec.
+
+        Args:
+            fps: Input accepted by this function.
+            total_frames: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         start_text = self.led_scan_start_input.text().strip()
         end_text = self.led_scan_end_input.text().strip()
 
@@ -302,9 +440,25 @@ class SyncPanel(QWidget):
         return start_sec, end_sec, scan_start_frame, scan_end_frame
 
     def detect_multiple_led_events(self):
+        """Describe detect_multiple_led_events.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         return self.detect_multiple_led_checkbox.isChecked()
 
     def set_roi_plot_idle(self):
+        """Describe set_roi_plot_idle.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.analysis_points = None
         self.analysis_threshold = 0.0
         self.analysis_events = None
@@ -317,6 +471,18 @@ class SyncPanel(QWidget):
         self.led_progress_label.setText("LED analysis: Not started")
 
     def set_led_analysis(self, points, threshold, events, stats=None, status=None):
+        """Describe set_led_analysis.
+
+        Args:
+            points: Input accepted by this function.
+            threshold: Input accepted by this function.
+            events: Input accepted by this function.
+            stats: Input accepted by this function.
+            status: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.analysis_points = list(points or [])
         self.analysis_threshold = float(threshold or 0.0)
         self.analysis_events = list(events or [])
@@ -333,6 +499,14 @@ class SyncPanel(QWidget):
         self.analysis_info_button.setEnabled(True)
 
     def show_analysis_info(self):
+        """Describe show_analysis_info.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         if self.analysis_status is None:
             return
 
@@ -408,6 +582,14 @@ class SyncPanel(QWidget):
         dialog.exec()
 
     def begin_led_detection_progress(self):
+        """Describe begin_led_detection_progress.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.set_roi_plot_idle()
         self.roi_plot_indicator.set_state("rendering")
         self.led_progress_bar.setRange(0, 100)
@@ -415,6 +597,15 @@ class SyncPanel(QWidget):
         self.led_progress_label.setText("Analyzing LED ROI: 0%")
 
     def update_led_detection_progress(self, current_frame, total_frames):
+        """Describe update_led_detection_progress.
+
+        Args:
+            current_frame: Input accepted by this function.
+            total_frames: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         if total_frames <= 0:
             self.led_progress_bar.setRange(0, 0)
             self.led_progress_label.setText(
@@ -430,6 +621,14 @@ class SyncPanel(QWidget):
         )
 
     def finish_led_detection_progress(self, has_events=True):
+        """Describe finish_led_detection_progress.
+
+        Args:
+            has_events: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.led_progress_bar.setRange(0, 100)
         self.led_progress_bar.setValue(100)
         self.led_progress_label.setText(
@@ -439,19 +638,51 @@ class SyncPanel(QWidget):
         )
 
     def set_led_detection_stage(self, text):
+        """Describe set_led_detection_stage.
+
+        Args:
+            text: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.led_detection_label.setText(f"LED detection: {text}")
         self.led_progress_bar.setRange(0, 0)
         self.led_progress_label.setText(text)
 
     def fail_led_detection_progress(self):
+        """Describe fail_led_detection_progress.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.roi_plot_indicator.set_state("failed")
         self.led_progress_bar.setRange(0, 100)
         self.led_progress_bar.setValue(0)
         self.led_progress_label.setText("LED analysis failed")
 
     def set_led_detection_status(self, text):
+        """Describe set_led_detection_status.
+
+        Args:
+            text: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.led_detection_label.setText(text)
         self.led_detection_label.setToolTip(text)
 
     def set_offset(self, offset_sec):
+        """Describe set_offset.
+
+        Args:
+            offset_sec: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.offset_label.setText(f"Time offset (video - TTL): {offset_sec:.6f} sec")

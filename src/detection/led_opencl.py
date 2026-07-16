@@ -379,6 +379,14 @@ def _batch_capacity(runtime, frame_bytes, frame_step, sample_count):
 
 
 def opencl_status():
+    """Describe opencl_status.
+
+    Args:
+        None.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     try:
         runtime = _opencl_runtime()
     except OpenClUnavailable as error:
@@ -473,6 +481,23 @@ def compute_led_brightness_curve_opencl(
     progress_callback=None,
     acceleration_info=None,
 ):
+    """Describe compute_led_brightness_curve_opencl.
+
+    Args:
+        video_path: Input accepted by this function.
+        roi: Input accepted by this function.
+        rotate_180: Input accepted by this function.
+        using_fps: Input accepted by this function.
+        frame_step: Input accepted by this function.
+        start_frame: Input accepted by this function.
+        end_frame: Input accepted by this function.
+        should_stop: Input accepted by this function.
+        progress_callback: Input accepted by this function.
+        acceleration_info: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     import cv2
     import numpy as np
     from ..video.video_utils import open_video_capture
@@ -566,6 +591,14 @@ def compute_led_brightness_curve_opencl(
             )
 
         def emit_progress(frame_index):
+            """Describe emit_progress.
+
+            Args:
+                frame_index: Input accepted by this function.
+
+            Returns:
+                The value produced by this function, if any.
+            """
             if progress_callback is None:
                 return
 
@@ -576,6 +609,14 @@ def compute_led_brightness_curve_opencl(
             progress_callback(completed_frames, scan_total_frames)
 
         def flush_batch():
+            """Describe flush_batch.
+
+            Args:
+                None.
+
+            Returns:
+                The value produced by this function, if any.
+            """
             nonlocal batch_count, batches_processed, frames_processed, max_batch_used
             if batch_count <= 0:
                 return

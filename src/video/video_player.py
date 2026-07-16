@@ -42,13 +42,37 @@ class RoiVideoLabel(QLabel):
 
     @property
     def saved_roi(self):
+        """Perform ``saved_roi``.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         return self.led_state.roi
 
     @saved_roi.setter
     def saved_roi(self, roi):
+        """Perform ``saved_roi``.
+
+        Args:
+            roi: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.led_state.roi = roi
 
     def set_roi_selection_enabled(self, enabled):
+        """Perform ``set_roi_selection_enabled``.
+
+        Args:
+            enabled: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.selecting_roi = enabled
         self.setMouseTracking(enabled)
         self.setCursor(Qt.CrossCursor if enabled else Qt.ArrowCursor)
@@ -58,21 +82,52 @@ class RoiVideoLabel(QLabel):
         self.update()
 
     def set_saved_roi(self, roi):
-        """儲存 LED ROI，讓方框在影片上持續顯示。"""
+        """Describe set_saved_roi.
+
+        Args:
+            roi: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.saved_roi = roi
         self.update()
 
     def clear_saved_roi(self):
-        """清除已儲存的 LED ROI。之後若需要重新框選可以用到。"""
+        """Describe clear_saved_roi.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.saved_roi = None
         self.update()
 
     def set_display_geometry(self, display_rect, frame_size):
+        """Perform ``set_display_geometry``.
+
+        Args:
+            display_rect: Input accepted by this function.
+            frame_size: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.display_rect = display_rect
         self.frame_size = frame_size
         self.update()
 
     def mousePressEvent(self, event):
+        """Perform ``mousePressEvent``.
+
+        Args:
+            event: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         if self.selecting_roi and self.display_rect.contains(event.position().toPoint()):
             self.drag_start = event.position().toPoint()
             self.drag_end = self.drag_start
@@ -81,6 +136,14 @@ class RoiVideoLabel(QLabel):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
+        """Perform ``mouseMoveEvent``.
+
+        Args:
+            event: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         if self.selecting_roi and self.drag_start is None:
             self.hover_pos = event.position().toPoint()
             self.update()
@@ -94,6 +157,14 @@ class RoiVideoLabel(QLabel):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
+        """Perform ``mouseReleaseEvent``.
+
+        Args:
+            event: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         if self.selecting_roi and self.drag_start is not None:
             self.drag_end = event.position().toPoint()
             roi = self.current_roi()
@@ -108,6 +179,14 @@ class RoiVideoLabel(QLabel):
         super().mouseReleaseEvent(event)
 
     def current_roi(self):
+        """Perform ``current_roi``.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         if not self.frame_size or self.drag_start is None or self.drag_end is None:
             return None
 
@@ -129,7 +208,14 @@ class RoiVideoLabel(QLabel):
         return (x, y, width, height)
 
     def roi_to_display_rect(self, roi):
-        """把影片原始 frame 座標的 ROI 轉成 QLabel 顯示座標。"""
+        """Describe roi_to_display_rect.
+
+        Args:
+            roi: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         if roi is None or not self.frame_size or self.display_rect.isNull():
             return None
 
@@ -150,6 +236,14 @@ class RoiVideoLabel(QLabel):
         return QRect(display_x, display_y, display_w, display_h)
 
     def paintEvent(self, event):
+        """Perform ``paintEvent``.
+
+        Args:
+            event: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         super().paintEvent(event)
 
         painter = QPainter(self)
@@ -312,79 +406,220 @@ class VideoPlayer(QWidget):
 
     @property
     def metadata(self):
+        """Perform ``metadata``.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         return self.video_state.metadata
 
     @metadata.setter
     def metadata(self, metadata):
+        """Perform ``metadata``.
+
+        Args:
+            metadata: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.video_state.metadata = metadata
 
     @property
     def video_path(self):
+        """Perform ``video_path``.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         return self.metadata.path if self.metadata is not None else ""
 
     @property
     def fps(self):
+        """Perform ``fps``.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         return self.metadata.using_fps if self.metadata is not None else None
 
     @property
     def total_frames(self):
+        """Perform ``total_frames``.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         return self.metadata.total_frames if self.metadata is not None else 0
 
     @property
     def current_frame(self):
+        """Perform ``current_frame``.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         return self.video_state.current_frame
 
     @current_frame.setter
     def current_frame(self, frame_index):
+        """Perform ``current_frame``.
+
+        Args:
+            frame_index: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.video_state.current_frame = int(frame_index)
 
     @property
     def is_playing(self):
+        """Perform ``is_playing``.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         return self.video_state.is_playing
 
     @is_playing.setter
     def is_playing(self, is_playing):
+        """Perform ``is_playing``.
+
+        Args:
+            is_playing: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.video_state.is_playing = bool(is_playing)
 
     @property
     def rotate_180_enabled(self):
+        """Perform ``rotate_180_enabled``.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         return self.video_state.rotate_180_enabled
 
     @rotate_180_enabled.setter
     def rotate_180_enabled(self, enabled):
+        """Perform ``rotate_180_enabled``.
+
+        Args:
+            enabled: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.video_state.rotate_180_enabled = bool(enabled)
 
     @property
     def sync_time_origin_sec(self):
+        """Perform ``sync_time_origin_sec``.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         return self.sync_state.video_time_origin_sec
 
     @sync_time_origin_sec.setter
     def sync_time_origin_sec(self, origin_sec):
+        """Perform ``sync_time_origin_sec``.
+
+        Args:
+            origin_sec: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.sync_state.video_time_origin_sec = origin_sec
 
     def start_roi_selection(self):
+        """Perform ``start_roi_selection``.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         if self.has_video() and self.current_pixmap is not None:
             self.pause()
             self.video_label.set_roi_selection_enabled(True)
 
     def set_led_roi_from_label(self, roi):
-        """接收 RoiVideoLabel 框選完成後送出的 ROI。"""
+        """Describe set_led_roi_from_label.
+
+        Args:
+            roi: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.set_led_roi(roi)
         self.roi_selected.emit(roi)
 
     def set_led_roi(self, roi):
-        """讓外部也可以設定 LED ROI，並確保影片上會持續顯示。"""
+        """Describe set_led_roi.
+
+        Args:
+            roi: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.led_state.roi = roi
         self.video_label.set_saved_roi(roi)
         self.update_video_display()
 
     def clear_led_roi(self):
-        """清除 LED ROI。之後如果要做 Clear ROI 按鈕，可以直接呼叫這個。"""
+        """Describe clear_led_roi.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.led_state.roi = None
         self.video_label.clear_saved_roi()
         self.update_video_display()
 
     def set_controls_enabled(self, enabled):
+        """Perform ``set_controls_enabled``.
+
+        Args:
+            enabled: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         for button in self.control_buttons:
             button.setEnabled(enabled)
 
@@ -392,37 +627,117 @@ class VideoPlayer(QWidget):
             seek_input.setEnabled(enabled)
 
     def has_video(self):
+        """Perform ``has_video``.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         return self.cap is not None and self.cap.isOpened()
 
     def current_time_sec(self):
+        """Perform ``current_time_sec``.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         return frame_to_time_sec(self.current_frame, self.fps)
 
     def total_time_sec(self):
+        """Perform ``total_time_sec``.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         return self.total_frames / self.fps if self.fps else 0.0
 
     def current_display_time_sec(self):
+        """Perform ``current_display_time_sec``.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         return relative_time(self.current_time_sec(), self.sync_time_origin_sec)
 
     def display_total_time_sec(self):
+        """Perform ``display_total_time_sec``.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         total_sec = self.total_time_sec()
         return max(relative_time(total_sec, self.sync_time_origin_sec), 0.0)
 
     def format_display_time(self, seconds):
+        """Perform ``format_display_time``.
+
+        Args:
+            seconds: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         sign = "-" if seconds < 0 else ""
         return f"{sign}{format_time(abs(seconds))}"
 
     def set_sync_time_origin(self, origin_sec):
+        """Perform ``set_sync_time_origin``.
+
+        Args:
+            origin_sec: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         next_origin = None if origin_sec is None else max(float(origin_sec), 0.0)
         self.sync_time_origin_sec = next_origin
         self.update_time_display()
 
     def frame_to_time_sec(self, frame_index):
+        """Perform ``frame_to_time_sec``.
+
+        Args:
+            frame_index: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         return frame_to_time_sec(frame_index, self.fps)
 
     def time_sec_to_frame(self, time_sec):
+        """Perform ``time_sec_to_frame``.
+
+        Args:
+            time_sec: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         return time_sec_to_frame(time_sec, self.fps, self.total_frames)
 
     def load_video(self, path):
+        """Perform ``load_video``.
+
+        Args:
+            path: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         import cv2
 
         new_cap = None
@@ -477,6 +792,14 @@ class VideoPlayer(QWidget):
         return True
 
     def toggle_play(self):
+        """Perform ``toggle_play``.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         if not self.has_video():
             return
 
@@ -491,11 +814,27 @@ class VideoPlayer(QWidget):
         self.timer.start(max(interval_ms, 1))
 
     def pause(self):
+        """Perform ``pause``.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.is_playing = False
         self.timer.stop()
         self.play_button.setText("Play")
 
     def stop(self):
+        """Perform ``stop``.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         if self.has_video():
             self.pause()
             if self.sync_time_origin_sec is None:
@@ -504,6 +843,14 @@ class VideoPlayer(QWidget):
                 self.seek_time_sec(self.sync_time_origin_sec)
 
     def play_next_frame(self):
+        """Perform ``play_next_frame``.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         if not self.has_video() or self.current_frame >= self.total_frames - 1:
             self.pause()
             return
@@ -521,6 +868,14 @@ class VideoPlayer(QWidget):
         self.seek_frame(self.current_frame + int(offset))
 
     def seek_frame(self, frame_index):
+        """Perform ``seek_frame``.
+
+        Args:
+            frame_index: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         if not self.has_video() or self.total_frames <= 0:
             return
 
@@ -528,15 +883,40 @@ class VideoPlayer(QWidget):
         self.show_frame(frame_index)
 
     def seek_time_sec(self, time_sec):
+        """Perform ``seek_time_sec``.
+
+        Args:
+            time_sec: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.seek_frame(self.time_sec_to_frame(time_sec))
 
     def update_seek_inputs_from_current_frame(self):
+        """Perform ``update_seek_inputs_from_current_frame``.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         self.time_seek_input.setText(format_time(self.current_time_sec()))
         self.frame_seek_input.setText(str(self.current_frame))
         self.mark_seek_input_valid(self.time_seek_input, True)
         self.mark_seek_input_valid(self.frame_seek_input, True)
 
     def mark_seek_input_valid(self, widget, is_valid):
+        """Perform ``mark_seek_input_valid``.
+
+        Args:
+            widget: Input accepted by this function.
+            is_valid: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         widget.setStyleSheet("" if is_valid else "border: 1px solid #c0392b;")
 
     def seek_to_input(self, input_type):
@@ -573,6 +953,14 @@ class VideoPlayer(QWidget):
             self.time_seek_input.clear()
 
     def toggle_rotate_180(self):
+        """Perform ``toggle_rotate_180``.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         if not self.has_video():
             return
 
@@ -583,6 +971,14 @@ class VideoPlayer(QWidget):
         self.show_frame(self.current_frame)
 
     def show_frame(self, frame_index):
+        """Perform ``show_frame``.
+
+        Args:
+            frame_index: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         if not self.has_video():
             return False
 
@@ -594,6 +990,15 @@ class VideoPlayer(QWidget):
         return success
 
     def display_frame(self, frame, frame_index):
+        """Perform ``display_frame``.
+
+        Args:
+            frame: Input accepted by this function.
+            frame_index: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         import cv2
 
         if self.rotate_180_enabled:
@@ -633,6 +1038,14 @@ class VideoPlayer(QWidget):
         self.frame_changed.emit(frame_index, current_sec)
 
     def update_time_display(self):
+        """Perform ``update_time_display``.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         current_display_sec = self.current_display_time_sec()
         total_display_sec = self.display_total_time_sec()
 
@@ -652,6 +1065,14 @@ class VideoPlayer(QWidget):
         )
 
     def update_video_display(self):
+        """Perform ``update_video_display``.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         if self.current_pixmap is None:
             return
 
@@ -676,5 +1097,13 @@ class VideoPlayer(QWidget):
         self.video_label.update()
 
     def resizeEvent(self, event):
+        """Perform ``resizeEvent``.
+
+        Args:
+            event: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         super().resizeEvent(event)
         self.update_video_display()

@@ -23,6 +23,7 @@ class LfpSegment:
 
     @property
     def sample_count(self) -> int:
+        """Return the number of samples contained in this LFP segment."""
         return int(self.values.size)
 
 
@@ -31,6 +32,16 @@ def sample_rate_for_channel(
     time_us,
     channel: int | None = None,
 ) -> float:
+    """Describe sample_rate_for_channel.
+
+    Args:
+        info: Input accepted by this function.
+        time_us: Input accepted by this function.
+        channel: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     if info is not None:
         channels = [int(item) for item in info.get("channels", [])]
         sample_rates = [
@@ -49,6 +60,14 @@ def sample_rate_for_channel(
 
 
 def infer_sample_rate_hz(time_us) -> float:
+    """Describe infer_sample_rate_hz.
+
+    Args:
+        time_us: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     time_values = np.asarray(time_us, dtype=float)
     if time_values.size < 2:
         raise ValueError("Need at least two samples to infer sample rate.")
@@ -70,6 +89,16 @@ def prepare_lfp_signal(
     sample_rate_hz: float,
     settings: LfpFilterSettings | None,
 ) -> np.ndarray:
+    """Describe prepare_lfp_signal.
+
+    Args:
+        values: Input accepted by this function.
+        sample_rate_hz: Input accepted by this function.
+        settings: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     signal_values = _finite_signal(values)
     if settings is None or not settings.show_filtered:
         return signal_values
@@ -100,6 +129,15 @@ def compute_power_spectrum(
     values,
     sample_rate_hz: float,
 ) -> tuple[np.ndarray, np.ndarray]:
+    """Describe compute_power_spectrum.
+
+    Args:
+        values: Input accepted by this function.
+        sample_rate_hz: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     _validate_sample_rate(sample_rate_hz)
     signal_values = _finite_signal(values)
 
@@ -130,6 +168,15 @@ def compute_time_frequency(
     values,
     sample_rate_hz: float,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Describe compute_time_frequency.
+
+    Args:
+        values: Input accepted by this function.
+        sample_rate_hz: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     _validate_sample_rate(sample_rate_hz)
     signal_values = _finite_signal(values)
 
@@ -158,6 +205,19 @@ def prepare_lfp_segment(
     end_s: float,
     settings: LfpFilterSettings | None,
 ) -> LfpSegment:
+    """Describe prepare_lfp_segment.
+
+    Args:
+        time_us: Input accepted by this function.
+        values: Input accepted by this function.
+        sample_rate_hz: Input accepted by this function.
+        start_s: Input accepted by this function.
+        end_s: Input accepted by this function.
+        settings: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     start_s = float(start_s)
     end_s = float(end_s)
     if not np.isfinite(start_s) or not np.isfinite(end_s):
@@ -184,6 +244,14 @@ def prepare_lfp_segment(
 
 
 def filter_description(settings: LfpFilterSettings | None) -> str:
+    """Describe filter_description.
+
+    Args:
+        settings: Input accepted by this function.
+
+    Returns:
+        The value produced by this function, if any.
+    """
     if settings is None or not settings.show_filtered:
         return "Raw"
 

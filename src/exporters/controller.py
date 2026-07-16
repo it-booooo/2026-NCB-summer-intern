@@ -18,6 +18,14 @@ class ExportController:
 
     def actions(self):
         # 第三個欄位是顯示給使用者的英文滑鼠懸停說明。
+        """Describe actions.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         return [
             (
                 "Export Markers as CSV",
@@ -48,6 +56,14 @@ class ExportController:
 
     def export_markers(self, file_type):
         # UI 流程只負責選擇格式與路徑；實際寫檔由 writers 模組處理。
+        """Describe export_markers.
+
+        Args:
+            file_type: Input accepted by this function.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         events = [dict(event) for event in self.event_state.events]
         if not events:
             QMessageBox.information(
@@ -66,6 +82,14 @@ class ExportController:
 
 
     def export_check_results(self):
+        """Describe export_check_results.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         exports = []
 
         if self.data_state.lfp_info is not None:
@@ -133,6 +157,14 @@ class ExportController:
         )
 
     def export_waveform_image(self):
+        """Describe export_waveform_image.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         window = self.window
         if self.data_state.axis_info is None:
             QMessageBox.information(
@@ -167,6 +199,14 @@ class ExportController:
         )
 
     def export_lfp_images(self):
+        """Describe export_lfp_images.
+
+        Args:
+            None.
+
+        Returns:
+            The value produced by this function, if any.
+        """
         panel = self.window.lfp_panel
         if not panel.lfp_path:
             QMessageBox.information(
