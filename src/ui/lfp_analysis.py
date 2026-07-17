@@ -112,16 +112,16 @@ class LfpAnalysisMixin:
         return channel, left, right, segment, settings
     
     def show_lfp_analysis(self, analysis_type):
-        """Calculate and display the selected frequency-domain analysis."""
+        """Calculate and display the selected EMD analysis."""
         failure_title, dialog_title, dialog_size = {
-            "power_spectrum": (
-                "Power spectrum failed",
-                "LFP Power Spectrum",
+            "emd_spectrum": (
+                "EMD spectrum failed",
+                "LFP EMD Spectrum",
                 (780, 520),
             ),
-            "spectrogram": (
-                "Spectrogram failed",
-                "LFP Spectrogram",
+            "emd_time_frequency": (
+                "EMD time-frequency analysis failed",
+                "LFP EMD Time-Frequency",
                 (820, 560),
             ),
         }[analysis_type]
@@ -132,24 +132,35 @@ class LfpAnalysisMixin:
     
         channel, left, right, segment, settings = analysis
         try:
-            if analysis_type == "power_spectrum":
-                frequencies, power = signal_func.compute_power_spectrum(
-                    segment.values,
-                    segment.sample_rate_hz,
+            emd_analysis = signal_func.compute_emd(
+                segment.values,
+                segment.sample_rate_hz,
+            )
+            time_mode = (
+                "sync time"
+                if self.sync_state.record_time_origin_sec is not None
+                else "time"
+            )
+            if analysis_type == "emd_spectrum":
+                frequencies, power = signal_func.compute_hilbert_marginal_spectrum(
+                    emd_analysis
                 )
-                figure = self.create_power_spectrum_figure(channel, frequencies, power)
+                figure = self.create_emd_spectrum_figure(
+                    channel,
+                    frequencies,
+                    power,
+                )
             else:
-                frequencies, times, power = signal_func.compute_time_frequency(
-                    segment.values,
-                    segment.sample_rate_hz,
+                frequencies, times, power = signal_func.compute_hilbert_spectrum(
+                    emd_analysis
                 )
-                figure = self.create_spectrogram_figure(
+                figure = self.create_emd_time_frequency_figure(
                     channel,
                     segment,
                     frequencies,
                     times,
                     power,
-                    "sync time" if self.sync_state.record_time_origin_sec is not None else "time",
+                    time_mode,
                 )
         except Exception as error:
             QMessageBox.warning(self, failure_title, str(error))
@@ -240,21 +251,23 @@ class LfpAnalysisMixin:
         if dialog in self.spectrum_dialogs:
             self.spectrum_dialogs.remove(dialog)
     
-    def create_power_spectrum_figure(self, channel, frequencies, power):
-        """Create power spectrum figure.
-    
+    def create_emd_spectrum_figure(self, channel, frequencies, power):
+        """Create an EMD Hilbert marginal spectrum without plotting IMFs.
+
         Args:
             channel: LFP channel identifier.
-            frequencies: Input used by this operation.
-            power: Input used by this operation.
+            frequencies: Hilbert-spectrum frequency bin centers.
+            power: Time-integrated instantaneous IMF energy.
         """
         figure = Figure(figsize=(7.6, 4.4), constrained_layout=True)
         ax = figure.add_subplot(111)
-        power_db = 10.0 * np.log10(np.maximum(power, np.finfo(float).tiny))
+        power_db = np.full(power.shape, np.nan, dtype=float)
+        positive = np.isfinite(power) & (power > 0.0)
+        power_db[positive] = 10.0 * np.log10(power[positive])
         ax.plot(frequencies, power_db, linewidth=0.8, color="#1f77b4")
-        ax.set_title(f"LFP Power Spectrum - Channel {channel}")
+        ax.set_title(f"LFP EMD Hilbert Marginal Spectrum - Channel {channel}")
         ax.set_xlabel("Frequency (Hz)")
-        ax.set_ylabel("PSD (dB/Hz)")
+        ax.set_ylabel("Marginal Hilbert energy (dB)")
         ax.grid(True, linewidth=0.4, alpha=0.35)
         return figure
     
@@ -322,7 +335,7 @@ class LfpAnalysisMixin:
             fontsize=8,
         )
     
-    def create_spectrogram_figure(
+    def create_emd_time_frequency_figure(
         self,
         channel,
         segment,
@@ -331,7 +344,7 @@ class LfpAnalysisMixin:
         power,
         time_mode,
     ):
-        """Create spectrogram figure.
+        """Create an EMD Hilbert time-frequency figure.
     
         Args:
             channel: LFP channel identifier.
@@ -350,7 +363,9 @@ class LfpAnalysisMixin:
         plot_times = times + relative_time(
             float(segment.record_time_s[0]), self.sync_state.record_time_origin_sec
         )
-        power_db = 10.0 * np.log10(np.maximum(power, np.finfo(float).tiny))
+        power_db = np.full(power.shape, np.nan, dtype=float)
+        positive = np.isfinite(power) & (power > 0.0)
+        power_db[positive] = 10.0 * np.log10(power[positive])
         mesh = ax.pcolormesh(
             plot_times,
             frequencies,
@@ -358,8 +373,8 @@ class LfpAnalysisMixin:
             shading="auto",
             cmap="viridis",
         )
-        figure.colorbar(mesh, ax=ax, label="PSD (dB/Hz)")
-        ax.set_title(f"LFP Spectrogram - Channel {channel}")
+        figure.colorbar(mesh, ax=ax, label="Hilbert energy (dB)")
+        ax.set_title(f"LFP EMD Hilbert Time-Frequency - Channel {channel}")
         ax.set_xlabel(f"{time_mode} (s)")
         ax.set_ylabel("Frequency (Hz)")
         return figure

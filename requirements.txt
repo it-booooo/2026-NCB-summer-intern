@@ -1,9 +1,10 @@
 pyside6
 pyqtgraph
 opencv-python
-numpy<2
+numpy>=1.26
 pyopencl
 scipy
+EMD-signal>=1.9,<2
 pandas
 mne
 matplotlib

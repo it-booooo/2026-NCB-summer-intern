@@ -1,7 +1,11 @@
 from dataclasses import dataclass
 
 import numpy as np
+from PyEMD import EMD
 from scipy import signal
+
+
+EMD_MAX_SAMPLES = 100_000
 
 
 @dataclass(frozen=True)
@@ -25,6 +29,27 @@ class LfpSegment:
     def sample_count(self) -> int:
         """Return the number of samples contained in this LFP segment."""
         return int(self.values.size)
+
+
+@dataclass(frozen=True)
+class EmdAnalysis:
+    """EMD components and their Hilbert-derived instantaneous properties."""
+
+    imfs: np.ndarray
+    residue: np.ndarray
+    instantaneous_frequencies_hz: np.ndarray
+    instantaneous_power: np.ndarray
+    sample_rate_hz: float
+
+    @property
+    def imf_count(self) -> int:
+        """Return the number of intrinsic mode functions."""
+        return int(self.imfs.shape[0])
+
+    @property
+    def sample_count(self) -> int:
+        """Return the number of samples in each component."""
+        return int(self.residue.size)
 
 
 def sample_rate_for_channel(
@@ -116,70 +141,145 @@ def prepare_lfp_signal(
     return filtered
 
 
-def compute_power_spectrum(
+def compute_emd(
     values,
     sample_rate_hz: float,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Compute power spectrum.
+    max_samples: int | None = EMD_MAX_SAMPLES,
+) -> EmdAnalysis:
+    """Decompose an LFP signal into IMFs and calculate Hilbert properties.
 
     Args:
         values: Signal values to process.
-        sample_rate_hz: Input used by this operation.
+        sample_rate_hz: Signal sample rate in Hz.
+        max_samples: Safety limit for synchronous UI analysis; ``None`` disables it.
     """
     _validate_sample_rate(sample_rate_hz)
     signal_values = _finite_signal(values)
 
-    if signal_values.size < 2:
-        raise ValueError("Need at least two samples to calculate power spectrum.")
-
     if signal_values.size < 8:
-        return signal.periodogram(
-            signal_values,
-            fs=sample_rate_hz,
-            detrend="constant",
-            scaling="density",
+        raise ValueError("Need at least 8 samples to calculate an EMD decomposition.")
+    if max_samples is not None and signal_values.size > int(max_samples):
+        duration = float(max_samples) / float(sample_rate_hz)
+        raise ValueError(
+            f"EMD analysis is limited to {int(max_samples):,} samples "
+            f"({duration:g} s at {sample_rate_hz:g} Hz). "
+            "Select a shorter LFP time range."
         )
 
-    nperseg = min(4096, signal_values.size)
-    return signal.welch(
-        signal_values,
-        fs=sample_rate_hz,
-        window="hann",
-        nperseg=nperseg,
-        noverlap=nperseg // 2,
-        detrend="constant",
-        scaling="density",
+    times = np.arange(signal_values.size, dtype=float) / float(sample_rate_hz)
+    emd = EMD()
+    emd.emd(signal_values, times)
+    imfs, residue = emd.get_imfs_and_residue()
+    imfs = np.asarray(imfs, dtype=float).reshape((-1, signal_values.size))
+    residue = np.asarray(residue, dtype=float).reshape(signal_values.shape)
+
+    if imfs.shape[0] == 0:
+        instantaneous_frequencies_hz = np.empty_like(imfs)
+        instantaneous_power = np.empty_like(imfs)
+    else:
+        analytic_signal = signal.hilbert(imfs, axis=1)
+        amplitude = np.abs(analytic_signal)
+        phase = np.unwrap(np.angle(analytic_signal), axis=1)
+        instantaneous_frequencies_hz = (
+            np.diff(phase, axis=1) * float(sample_rate_hz) / (2.0 * np.pi)
+        )
+        instantaneous_frequencies_hz = np.concatenate(
+            (instantaneous_frequencies_hz, instantaneous_frequencies_hz[:, -1:]),
+            axis=1,
+        )
+        instantaneous_power = amplitude**2
+
+        amplitude_floor = np.max(amplitude, axis=1, keepdims=True) * 1e-6
+        nyquist_hz = float(sample_rate_hz) / 2.0
+        valid = (
+            np.isfinite(instantaneous_frequencies_hz)
+            & (instantaneous_frequencies_hz >= 0.0)
+            & (instantaneous_frequencies_hz <= nyquist_hz)
+            & (amplitude > amplitude_floor)
+        )
+        instantaneous_frequencies_hz = np.where(
+            valid, instantaneous_frequencies_hz, np.nan
+        )
+        instantaneous_power = np.where(valid, instantaneous_power, 0.0)
+
+    return EmdAnalysis(
+        imfs=imfs,
+        residue=residue,
+        instantaneous_frequencies_hz=instantaneous_frequencies_hz,
+        instantaneous_power=instantaneous_power,
+        sample_rate_hz=float(sample_rate_hz),
     )
 
 
-def compute_time_frequency(
-    values,
-    sample_rate_hz: float,
+def compute_hilbert_spectrum(
+    analysis: EmdAnalysis,
+    time_bin_count: int = 512,
+    frequency_bin_count: int = 256,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Compute time frequency.
+    """Bin IMF instantaneous energy into a Hilbert time-frequency spectrum.
 
     Args:
-        values: Signal values to process.
-        sample_rate_hz: Input used by this operation.
+        analysis: Result returned by :func:`compute_emd`.
+        time_bin_count: Maximum number of time bins.
+        frequency_bin_count: Number of bins from 0 Hz to Nyquist.
     """
-    _validate_sample_rate(sample_rate_hz)
-    signal_values = _finite_signal(values)
+    if analysis.sample_count < 2:
+        raise ValueError("Need at least two EMD samples for a Hilbert spectrum.")
 
-    if signal_values.size < 8:
-        raise ValueError("Need at least 8 samples to calculate time-frequency map.")
+    time_bin_count = min(max(int(time_bin_count), 1), analysis.sample_count)
+    frequency_bin_count = max(int(frequency_bin_count), 1)
+    duration_s = analysis.sample_count / analysis.sample_rate_hz
+    nyquist_hz = analysis.sample_rate_hz / 2.0
+    time_edges = np.linspace(0.0, duration_s, time_bin_count + 1)
+    frequency_edges = np.linspace(0.0, nyquist_hz, frequency_bin_count + 1)
 
-    nperseg = min(512, signal_values.size)
-    noverlap = nperseg // 2
-    return signal.spectrogram(
-        signal_values,
-        fs=sample_rate_hz,
-        window="hann",
-        nperseg=nperseg,
-        noverlap=noverlap,
-        detrend="constant",
-        scaling="density",
-        mode="psd",
+    times = np.arange(analysis.sample_count, dtype=float) / analysis.sample_rate_hz
+    sample_times = np.broadcast_to(times, analysis.instantaneous_frequencies_hz.shape)
+    valid = (
+        np.isfinite(analysis.instantaneous_frequencies_hz)
+        & np.isfinite(analysis.instantaneous_power)
+        & (analysis.instantaneous_power > 0.0)
     )
+    spectrum, _, _ = np.histogram2d(
+        sample_times[valid],
+        analysis.instantaneous_frequencies_hz[valid],
+        bins=(time_edges, frequency_edges),
+        weights=analysis.instantaneous_power[valid],
+    )
+
+    time_centers = (time_edges[:-1] + time_edges[1:]) / 2.0
+    frequency_centers = (frequency_edges[:-1] + frequency_edges[1:]) / 2.0
+    return frequency_centers, time_centers, spectrum.T
+
+
+def compute_hilbert_marginal_spectrum(
+    analysis: EmdAnalysis,
+    frequency_bin_count: int = 256,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Accumulate IMF instantaneous energy into a one-dimensional spectrum.
+
+    Args:
+        analysis: Result returned by :func:`compute_emd`.
+        frequency_bin_count: Number of bins from 0 Hz to Nyquist.
+    """
+    frequency_bin_count = max(int(frequency_bin_count), 1)
+    frequency_edges = np.linspace(
+        0.0,
+        analysis.sample_rate_hz / 2.0,
+        frequency_bin_count + 1,
+    )
+    valid = (
+        np.isfinite(analysis.instantaneous_frequencies_hz)
+        & np.isfinite(analysis.instantaneous_power)
+        & (analysis.instantaneous_power > 0.0)
+    )
+    marginal_power, _ = np.histogram(
+        analysis.instantaneous_frequencies_hz[valid],
+        bins=frequency_edges,
+        weights=analysis.instantaneous_power[valid],
+    )
+    frequency_centers = (frequency_edges[:-1] + frequency_edges[1:]) / 2.0
+    return frequency_centers, marginal_power
 
 
 def prepare_lfp_segment(

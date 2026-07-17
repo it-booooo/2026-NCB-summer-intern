@@ -103,22 +103,22 @@ class LfpPanel(LfpAnalysisMixin, QWidget):
         )
         self.apply_filter_button.clicked.connect(self.apply_lfp_filter_settings)
 
-        self.spectrum_button = QPushButton("Power spectrum")
+        self.spectrum_button = QPushButton("EMD spectrum")
         self.spectrum_button.setEnabled(False)
         self.spectrum_button.setToolTip(
-            "Calculate the power spectrum of the selected LFP time range."
+            "Calculate the EMD Hilbert marginal spectrum without plotting IMFs."
         )
         self.spectrum_button.clicked.connect(
-            lambda _checked=False: self.show_lfp_analysis("power_spectrum")
+            lambda _checked=False: self.show_lfp_analysis("emd_spectrum")
         )
 
-        self.spectrogram_button = QPushButton("Spectrogram")
+        self.spectrogram_button = QPushButton("EMD time-frequency")
         self.spectrogram_button.setEnabled(False)
         self.spectrogram_button.setToolTip(
-            "Calculate the time-frequency map of the selected LFP time range."
+            "Calculate an EMD Hilbert time-frequency map without plotting IMFs."
         )
         self.spectrogram_button.clicked.connect(
-            lambda _checked=False: self.show_lfp_analysis("spectrogram")
+            lambda _checked=False: self.show_lfp_analysis("emd_time_frequency")
         )
 
         self.follow_video_checkbox = QCheckBox("Follow video playback")

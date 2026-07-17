@@ -47,7 +47,7 @@ class ExportController:
             (
                 "Export LFP Images...",
                 self.export_lfp_images,
-                "Configure and batch-export the LFP waveform, power spectrum, and spectrogram.",
+                "Configure and batch-export the LFP waveform, EMD spectrum, and EMD time-frequency map.",
             ),
         ]
 
@@ -264,23 +264,31 @@ class ExportController:
                     self.data_state.lfp_info,
                 )
 
-            if "power_spectrum" in options.image_types:
-                frequencies, power = signal_data.compute_power_spectrum(
+            emd_analysis = None
+            if {
+                "emd_spectrum",
+                "emd_time_frequency",
+            }.intersection(options.image_types):
+                emd_analysis = signal_data.compute_emd(
                     segment.values,
                     segment.sample_rate_hz,
                 )
-                figures["power_spectrum"] = panel.create_power_spectrum_figure(
+
+            if "emd_spectrum" in options.image_types:
+                frequencies, power = signal_data.compute_hilbert_marginal_spectrum(
+                    emd_analysis
+                )
+                figures["emd_spectrum"] = panel.create_emd_spectrum_figure(
                     options.channel,
                     frequencies,
                     power,
                 )
 
-            if "spectrogram" in options.image_types:
-                frequencies, times, power = signal_data.compute_time_frequency(
-                    segment.values,
-                    segment.sample_rate_hz,
+            if "emd_time_frequency" in options.image_types:
+                frequencies, times, power = signal_data.compute_hilbert_spectrum(
+                    emd_analysis
                 )
-                figures["spectrogram"] = panel.create_spectrogram_figure(
+                figures["emd_time_frequency"] = panel.create_emd_time_frequency_figure(
                     options.channel,
                     segment,
                     frequencies,

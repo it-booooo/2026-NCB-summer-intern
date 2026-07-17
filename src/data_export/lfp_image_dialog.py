@@ -103,12 +103,12 @@ class LfpImageExportDialog(QDialog):
         settings_group.setLayout(settings_form)
 
         self.waveform_checkbox = QCheckBox("LFP waveform")
-        self.power_checkbox = QCheckBox("Power spectrum")
-        self.spectrogram_checkbox = QCheckBox("Spectrogram")
+        self.emd_spectrum_checkbox = QCheckBox("EMD spectrum")
+        self.emd_time_frequency_checkbox = QCheckBox("EMD time-frequency")
         for checkbox in (
             self.waveform_checkbox,
-            self.power_checkbox,
-            self.spectrogram_checkbox,
+            self.emd_spectrum_checkbox,
+            self.emd_time_frequency_checkbox,
         ):
             checkbox.setChecked(True)
 
@@ -119,8 +119,8 @@ class LfpImageExportDialog(QDialog):
 
         image_layout = QVBoxLayout()
         image_layout.addWidget(self.waveform_checkbox)
-        image_layout.addWidget(self.power_checkbox)
-        image_layout.addWidget(self.spectrogram_checkbox)
+        image_layout.addWidget(self.emd_spectrum_checkbox)
+        image_layout.addWidget(self.emd_time_frequency_checkbox)
         # image_form = QFormLayout()
         # image_form.addRow("Resolution", self.dpi_spin)
         # image_layout.addLayout(image_form)
@@ -197,8 +197,8 @@ class LfpImageExportDialog(QDialog):
         selected = []
         for name, checkbox in (
             ("waveform", self.waveform_checkbox),
-            ("power_spectrum", self.power_checkbox),
-            ("spectrogram", self.spectrogram_checkbox),
+            ("emd_spectrum", self.emd_spectrum_checkbox),
+            ("emd_time_frequency", self.emd_time_frequency_checkbox),
         ):
             if checkbox.isChecked():
                 selected.append(name)

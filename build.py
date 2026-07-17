@@ -61,10 +61,15 @@ def conda_runtime_binaries():
 
 
 def main():
+    required_packages = {
+        "PyInstaller": "pyinstaller",
+        "pyopencl": "pyopencl",
+        "PyEMD": "EMD-signal",
+    }
     missing = [
-        package
-        for package in ("PyInstaller", "pyopencl")
-        if importlib.util.find_spec(package) is None
+        install_name
+        for import_name, install_name in required_packages.items()
+        if importlib.util.find_spec(import_name) is None
     ]
     if missing:
         raise SystemExit(
@@ -104,6 +109,7 @@ def main():
         "--windowed",
         "--onefile",
         "--collect-all=pyopencl",
+        "--collect-all=PyEMD",
         "--add-data=input_data/icon.png;input_data",
         "--icon=input_data/icon.png",
         *conda_runtime_binaries(),
