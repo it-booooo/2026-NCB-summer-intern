@@ -227,6 +227,22 @@ class SyncControllerMixin:
                 }
             )
 
+        for event in events:
+            if event.get("event_type") != "seizure_like_event":
+                continue
+
+            video_time_sec = float(event.get("video_time_sec", 0.0))
+            record_intervals.append(
+                {
+                    "event_type": "seizure_like_event",
+                    "video_time_sec": video_time_sec,
+                    "record_time_sec": (
+                        video_time_sec - self.sync_state.time_offset_sec
+                    ),
+                    "frame_index": int(event.get("frame_index", 0)),
+                }
+            )
+
         self.lfp_panel.set_event_intervals(record_intervals)
 
     def update_waveform_current_time(self):
