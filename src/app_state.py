@@ -13,7 +13,21 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .signal_data import LfpDataset
-    from .video_player.video_helpers import VideoMetadata
+
+
+@dataclass
+class VideoMetadata:
+    path: str
+    filename: str
+    file_format: str
+    codec: str
+    width: int
+    height: int
+    detected_fps: float
+    using_fps: float
+    total_frames: int
+    detected_duration_sec: float
+    duration_sec: float
 
 
 @dataclass
