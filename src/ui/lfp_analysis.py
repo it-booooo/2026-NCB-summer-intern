@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QVBoxLayout,
 )
+from matplotlib import colormaps
 from matplotlib.figure import Figure
 
 from .. import signal_data as signal_func
@@ -363,15 +364,18 @@ class LfpAnalysisMixin:
         plot_times = times + relative_time(
             float(segment.record_time_s[0]), self.sync_state.record_time_origin_sec
         )
-        power_db = np.full(power.shape, np.nan, dtype=float)
+        power = np.asarray(power, dtype=np.float64)
+        power_db = np.full(power.shape, np.nan, dtype=np.float64)
         positive = np.isfinite(power) & (power > 0.0)
         power_db[positive] = 10.0 * np.log10(power[positive])
+        cmap = colormaps["viridis"].copy()
+        cmap.set_bad(cmap(0.0))
         mesh = ax.pcolormesh(
             plot_times,
             frequencies,
             power_db,
             shading="auto",
-            cmap="viridis",
+            cmap=cmap,
         )
         figure.colorbar(mesh, ax=ax, label="Hilbert energy (dB)")
         ax.set_title(f"LFP EMD Hilbert Time-Frequency - Channel {channel}")
