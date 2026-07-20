@@ -36,6 +36,7 @@ class RoiVideoLabel(QLabel):
         self.hover_pos = None
         self.display_rect = QRect()
         self.frame_size = None
+        self._painting = False
 
         # 儲存已完成選取的 LED ROI，座標格式是影片原始 frame 座標：
         # (x, y, width, height)
@@ -189,9 +190,15 @@ class RoiVideoLabel(QLabel):
         Args:
             event: Event record to process.
         """
+        if self._painting:
+            return
+        self._painting = True
         super().paintEvent(event)
 
         painter = QPainter(self)
+        if not painter.isActive():
+            self._painting = False
+            return
 
         # 1. 永久顯示已儲存的 LED ROI
         if self.led_state.roi is not None:
@@ -202,6 +209,8 @@ class RoiVideoLabel(QLabel):
 
         # 2. 沒有進入 ROI 選取模式時，只顯示永久 ROI，不畫暫時框
         if not self.selecting_roi:
+            painter.end()
+            self._painting = False
             return
 
         # 3. ROI 選取模式：顯示紅色游標小方框或拖曳框
@@ -216,9 +225,13 @@ class RoiVideoLabel(QLabel):
                     16,
                 )
             )
+            painter.end()
+            self._painting = False
             return
 
         if self.drag_start is None or self.drag_end is None:
+            painter.end()
+            self._painting = False
             return
 
         drag_rect = QRect(self.drag_start, self.drag_end).normalized()
@@ -226,6 +239,8 @@ class RoiVideoLabel(QLabel):
 
         if not drag_rect.isNull():
             painter.drawRect(drag_rect)
+        painter.end()
+        self._painting = False
 
 
 class VideoPlayer(QWidget):

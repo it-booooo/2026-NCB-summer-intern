@@ -1,8 +1,7 @@
-import sys
-from pathlib import Path
+import shutil
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction, QIcon
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QGroupBox,
     QInputDialog,
@@ -40,8 +39,6 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
         self.setWindowTitle("Pig Behavior Video-LFP Synchronization Tool")
         self.resize(1280, 720)
         self.setMinimumSize(1100, 640)
-        bundle_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[1]))
-        self.setWindowIcon(QIcon(str(bundle_root / "input_data" / "icon.png")))
 
         self.video_player = VideoPlayer(
             self.video_state,
@@ -65,15 +62,11 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
         )
         self.import_controller = ImportController(
             self,
-            self.data_state,
-            self.sync_state,
-            self.led_state,
+            self.app_state,
         )
         self.export_controller = ExportController(
             self,
-            self.data_state,
-            self.event_state,
-            self.sync_state,
+            self.app_state,
         )
         self.led_worker = None
 
@@ -128,6 +121,19 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
         menu_bar = self.menuBar()
         file_menu = menu_bar.addMenu("File")
         settings_menu = menu_bar.addMenu("Settings")
+        self.add_action(
+            file_menu,
+            "Open Project...",
+            self.import_controller.open_project,
+            "Restore a complete analysis session from a .pigproj file.",
+        )
+        self.add_action(
+            file_menu,
+            "Save Project...",
+            self.export_controller.save_project,
+            "Save analysis state in one .pigproj file while referencing all imported files by path.",
+        )
+        file_menu.addSeparator()
         import_menu = file_menu.addMenu("Import")
         export_menu = file_menu.addMenu("Export")
         import_menu.setToolTipsVisible(True)
@@ -271,6 +277,16 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
             event: Event record to process.
         """
         if self.stop_led_detection(wait=True):
+            self.video_player.pause()
+            if self.video_player.cap is not None:
+                self.video_player.cap.release()
+                self.video_player.cap = None
+
+            project_directory = getattr(self, "project_temp_directory", None)
+            if project_directory is not None:
+                shutil.rmtree(project_directory, ignore_errors=True)
+                self.project_temp_directory = None
+
             event.accept()
             return
 

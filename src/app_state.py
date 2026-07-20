@@ -37,6 +37,18 @@ class DataState:
     axis_step: int | None = None
     line_noise_hz: float = 60.0
     timeline_xlim: tuple[float, float] | None = None
+    selected_lfp_channel: int | None = None
+    lfp_filter_settings: dict[str, Any] = field(
+        default_factory=lambda: {
+            "show_filtered": False,
+            "bandpass_enabled": False,
+            "bandpass_low_hz": 1.0,
+            "bandpass_high_hz": 100.0,
+            "line_noise_hz": 60.0,
+            "notch_quality": 30.0,
+        }
+    )
+    follow_video_playback: bool = True
 
 
 @dataclass

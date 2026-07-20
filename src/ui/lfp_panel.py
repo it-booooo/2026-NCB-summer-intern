@@ -122,7 +122,10 @@ class LfpPanel(LfpAnalysisMixin, QWidget):
         )
 
         self.follow_video_checkbox = QCheckBox("Follow video playback")
-        self.follow_video_checkbox.setChecked(True)
+        self.follow_video_checkbox.setChecked(self.data_state.follow_video_playback)
+        self.follow_video_checkbox.toggled.connect(
+            self.set_follow_video_playback
+        )
         self.follow_video_checkbox.setToolTip(
             "Auto-pan the waveform time window while the video is playing."
         )
@@ -190,7 +193,7 @@ class LfpPanel(LfpAnalysisMixin, QWidget):
 
         self.setLayout(layout)
 
-        self._applied_lfp_filter_settings = self.pending_lfp_filter_settings()
+        self.apply_project_state()
         for control, signal in (
             (self.bandpass_checkbox, self.bandpass_checkbox.stateChanged),
             (self.bandpass_low_spin, self.bandpass_low_spin.valueChanged),
@@ -209,6 +212,45 @@ class LfpPanel(LfpAnalysisMixin, QWidget):
             self.switch_lfp_signal_view
         )
         self.apply_filter_button.setEnabled(False)
+
+    def apply_project_state(self):
+        """Apply the shared project state to the waveform controls."""
+        settings = self.data_state.lfp_filter_settings
+        show_filtered = bool(settings.get("show_filtered", False))
+        self.signal_view_selector.setCurrentIndex(1 if show_filtered else 0)
+        self.bandpass_checkbox.setChecked(
+            bool(settings.get("bandpass_enabled", False))
+        )
+        self.bandpass_low_spin.setValue(
+            float(settings.get("bandpass_low_hz", 1.0))
+        )
+        self.bandpass_high_spin.setValue(
+            float(settings.get("bandpass_high_hz", 100.0))
+        )
+        self.notch_checkbox.setChecked(settings.get("line_noise_hz") is not None)
+        self.follow_video_checkbox.setChecked(self.data_state.follow_video_playback)
+        self._applied_lfp_filter_settings = self.pending_lfp_filter_settings()
+        self.update_notch_control_text()
+        self.apply_filter_button.setEnabled(False)
+
+    def store_lfp_filter_settings(self, settings):
+        """Keep the applied filter configuration in the project state."""
+        self.data_state.lfp_filter_settings = {
+            "show_filtered": bool(settings.show_filtered),
+            "bandpass_enabled": bool(settings.bandpass_enabled),
+            "bandpass_low_hz": float(settings.bandpass_low_hz),
+            "bandpass_high_hz": float(settings.bandpass_high_hz),
+            "line_noise_hz": (
+                None
+                if settings.line_noise_hz is None
+                else float(settings.line_noise_hz)
+            ),
+            "notch_quality": float(settings.notch_quality),
+        }
+
+    def set_follow_video_playback(self, enabled):
+        """Keep the playback-follow preference in the project state."""
+        self.data_state.follow_video_playback = bool(enabled)
 
 
     def create_frequency_spinbox(self, value):
@@ -909,6 +951,7 @@ class LfpPanel(LfpAnalysisMixin, QWidget):
             return
 
         self._applied_lfp_filter_settings = settings
+        self.store_lfp_filter_settings(settings)
         self.apply_filter_button.setEnabled(False)
         self.refresh_lfp_processing()
 
@@ -928,6 +971,7 @@ class LfpPanel(LfpAnalysisMixin, QWidget):
             line_noise_hz=current.line_noise_hz,
             notch_quality=current.notch_quality,
         )
+        self.store_lfp_filter_settings(self._applied_lfp_filter_settings)
         self.mark_lfp_filter_settings_pending()
         if self.lfp_fig is None:
             return
@@ -956,6 +1000,7 @@ class LfpPanel(LfpAnalysisMixin, QWidget):
                 line_noise_hz=next_value,
                 notch_quality=current.notch_quality,
             )
+            self.store_lfp_filter_settings(self._applied_lfp_filter_settings)
             self.refresh_lfp_processing()
         self.mark_lfp_filter_settings_pending()
 
@@ -1034,6 +1079,7 @@ class LfpPanel(LfpAnalysisMixin, QWidget):
             return
 
         channel = self.selected_channel(self.lfp_channel_selector)
+        self.data_state.selected_lfp_channel = channel
         created_figure = False
         try:
             if self.lfp_fig is None:
@@ -1116,6 +1162,12 @@ class LfpPanel(LfpAnalysisMixin, QWidget):
         if channels:
             for channel in channels:
                 self.lfp_channel_selector.addItem(f"Channel {channel}", channel)
+
+            selected_channel = self.data_state.selected_lfp_channel
+            if selected_channel in channels:
+                self.lfp_channel_selector.setCurrentIndex(
+                    channels.index(selected_channel)
+                )
 
             self.lfp_channel_selector.setEnabled(True)
             self.spectrum_button.setEnabled(True)

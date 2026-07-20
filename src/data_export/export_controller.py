@@ -1,5 +1,11 @@
+import json
+import tempfile
+from dataclasses import asdict, is_dataclass
+from datetime import datetime
 from pathlib import Path
+from zipfile import ZIP_DEFLATED, ZipFile
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -7,7 +13,9 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QInputDialog,
+    QLabel,
     QMessageBox,
+    QProgressBar,
     QVBoxLayout,
 )
 
@@ -24,18 +32,247 @@ from .file_writers import (
 class ExportController:
     """Own all save dialogs, export validation, and output generation."""
 
-    def __init__(
-        self,
-        window,
-        data_state=None,
-        event_state=None,
-        sync_state=None,
-    ):
+    def __init__(self, window, app_state):
         self.window = window
-        self.data_state = data_state or window.data_state
-        self.event_state = event_state or window.event_state
-        self.sync_state = sync_state or window.sync_state
+        self.app_state = app_state
+        self.video_state = self.app_state.video
+        self.data_state = self.app_state.data
+        self.sync_state = self.app_state.sync
+        self.led_state = self.app_state.led
+        self.event_state = self.app_state.events
         self.last_lfp_export_directory = None
+
+    def save_project(self):
+        """Save project state while referencing every source file by path."""
+        worker = self.window.led_worker
+        if worker is not None and worker.isRunning():
+            QMessageBox.information(
+                self.window,
+                "LED detection is running",
+                "Wait for LED detection to finish before saving the project.",
+            )
+            return
+
+        path, _ = QFileDialog.getSaveFileName(
+            self.window,
+            "Save Project",
+            "analysis.pigproj",
+            "Pig Analysis Project (*.pigproj)",
+        )
+        if not path:
+            return
+        output_path = Path(path)
+        if output_path.suffix.lower() != ".pigproj":
+            output_path = output_path.with_suffix(".pigproj")
+
+        sources = {}
+        source_candidates = {
+            "video": (
+                self.video_state.metadata.path
+                if self.video_state.metadata is not None
+                else None
+            ),
+            "lfp": (
+                self.data_state.lfp_info.get("path")
+                if self.data_state.lfp_info
+                else None
+            ),
+            "axis": (
+                self.data_state.axis_info.get("path")
+                if self.data_state.axis_info
+                else None
+            ),
+            "ttl": (
+                self.sync_state.time_marker_info.get("path")
+                if self.sync_state.time_marker_info
+                else None
+            ),
+        }
+        for source_type, source_path in source_candidates.items():
+            if not source_path:
+                continue
+            file_path = Path(source_path)
+            if not file_path.is_file():
+                QMessageBox.warning(
+                    self.window,
+                    "Cannot save project",
+                    f"Source file not found:\n{file_path}",
+                )
+                return
+            sources[source_type] = {
+                "external_path": str(file_path.resolve()),
+                "filename": file_path.name,
+            }
+
+        def record(value):
+            if is_dataclass(value):
+                return asdict(value)
+            if isinstance(value, datetime):
+                return value.isoformat()
+            if hasattr(value, "item"):
+                return value.item()
+            if hasattr(value, "tolist"):
+                return value.tolist()
+            raise TypeError(f"Unsupported project value: {type(value).__name__}")
+
+        ttl_info = self.sync_state.time_marker_info or {}
+        ttl_markers = []
+        for marker in ttl_info.get("markers", []):
+            ttl_markers.append(
+                {
+                    **dict(marker),
+                    "local_time": (
+                        marker["local_time"].isoformat()
+                        if marker.get("local_time") is not None
+                        else None
+                    ),
+                }
+            )
+
+        brightness_cache = []
+        for cache_key, points in self.led_state.brightness_cache.items():
+            (
+                _video_path,
+                roi,
+                rotate_180,
+                fps,
+                start_frame,
+                end_frame,
+                coarse_step,
+            ) = cache_key
+            brightness_cache.append(
+                {
+                    "roi": roi,
+                    "rotate_180": rotate_180,
+                    "fps": fps,
+                    "start_frame": start_frame,
+                    "end_frame": end_frame,
+                    "coarse_step": coarse_step,
+                    "points": points,
+                }
+            )
+
+        state = {
+            "video": {
+                "current_frame": self.video_state.current_frame,
+                "rotate_180_enabled": self.video_state.rotate_180_enabled,
+            },
+            "data": {
+                "lfp_step": self.data_state.lfp_step,
+                "axis_step": self.data_state.axis_step,
+                "line_noise_hz": self.data_state.line_noise_hz,
+                "timeline_xlim": self.data_state.timeline_xlim,
+                "selected_lfp_channel": self.data_state.selected_lfp_channel,
+                "lfp_filter_settings": self.data_state.lfp_filter_settings,
+                "follow_video_playback": self.data_state.follow_video_playback,
+            },
+            "sync": {
+                "time_marker_info": {
+                    "filename": ttl_info.get("filename"),
+                    "time_column_name": ttl_info.get("time_column_name"),
+                    "markers": ttl_markers,
+                }
+                if ttl_info
+                else None,
+                "time_offset_sec": self.sync_state.time_offset_sec,
+                "video_time_origin_sec": self.sync_state.video_time_origin_sec,
+                "record_time_origin_sec": self.sync_state.record_time_origin_sec,
+            },
+            "led": {
+                "roi": self.led_state.roi,
+                "analysis_points": self.led_state.analysis_points,
+                "analysis_threshold": self.led_state.analysis_threshold,
+                "analysis_events": self.led_state.analysis_events,
+                "analysis_stats": self.led_state.analysis_stats,
+                "analysis_status": self.led_state.analysis_status,
+                "brightness_cache": brightness_cache,
+            },
+            "events": [dict(event) for event in self.event_state.events],
+        }
+        manifest = {
+            "format": "pig-analysis-project",
+            "version": 2,
+            "sources": sources,
+        }
+
+        progress = QDialog(self.window)
+        progress.setWindowTitle("Save Project")
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, False)
+        progress.setFixedSize(480, 140)
+        progress_label = QLabel("Preparing project...")
+        progress_bar = QProgressBar()
+        progress_bar.setRange(0, 100)
+        progress_bar.setValue(0)
+        progress_layout = QVBoxLayout(progress)
+        progress_layout.addWidget(progress_label)
+        progress_layout.addWidget(progress_bar)
+        progress.show()
+        progress.repaint()
+
+        temporary_path = None
+        try:
+            manifest_bytes = json.dumps(
+                manifest,
+                indent=2,
+                ensure_ascii=False,
+            ).encode("utf-8")
+            state_bytes = json.dumps(
+                state,
+                indent=2,
+                ensure_ascii=False,
+                default=record,
+            ).encode("utf-8")
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(
+                prefix=f"{output_path.name}.",
+                suffix=".tmp",
+                dir=output_path.parent,
+                delete=False,
+            ) as temporary_file:
+                temporary_path = Path(temporary_file.name)
+
+            with ZipFile(temporary_path, "w", allowZip64=True) as archive:
+                archive.writestr(
+                    "manifest.json",
+                    manifest_bytes,
+                    compress_type=ZIP_DEFLATED,
+                )
+                progress_label.setText("Writing project information...")
+                progress_bar.setValue(45)
+                progress_label.repaint()
+                progress_bar.repaint()
+                archive.writestr(
+                    "state.json",
+                    state_bytes,
+                    compress_type=ZIP_DEFLATED,
+                )
+                progress_label.setText("Writing analysis state...")
+                progress_bar.setValue(95)
+                progress_label.repaint()
+                progress_bar.repaint()
+            temporary_path.replace(output_path)
+            temporary_path = None
+            progress_bar.setValue(100)
+            progress_bar.repaint()
+        except Exception as error:
+            if temporary_path is not None:
+                temporary_path.unlink(missing_ok=True)
+            progress.close()
+            QMessageBox.warning(
+                self.window,
+                "Save project failed",
+                str(error),
+            )
+            return
+        finally:
+            progress.close()
+
+        QMessageBox.information(
+            self.window,
+            "Project Saved",
+            f"Project saved to:\n{output_path}",
+        )
 
     def actions(self):
         # 第三個欄位是顯示給使用者的英文滑鼠懸停說明。
