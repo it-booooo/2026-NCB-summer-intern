@@ -52,6 +52,23 @@ class EmdAnalysis:
         return int(self.residue.size)
 
 
+@dataclass(frozen=True)
+class EmdDiagnostics:
+    """Numerical checks showing what the EMD decomposition preserves.
+
+    The Welch spectra are a reconstruction diagnostic, not an alternative
+    definition of the Hilbert spectrum.
+    """
+
+    reconstruction_rmse: float
+    relative_reconstruction_error: float
+    component_rms: np.ndarray
+    residue_rms: float
+    welch_frequencies_hz: np.ndarray
+    input_welch_psd: np.ndarray
+    reconstructed_welch_psd: np.ndarray
+
+
 def sample_rate_for_channel(
     info: dict | None,
     time_us,
@@ -187,7 +204,10 @@ def compute_emd(
             (instantaneous_frequencies_hz, instantaneous_frequencies_hz[:, -1:]),
             axis=1,
         )
-        instantaneous_power = amplitude**2
+        # For a real, locally narrow-band IMF the analytic-signal envelope
+        # squared is twice its mean-square power (for example A*cos(wt) has
+        # power A**2/2).  Store signal-unit squared instantaneous power here.
+        instantaneous_power = amplitude**2 / 2.0
 
         amplitude_floor = np.max(amplitude, axis=1, keepdims=True) * 1e-6
         nyquist_hz = float(sample_rate_hz) / 2.0
@@ -214,20 +234,30 @@ def compute_emd(
 def compute_hilbert_spectrum(
     analysis: EmdAnalysis,
     time_bin_count: int = 512,
-    frequency_bin_count: int = 256,
+    frequency_bin_count: int | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Bin IMF instantaneous energy into a Hilbert time-frequency spectrum.
+    """Return a time-local Hilbert power spectral density estimate.
+
+    Each cell is the mean instantaneous IMF power in its time interval divided
+    by the frequency-bin width.  Its units are signal-unit squared/Hz, so
+    integrating a time column over frequency gives the mean IMF power in that
+    interval.  It is an EMD/Hilbert density and is not mathematically identical
+    to a windowed Fourier spectrogram.
 
     Args:
         analysis: Result returned by :func:`compute_emd`.
         time_bin_count: Maximum number of time bins.
-        frequency_bin_count: Number of bins from 0 Hz to Nyquist.
+        frequency_bin_count: Number of bins from 0 Hz to Nyquist. ``None``
+            uses the frequency resolution of a ``min(4096, sample_count)``
+            Fourier segment, matching the scale used by the Welch reference.
     """
     if analysis.sample_count < 2:
         raise ValueError("Need at least two EMD samples for a Hilbert spectrum.")
 
     time_bin_count = min(max(int(time_bin_count), 1), analysis.sample_count)
-    frequency_bin_count = max(int(frequency_bin_count), 1)
+    frequency_bin_count = _resolve_frequency_bin_count(
+        analysis.sample_count, frequency_bin_count
+    )
     duration_s = analysis.sample_count / analysis.sample_rate_hz
     nyquist_hz = analysis.sample_rate_hz / 2.0
     time_edges = np.linspace(0.0, duration_s, time_bin_count + 1)
@@ -247,6 +277,19 @@ def compute_hilbert_spectrum(
         weights=analysis.instantaneous_power[valid],
     )
 
+    # Average within each time interval and convert per-bin power to density.
+    # Counts use signal samples (not valid IMF observations), so a bin is not
+    # biased upward merely because EMD returned more components.
+    sample_counts, _ = np.histogram(times, bins=time_edges)
+    frequency_widths = np.diff(frequency_edges)
+    denominator = sample_counts[:, None] * frequency_widths[None, :]
+    spectrum = np.divide(
+        spectrum,
+        denominator,
+        out=np.zeros_like(spectrum),
+        where=denominator > 0,
+    )
+
     time_centers = (time_edges[:-1] + time_edges[1:]) / 2.0
     frequency_centers = (frequency_edges[:-1] + frequency_edges[1:]) / 2.0
     return frequency_centers, time_centers, spectrum.T
@@ -254,15 +297,28 @@ def compute_hilbert_spectrum(
 
 def compute_hilbert_marginal_spectrum(
     analysis: EmdAnalysis,
-    frequency_bin_count: int = 256,
+    frequency_bin_count: int | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Accumulate IMF instantaneous energy into a one-dimensional spectrum.
+    """Return the time-averaged Hilbert marginal power spectral density.
+
+    The histogram is normalized by sample count and frequency-bin width.  Its
+    units are signal-unit squared/Hz; consequently its frequency integral is
+    the time-averaged power carried by the valid IMFs and does not grow with
+    record duration or change when only the bin width changes.  The estimate
+    can be compared with Welch PSD in trend and peak location, but the two use
+    different decompositions and estimators and need not have identical values.
 
     Args:
         analysis: Result returned by :func:`compute_emd`.
-        frequency_bin_count: Number of bins from 0 Hz to Nyquist.
+        frequency_bin_count: Number of bins from 0 Hz to Nyquist. ``None``
+            uses the frequency resolution of a ``min(4096, sample_count)``
+            Welch segment.
     """
-    frequency_bin_count = max(int(frequency_bin_count), 1)
+    if analysis.sample_count < 1:
+        raise ValueError("Need at least one EMD sample for a marginal spectrum.")
+    frequency_bin_count = _resolve_frequency_bin_count(
+        analysis.sample_count, frequency_bin_count
+    )
     frequency_edges = np.linspace(
         0.0,
         analysis.sample_rate_hz / 2.0,
@@ -278,8 +334,81 @@ def compute_hilbert_marginal_spectrum(
         bins=frequency_edges,
         weights=analysis.instantaneous_power[valid],
     )
+    marginal_power = marginal_power / (
+        float(analysis.sample_count) * np.diff(frequency_edges)
+    )
     frequency_centers = (frequency_edges[:-1] + frequency_edges[1:]) / 2.0
     return frequency_centers, marginal_power
+
+
+def compute_welch_psd(values, sample_rate_hz: float) -> tuple[np.ndarray, np.ndarray]:
+    """Compute the Hann-window Welch PSD used as an EMD diagnostic reference."""
+    _validate_sample_rate(sample_rate_hz)
+    signal_values = _finite_signal(values)
+    if signal_values.size < 2:
+        raise ValueError("Need at least two samples to calculate a Welch PSD.")
+    if signal_values.size < 8:
+        return signal.periodogram(
+            signal_values,
+            fs=sample_rate_hz,
+            detrend="constant",
+            scaling="density",
+        )
+    nperseg = min(4096, signal_values.size)
+    return signal.welch(
+        signal_values,
+        fs=sample_rate_hz,
+        window="hann",
+        nperseg=nperseg,
+        noverlap=nperseg // 2,
+        detrend="constant",
+        scaling="density",
+    )
+
+
+def compute_emd_diagnostics(values, analysis: EmdAnalysis) -> EmdDiagnostics:
+    """Check EMD reconstruction and compare input/reconstruction Welch PSDs.
+
+    A small reconstruction error demonstrates that EMD has represented the
+    supplied signal as IMFs plus residue; it does not claim that any particular
+    component is physiological or that EMD removes interference automatically.
+    """
+    original = _finite_signal(values)
+    if original.size != analysis.sample_count:
+        raise ValueError("Diagnostic signal and EMD analysis lengths must match.")
+    reconstructed = analysis.residue + np.sum(analysis.imfs, axis=0)
+    error = original - reconstructed
+    reconstruction_rmse = float(np.sqrt(np.mean(error**2)))
+    reference_rms = float(np.sqrt(np.mean(original**2)))
+    relative_error = (
+        reconstruction_rmse / reference_rms
+        if reference_rms > 0
+        else reconstruction_rmse
+    )
+    frequencies, input_psd = compute_welch_psd(original, analysis.sample_rate_hz)
+    reconstructed_frequencies, reconstructed_psd = compute_welch_psd(
+        reconstructed, analysis.sample_rate_hz
+    )
+    if not np.array_equal(frequencies, reconstructed_frequencies):
+        raise RuntimeError("Welch diagnostic frequency grids do not match.")
+    component_rms = np.sqrt(np.mean(analysis.imfs**2, axis=1))
+    return EmdDiagnostics(
+        reconstruction_rmse=reconstruction_rmse,
+        relative_reconstruction_error=float(relative_error),
+        component_rms=component_rms,
+        residue_rms=float(np.sqrt(np.mean(analysis.residue**2))),
+        welch_frequencies_hz=frequencies,
+        input_welch_psd=input_psd,
+        reconstructed_welch_psd=reconstructed_psd,
+    )
+
+
+def _resolve_frequency_bin_count(
+    sample_count: int, frequency_bin_count: int | None
+) -> int:
+    if frequency_bin_count is None:
+        return max(1, min(4096, int(sample_count)) // 2)
+    return max(1, int(frequency_bin_count))
 
 
 def prepare_lfp_segment(

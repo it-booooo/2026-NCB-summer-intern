@@ -106,7 +106,8 @@ class LfpPanel(LfpAnalysisMixin, QWidget):
         self.spectrum_button = QPushButton("EMD spectrum")
         self.spectrum_button.setEnabled(False)
         self.spectrum_button.setToolTip(
-            "Calculate the EMD Hilbert marginal spectrum without plotting IMFs."
+            "Calculate a time-averaged EMD Hilbert marginal PSD (signal²/Hz) "
+            "with a Welch reconstruction diagnostic."
         )
         self.spectrum_button.clicked.connect(
             lambda _checked=False: self.show_lfp_analysis("emd_spectrum")
@@ -115,10 +116,20 @@ class LfpPanel(LfpAnalysisMixin, QWidget):
         self.spectrogram_button = QPushButton("EMD time-frequency")
         self.spectrogram_button.setEnabled(False)
         self.spectrogram_button.setToolTip(
-            "Calculate an EMD Hilbert time-frequency map without plotting IMFs."
+            "Calculate a time-local EMD Hilbert power-density map "
+            "(signal²/Hz)."
         )
         self.spectrogram_button.clicked.connect(
             lambda _checked=False: self.show_lfp_analysis("emd_time_frequency")
+        )
+
+        self.imfs_button = QPushButton("EMD IMFs")
+        self.imfs_button.setEnabled(False)
+        self.imfs_button.setToolTip(
+            "Plot the selected signal, every EMD IMF, and the final residue."
+        )
+        self.imfs_button.clicked.connect(
+            lambda _checked=False: self.show_lfp_analysis("emd_imfs")
         )
 
         self.follow_video_checkbox = QCheckBox("Follow video playback")
@@ -180,6 +191,7 @@ class LfpPanel(LfpAnalysisMixin, QWidget):
         filter_layout.addWidget(self.notch_checkbox)
         filter_layout.addWidget(self.apply_filter_button)
         filter_layout.addStretch()
+        filter_layout.addWidget(self.imfs_button)
         filter_layout.addWidget(self.spectrum_button)
         filter_layout.addWidget(self.spectrogram_button)
         layout.addLayout(filter_layout)
@@ -1106,11 +1118,13 @@ class LfpPanel(LfpAnalysisMixin, QWidget):
                 self.lfp_channel_selector.addItem(f"Channel {channel}", channel)
 
             self.lfp_channel_selector.setEnabled(True)
+            self.imfs_button.setEnabled(True)
             self.spectrum_button.setEnabled(True)
             self.spectrogram_button.setEnabled(True)
         else:
             self.lfp_channel_selector.addItem("No LFP channel")
             self.lfp_channel_selector.setEnabled(False)
+            self.imfs_button.setEnabled(False)
             self.spectrum_button.setEnabled(False)
             self.spectrogram_button.setEnabled(False)
 

@@ -115,6 +115,11 @@ class LfpAnalysisMixin:
     def show_lfp_analysis(self, analysis_type):
         """Calculate and display the selected EMD analysis."""
         failure_title, dialog_title, dialog_size = {
+            "emd_imfs": (
+                "EMD decomposition failed",
+                "LFP EMD IMFs",
+                (820, 700),
+            ),
             "emd_spectrum": (
                 "EMD spectrum failed",
                 "LFP EMD Spectrum",
@@ -142,14 +147,25 @@ class LfpAnalysisMixin:
                 if self.sync_state.record_time_origin_sec is not None
                 else "time"
             )
-            if analysis_type == "emd_spectrum":
+            if analysis_type == "emd_imfs":
+                figure = self.create_emd_imfs_figure(
+                    channel,
+                    segment,
+                    emd_analysis,
+                    time_mode,
+                )
+            elif analysis_type == "emd_spectrum":
                 frequencies, power = signal_func.compute_hilbert_marginal_spectrum(
                     emd_analysis
+                )
+                diagnostics = signal_func.compute_emd_diagnostics(
+                    segment.values, emd_analysis
                 )
                 figure = self.create_emd_spectrum_figure(
                     channel,
                     frequencies,
                     power,
+                    diagnostics,
                 )
             else:
                 frequencies, times, power = signal_func.compute_hilbert_spectrum(
@@ -242,7 +258,64 @@ class LfpAnalysisMixin:
             lambda _obj=None, item=dialog: self.forget_spectrum_dialog(item)
         )
         dialog.show()
-    
+
+    def create_emd_imfs_figure(
+        self,
+        channel,
+        segment,
+        analysis,
+        time_mode,
+    ):
+        """Plot the input, every IMF, and residue on a shared time axis.
+
+        This view shows how oscillations and narrow-band interference are
+        distributed among EMD modes. The sum of all displayed IMFs and the
+        residue reconstructs the input; EMD does not implicitly discard them.
+        """
+        row_count = analysis.imf_count + 2
+        duration_sec = abs(
+            float(segment.record_time_s[-1]) - float(segment.record_time_s[0])
+        )
+        figure_width = min(24.0, 8.0 + duration_sec / 120.0)
+        figure = Figure(
+            figsize=(figure_width, max(6.0, 1.35 * row_count)),
+            constrained_layout=True,
+        )
+        axes = figure.subplots(row_count, 1, sharex=True, squeeze=False)[:, 0]
+
+        plot_step = resolve_plot_step(segment.sample_count, self.data_state.lfp_step)
+        if plot_step == 0 or segment.sample_count <= plot_step:
+            plot_index = slice(None)
+        else:
+            plot_index = slice(None, None, plot_step)
+
+        if self.sync_state.record_time_origin_sec is None:
+            plot_times = segment.record_time_s
+        else:
+            plot_times = (
+                segment.record_time_s - self.sync_state.record_time_origin_sec
+            )
+
+        traces = [("Input", segment.values)]
+        traces.extend(
+            (f"IMF {index + 1}", imf)
+            for index, imf in enumerate(analysis.imfs)
+        )
+        traces.append(("Residue", analysis.residue))
+        for ax, (label, values) in zip(axes, traces):
+            ax.plot(
+                plot_times[plot_index],
+                values[plot_index],
+                linewidth=0.55,
+                color="#1f77b4",
+            )
+            ax.set_ylabel(label, rotation=0, ha="right", va="center")
+            ax.grid(True, linewidth=0.35, alpha=0.3)
+
+        axes[0].set_title(f"LFP EMD Components - Channel {channel}")
+        axes[-1].set_xlabel(f"{time_mode} (s)")
+        return figure
+
     def forget_spectrum_dialog(self, dialog):
         """Remove the reference to spectrum dialog.
     
@@ -252,25 +325,70 @@ class LfpAnalysisMixin:
         if dialog in self.spectrum_dialogs:
             self.spectrum_dialogs.remove(dialog)
     
-    def create_emd_spectrum_figure(self, channel, frequencies, power):
-        """Create an EMD Hilbert marginal spectrum without plotting IMFs.
+    def create_emd_spectrum_figure(
+        self, channel, frequencies, power, diagnostics=None
+    ):
+        """Create a Hilbert PSD plus an optional reconstruction diagnostic.
 
         Args:
             channel: LFP channel identifier.
             frequencies: Hilbert-spectrum frequency bin centers.
-            power: Time-integrated instantaneous IMF energy.
+            power: Time-averaged Hilbert marginal PSD.
+            diagnostics: EMD reconstruction and Welch comparison data.
         """
-        figure = Figure(figsize=(7.6, 4.4), constrained_layout=True)
-        ax = figure.add_subplot(111)
+        figure = Figure(
+            figsize=(7.6, 6.4 if diagnostics is not None else 4.4),
+            constrained_layout=True,
+        )
+        if diagnostics is None:
+            ax = figure.add_subplot(111)
+        else:
+            ax, diagnostic_ax = figure.subplots(2, 1, sharex=True)
         power_db = np.full(power.shape, np.nan, dtype=float)
         positive = np.isfinite(power) & (power > 0.0)
         power_db[positive] = 10.0 * np.log10(power[positive])
         ax.plot(frequencies, power_db, linewidth=0.8, color="#1f77b4")
         ax.set_title(f"LFP EMD Hilbert Marginal Spectrum - Channel {channel}")
         ax.set_xlabel("Frequency (Hz)")
-        ax.set_ylabel("Marginal Hilbert energy (dB)")
+        ax.set_ylabel("Hilbert marginal PSD (dB/Hz)")
         ax.grid(True, linewidth=0.4, alpha=0.35)
+        if diagnostics is not None:
+            input_db = self._power_density_db(diagnostics.input_welch_psd)
+            reconstructed_db = self._power_density_db(
+                diagnostics.reconstructed_welch_psd
+            )
+            diagnostic_ax.plot(
+                diagnostics.welch_frequencies_hz,
+                input_db,
+                linewidth=0.9,
+                label="Input Welch PSD",
+            )
+            diagnostic_ax.plot(
+                diagnostics.welch_frequencies_hz,
+                reconstructed_db,
+                linewidth=0.8,
+                linestyle="--",
+                label="IMFs + residue Welch PSD",
+            )
+            diagnostic_ax.set_title(
+                "EMD reconstruction diagnostic "
+                f"(relative RMSE={diagnostics.relative_reconstruction_error:.2e})",
+                fontsize=9,
+            )
+            diagnostic_ax.set_xlabel("Frequency (Hz)")
+            diagnostic_ax.set_ylabel("Welch PSD (dB/Hz)")
+            diagnostic_ax.grid(True, linewidth=0.4, alpha=0.35)
+            diagnostic_ax.legend(fontsize=8)
         return figure
+
+    @staticmethod
+    def _power_density_db(power):
+        """Convert positive power density values to dB/Hz."""
+        power = np.asarray(power, dtype=float)
+        result = np.full(power.shape, np.nan, dtype=float)
+        positive = np.isfinite(power) & (power > 0.0)
+        result[positive] = 10.0 * np.log10(power[positive])
+        return result
     
     def create_lfp_waveform_figure(self, channel, segment, settings, time_mode,info):
         """Create lfp waveform figure.
@@ -377,7 +495,7 @@ class LfpAnalysisMixin:
             shading="auto",
             cmap=cmap,
         )
-        figure.colorbar(mesh, ax=ax, label="Hilbert energy (dB)")
+        figure.colorbar(mesh, ax=ax, label="Hilbert PSD (dB/Hz)")
         ax.set_title(f"LFP EMD Hilbert Time-Frequency - Channel {channel}")
         ax.set_xlabel(f"{time_mode} (s)")
         ax.set_ylabel("Frequency (Hz)")

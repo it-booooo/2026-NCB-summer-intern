@@ -266,6 +266,7 @@ class ExportController:
 
             emd_analysis = None
             if {
+                "emd_imfs",
                 "emd_spectrum",
                 "emd_time_frequency",
             }.intersection(options.image_types):
@@ -274,14 +275,26 @@ class ExportController:
                     segment.sample_rate_hz,
                 )
 
+            if "emd_imfs" in options.image_types:
+                figures["emd_imfs"] = panel.create_emd_imfs_figure(
+                    options.channel,
+                    segment,
+                    emd_analysis,
+                    time_mode,
+                )
+
             if "emd_spectrum" in options.image_types:
                 frequencies, power = signal_data.compute_hilbert_marginal_spectrum(
                     emd_analysis
+                )
+                diagnostics = signal_data.compute_emd_diagnostics(
+                    segment.values, emd_analysis
                 )
                 figures["emd_spectrum"] = panel.create_emd_spectrum_figure(
                     options.channel,
                     frequencies,
                     power,
+                    diagnostics,
                 )
 
             if "emd_time_frequency" in options.image_types:

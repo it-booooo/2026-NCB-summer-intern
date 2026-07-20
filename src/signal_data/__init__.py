@@ -9,11 +9,14 @@ from .csv_loader import (
 )
 from .lfp_processing import (
     EmdAnalysis,
+    EmdDiagnostics,
     LfpFilterSettings,
     LfpSegment,
     compute_emd,
+    compute_emd_diagnostics,
     compute_hilbert_marginal_spectrum,
     compute_hilbert_spectrum,
+    compute_welch_psd,
     filter_description,
     prepare_lfp_segment,
     prepare_lfp_signal,
@@ -22,8 +25,11 @@ from .lfp_processing import (
 from .lfp_dataset import LfpDataset
 
 __all__ = [
-    "EmdAnalysis", "LfpDataset", "LfpFilterSettings", "LfpSegment", "compute_emd",
+    "EmdAnalysis", "EmdDiagnostics", "LfpDataset", "LfpFilterSettings",
+    "LfpSegment", "compute_emd",
+    "compute_emd_diagnostics",
     "compute_hilbert_marginal_spectrum", "compute_hilbert_spectrum",
+    "compute_welch_psd",
     "filter_description", "parse_lfp_csv_info",
     "parse_signal_csv_metadata", "parse_signal_csv_units",
     "parse_time_marker_csv_info", "prepare_lfp_segment", "prepare_lfp_signal",
