@@ -352,6 +352,7 @@ class EventTable(QTableWidget):
         frame_index,
         note="",
         source="manual",
+        emit=True,
     ):
         """Add event.
 
@@ -397,7 +398,8 @@ class EventTable(QTableWidget):
             lambda text, editor=note_editor: self.update_note_state(editor, text)
         )
         self.setCellWidget(row, self.NOTE_COLUMN, note_editor)
-        self.events_changed.emit()
+        if emit:
+            self.events_changed.emit()
 
     def clear_events(self, emit=True):
         """Clear events.

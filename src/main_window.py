@@ -62,6 +62,8 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
         self.marker_panel = MarkerPanel(
             self.event_table,
             self.video_player,
+            self.lfp_panel,
+            self.sync_state,
         )
         self.import_controller = ImportController(
             self,
