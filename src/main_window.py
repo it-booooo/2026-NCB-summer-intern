@@ -73,6 +73,7 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
             self,
             self.data_state,
             self.event_state,
+            self.sync_state,
         )
         self.led_worker = None
 

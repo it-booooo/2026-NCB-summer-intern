@@ -1,19 +1,40 @@
 from pathlib import Path
 
-from PySide6.QtWidgets import QDialog, QFileDialog, QInputDialog, QMessageBox
+from PySide6.QtWidgets import (
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFileDialog,
+    QFormLayout,
+    QInputDialog,
+    QMessageBox,
+    QVBoxLayout,
+)
 
 from .. import charts, signal_data, data_validation
 from .lfp_image_dialog import LfpImageExportDialog
-from .file_writers import export_events_csv, export_events_excel
+from .file_writers import (
+    export_events_csv,
+    export_events_excel,
+    export_ttl_markers_csv,
+    export_ttl_markers_excel,
+)
 
 
 class ExportController:
     """Own all save dialogs, export validation, and output generation."""
 
-    def __init__(self, window, data_state=None, event_state=None):
+    def __init__(
+        self,
+        window,
+        data_state=None,
+        event_state=None,
+        sync_state=None,
+    ):
         self.window = window
         self.data_state = data_state or window.data_state
         self.event_state = event_state or window.event_state
+        self.sync_state = sync_state or window.sync_state
         self.last_lfp_export_directory = None
 
     def actions(self):
@@ -25,14 +46,9 @@ class ExportController:
         """
         return [
             (
-                "Export Markers as CSV",
-                lambda: self.export_markers("csv"),
-                "Export the current video event markers as a UTF-8 CSV file.",
-            ),
-            (
-                "Export Markers as Excel",
-                lambda: self.export_markers("xlsx"),
-                "Export the current video event markers as an Excel workbook.",
+                "Export Markers...",
+                self.export_markers,
+                "Choose TTL or video markers and export them as CSV or Excel.",
             ),
             (
                 "Export Check Results",
@@ -51,28 +67,77 @@ class ExportController:
             ),
         ]
 
-    def export_markers(self, file_type):
+    def export_markers(self):
         # UI 流程只負責選擇格式與路徑；實際寫檔由 writers 模組處理。
-        """Export markers.
+        """Choose a marker source and file type, then export it."""
+        dialog = QDialog(self.window)
+        dialog.setWindowTitle("Export Markers")
+        dialog.setMinimumWidth(340)
 
-        Args:
-            file_type: Input used by this operation.
-        """
-        events = [dict(event) for event in self.event_state.events]
-        if not events:
+        marker_selector = QComboBox()
+        marker_selector.addItem("Video markers", "video")
+        marker_selector.addItem("TTL markers", "ttl")
+
+        file_type_selector = QComboBox()
+        file_type_selector.addItem("CSV (.csv)", "csv")
+        file_type_selector.addItem("Excel (.xlsx)", "xlsx")
+
+        form = QFormLayout()
+        form.addRow("Markers", marker_selector)
+        form.addRow("File type", file_type_selector)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Save
+            | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.button(QDialogButtonBox.StandardButton.Save).setText("Export")
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+
+        layout = QVBoxLayout()
+        layout.addLayout(form)
+        layout.addWidget(buttons)
+        dialog.setLayout(layout)
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        marker_type = marker_selector.currentData()
+        file_type = file_type_selector.currentData()
+        if marker_type == "video":
+            markers = [dict(event) for event in self.event_state.events]
+            filename_stem = "video_markers"
+            writer = (
+                export_events_csv
+                if file_type == "csv"
+                else export_events_excel
+            )
+        else:
+            marker_info = self.sync_state.time_marker_info or {}
+            markers = [dict(marker) for marker in marker_info.get("markers", [])]
+            filename_stem = "ttl_markers"
+            writer = (
+                export_ttl_markers_csv
+                if file_type == "csv"
+                else export_ttl_markers_excel
+            )
+
+        if not markers:
             QMessageBox.information(
                 self.window, "No markers", "There are no markers to export."
             )
             return
+
         is_csv = file_type == "csv"
+        suffix = "csv" if is_csv else "xlsx"
         path, _ = QFileDialog.getSaveFileName(
             self.window,
             "Export Markers as CSV" if is_csv else "Export Markers as Excel",
-            "video_markers.csv" if is_csv else "video_markers.xlsx",
+            f"{filename_stem}.{suffix}",
             "CSV Files (*.csv)" if is_csv else "Excel Files (*.xlsx)",
         )
         if path:
-            (export_events_csv if is_csv else export_events_excel)(path, events)
+            writer(path, markers)
 
 
     def export_check_results(self):
