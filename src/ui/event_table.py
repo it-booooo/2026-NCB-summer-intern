@@ -555,11 +555,12 @@ class EventTable(QTableWidget):
             self.update_note_selection_styles()
             self.events_changed.emit()
 
-    def delete_events_by_source(self, source):
+    def delete_events_by_source(self, source, emit=True):
         """Delete events by source.
 
         Args:
             source: Input used by this operation.
+            emit: Whether to notify listeners after deleting matching events.
         """
         removed = False
         for row in range(self.rowCount() - 1, -1, -1):
@@ -572,6 +573,7 @@ class EventTable(QTableWidget):
 
         if removed:
             self.update_note_selection_styles()
+        if removed and emit:
             self.events_changed.emit()
 
     def event_at(self, row):

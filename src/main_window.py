@@ -3,6 +3,10 @@ import shutil
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
+    QDialog,
+    QDialogButtonBox,
+    QDoubleSpinBox,
+    QFormLayout,
     QGroupBox,
     QInputDialog,
     QMainWindow,
@@ -57,7 +61,11 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
             self.video_state,
             self.sync_state,
         )
-        self.lfp_panel = LfpPanel(self.data_state, self.sync_state)
+        self.lfp_panel = LfpPanel(
+            self.data_state,
+            self.sync_state,
+            self.event_state,
+        )
         self.sync_panel = SyncPanel(self.led_state)
         self.ttl_panel = TtlPanel(
             self.video_player,
@@ -90,6 +98,7 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
         self.lfp_panel.time_selected.connect(self.seek_video_record_time)
         self.ttl_panel.markers_changed.connect(self.set_ttl_markers)
         self.event_table.events_changed.connect(self.update_time_offset)
+        self.event_table.events_changed.connect(self.lfp_panel.update_lfp_peak_artist)
         self.event_table.video_time_selected.connect(self.seek_video_marker_time)
 
         self.create_menu()
@@ -180,6 +189,11 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
         )
         self.add_action(
             settings_menu,
+            "set LFP peak thresholds",
+            self.set_lfp_peak_thresholds,
+        )
+        self.add_action(
+            settings_menu,
             "Check OpenCL GPU",
             self.show_opencl_status,
         )
@@ -214,7 +228,9 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
             "lfp": ("Set LFP step", "lfp_step"),
             "axis": ("Set 3-axis step", "axis_step"),
         }[plot_name]
-        accepted, step = self.ask_step(title, getattr(self.app_state.data, step_attribute))
+        accepted, step = self.ask_step(
+            title, getattr(self.app_state.data, step_attribute)
+        )
         if accepted:
             self.lfp_panel.set_plot_step(plot_name, step)
 
@@ -237,6 +253,45 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
         )
         if accepted:
             self.lfp_panel.set_line_noise_hz(values[items.index(text)])
+
+    def set_lfp_peak_thresholds(self):
+        """Set both sigma thresholds used by LFP peak detection."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Set LFP peak thresholds")
+
+        height_input = QDoubleSpinBox(dialog)
+        prominence_input = QDoubleSpinBox(dialog)
+        for spinbox in (height_input, prominence_input):
+            spinbox.setDecimals(2)
+            spinbox.setRange(0.0, 100.0)
+            spinbox.setSingleStep(0.1)
+            spinbox.setSuffix(" σ")
+
+        height_input.setValue(float(self.marker_panel.LFP_PEAK_HEIGHT_SIGMA))
+        prominence_input.setValue(
+            float(self.marker_panel.LFP_PEAK_PROMINENCE_SIGMA)
+        )
+
+        form = QFormLayout()
+        form.addRow("Peak height threshold:", height_input)
+        form.addRow("Peak prominence threshold:", prominence_input)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Save
+            | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+
+        layout = QVBoxLayout(dialog)
+        layout.addLayout(form)
+        layout.addWidget(buttons)
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        self.marker_panel.LFP_PEAK_HEIGHT_SIGMA = height_input.value()
+        self.marker_panel.LFP_PEAK_PROMINENCE_SIGMA = prominence_input.value()
 
     def create_layout(self):
         """Create layout.

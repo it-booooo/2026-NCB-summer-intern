@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Callable, cast
 
 import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 
@@ -12,6 +13,9 @@ from .chart_helpers import format_signal_label, install_x_navigation, resolve_pl
 class LfpFigure(Figure):
     set_lfp_channel: Callable[[int], None]
     set_lfp_signal_view: Callable[[bool], None]
+    set_lfp_peak_samples: Callable[
+        [int, bool, np.ndarray, np.ndarray], None
+    ]
     set_lfp_xlim: Callable[[float, float], None]
     reset_lfp_x_zoom: Callable[[], None]
     add_lfp_xlim_callback: Callable[[Callable[[tuple[float, float]], None]], None]
@@ -99,6 +103,7 @@ def LFP(
     ax = fig.add_axes((0.08, 0.22, 0.90, 0.62))
 
     lines: dict[tuple[int, bool], Line2D] = {}
+    base_line_data: dict[tuple[int, bool], tuple[np.ndarray, np.ndarray]] = {}
     show_filtered = bool(filter_settings and filter_settings.show_filtered)
 
     for channel in channel_numbers:
@@ -114,6 +119,10 @@ def LFP(
                 visible=(channel == selected_channel and filtered == show_filtered),
             )[0]
             lines[(channel, filtered)] = line
+            base_line_data[(channel, filtered)] = (
+                np.asarray(x, dtype=float),
+                np.asarray(signal_values[plot_index], dtype=float),
+            )
 
     ax.set_xlabel("")
     ax.set_ylabel("")
@@ -192,10 +201,50 @@ def LFP(
         ax.autoscale_view(scalex=False, scaley=True)
         fig.canvas.draw_idle()
 
+    def set_lfp_peak_samples(
+        channel: int,
+        filtered: bool,
+        times: np.ndarray,
+        values: np.ndarray,
+    ) -> None:
+        """Merge exact peak-neighborhood samples into one displayed LFP line."""
+        key = (int(channel), bool(filtered))
+        if key not in lines:
+            raise ValueError(f"Invalid LFP line: channel={channel}, filtered={filtered}")
+
+        base_times, base_values = base_line_data[key]
+        extra_times = np.asarray(times, dtype=float).reshape(-1)
+        extra_values = np.asarray(values, dtype=float).reshape(-1)
+        if extra_times.shape != extra_values.shape:
+            raise ValueError("LFP peak sample times and values must match.")
+
+        finite = np.isfinite(extra_times) & np.isfinite(extra_values)
+        if np.any(finite):
+            merged_times = np.concatenate((base_times, extra_times[finite]))
+            merged_values = np.concatenate((base_values, extra_values[finite]))
+            order = np.argsort(merged_times, kind="stable")
+            merged_times = merged_times[order]
+            merged_values = merged_values[order]
+            # Prefer exact full-resolution samples when a time also exists in the
+            # step-downsampled base line.
+            keep = np.r_[merged_times[1:] != merged_times[:-1], True]
+            merged_times = merged_times[keep]
+            merged_values = merged_values[keep]
+        else:
+            merged_times = base_times
+            merged_values = base_values
+
+        lines[key].set_data(merged_times, merged_values)
+        if lines[key].get_visible():
+            ax.relim(visible_only=True)
+            ax.autoscale_view(scalex=False, scaley=True)
+        fig.canvas.draw_idle()
+
     set_lfp_channel(selected_channel)
 
     fig.set_lfp_channel = set_lfp_channel
     fig.set_lfp_signal_view = set_lfp_signal_view
+    fig.set_lfp_peak_samples = set_lfp_peak_samples
     fig.set_lfp_xlim = navigation.set_xlim
     fig.reset_lfp_x_zoom = navigation.reset_x_zoom
     fig.add_lfp_xlim_callback = navigation.add_xlim_callback
