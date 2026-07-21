@@ -1,3 +1,7 @@
+import re
+
+import numpy as np
+
 from .. import charts as draw
 from .. import signal_data as signal_func
 from ..charts.chart_helpers import (
@@ -6,7 +10,7 @@ from ..charts.chart_helpers import (
     format_time_tick,
     resolve_plot_step,
 )
-from ..app_state import DataState, SyncState
+from ..app_state import DataState, EventState, SyncState
 from ..synchronization.time_conversion import relative_time
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
@@ -36,10 +40,11 @@ class LfpPanel(LfpAnalysisMixin, QWidget):
     PLAYBACK_CURSOR_FRACTION = 0.35
     PLAYBACK_EDGE_MARGIN_FRACTION = 0.18
 
-    def __init__(self, data_state=None, sync_state=None):
+    def __init__(self, data_state=None, sync_state=None, event_state=None):
         super().__init__()
         self.data_state = data_state or DataState()
         self.sync_state = sync_state or SyncState()
+        self.event_state = event_state or EventState()
         self.setMinimumHeight(270)
 
         self.lfp_canvas = None
@@ -976,7 +981,65 @@ class LfpPanel(LfpAnalysisMixin, QWidget):
         if self.lfp_fig is None:
             return
         self.lfp_fig.set_lfp_signal_view(show_filtered)
+        self.update_lfp_peak_artist()
         self.invalidate_current_time_backgrounds("lfp")
+
+    def update_lfp_peak_artist(self) -> None:
+        """Draw one second around every persisted LFP peak event."""
+        fig = self.lfp_fig
+        canvas = self.lfp_canvas
+        if fig is None or canvas is None or not fig.axes:
+            self.invalidate_current_time_backgrounds("lfp")
+            return
+
+        channel = self.selected_channel(self.lfp_channel_selector)
+        filtered = bool(self.signal_view_selector.currentData())
+        if channel is not None:
+            dataset = self.ensure_lfp_dataset()
+            values = dataset.signal_values(
+                channel,
+                self.current_lfp_filter_settings(),
+            )
+            record_times = dataset.record_time_s
+            offset = float(self.sync_state.time_offset_sec or 0.0)
+            local_times: list[float] = []
+            local_values: list[float] = []
+
+            for event in self.event_state.events:
+                event_type = str(event.get("event_type", "")).lower()
+                source = str(event.get("source", "")).lower()
+                if event_type != "lfp_peak" and source != "lfp_peak":
+                    continue
+
+                channel_match = re.search(
+                    r"(?:^|[,;\s])channel\s*=\s*(\d+)",
+                    str(event.get("note", "")),
+                    re.IGNORECASE,
+                )
+                if channel_match and int(channel_match.group(1)) != channel:
+                    continue
+
+                peak_record_time = float(event.get("video_time_sec", 0.0)) - offset
+                first_sample = int(
+                    np.searchsorted(record_times, peak_record_time - 1.0, side="left")
+                )
+                last_sample = int(
+                    np.searchsorted(record_times, peak_record_time + 1.0, side="right")
+                )
+                local_times.extend(record_times[first_sample:last_sample])
+                local_values.extend(values[first_sample:last_sample])
+                local_times.append(np.nan)
+                local_values.append(np.nan)
+
+            fig.set_lfp_peak_samples(
+                channel,
+                filtered,
+                np.asarray(local_times, dtype=float),
+                np.asarray(local_values, dtype=float),
+            )
+
+        self.invalidate_current_time_backgrounds("lfp")
+        canvas.draw_idle()
 
     def set_line_noise_hz(self, line_noise_hz):
         """Set line noise hz.
@@ -1109,6 +1172,7 @@ class LfpPanel(LfpAnalysisMixin, QWidget):
 
         self.create_or_update_timeline()
         self.update_event_interval_artists()
+        self.update_lfp_peak_artist()
         self.update_current_time_marker()
 
     def plot_axis(self):

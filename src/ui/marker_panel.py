@@ -12,10 +12,8 @@ from scipy.signal import find_peaks
 
 
 class MarkerPanel(QWidget):
-    MAX_LFP_PEAK_MARKERS = 50
     LFP_PEAK_HEIGHT_SIGMA = 8.0
     LFP_PEAK_PROMINENCE_SIGMA = 6.0
-    LFP_PEAK_HEIGHT_PERCENTILE = 99.9
     LFP_PEAK_MIN_DISTANCE_SEC = 1.0
 
     def __init__(
@@ -31,7 +29,6 @@ class MarkerPanel(QWidget):
         self.video_player = video_player
         self.lfp_panel = lfp_panel
         self.sync_state = sync_state
-
         led_on_button = QPushButton("LED On")
         led_off_button = QPushButton("LED Off")
         select_roi_button = QPushButton("Select LED")
@@ -114,6 +111,7 @@ class MarkerPanel(QWidget):
 
     def add_lfp_peaks(self):
         """Detect peaks in the selected LFP channel and add video markers."""
+        print(self.LFP_PEAK_HEIGHT_SIGMA, self.LFP_PEAK_PROMINENCE_SIGMA)
         if self.lfp_panel is None or self.sync_state is None:
             return
         if not self.video_player.has_video():
@@ -127,9 +125,7 @@ class MarkerPanel(QWidget):
             )
             return
 
-        channel = self.lfp_panel.selected_channel(
-            self.lfp_panel.lfp_channel_selector
-        )
+        channel = self.lfp_panel.selected_channel(self.lfp_panel.lfp_channel_selector)
         if channel is None:
             QMessageBox.warning(self, "No LFP channel", "Please select a channel.")
             return
@@ -159,19 +155,8 @@ class MarkerPanel(QWidget):
                 if not np.isfinite(noise_sigma) or noise_sigma <= 0.0:
                     noise_sigma = np.finfo(float).eps
 
-                extreme_height = float(
-                    np.nanpercentile(
-                        visible_values,
-                        self.LFP_PEAK_HEIGHT_PERCENTILE,
-                    )
-                )
-                minimum_height = max(
-                    baseline + self.LFP_PEAK_HEIGHT_SIGMA * noise_sigma,
-                    extreme_height,
-                )
-                minimum_prominence = (
-                    self.LFP_PEAK_PROMINENCE_SIGMA * noise_sigma
-                )
+                minimum_height = baseline + self.LFP_PEAK_HEIGHT_SIGMA * noise_sigma
+                minimum_prominence = self.LFP_PEAK_PROMINENCE_SIGMA * noise_sigma
                 minimum_distance = max(
                     1,
                     int(
@@ -181,27 +166,17 @@ class MarkerPanel(QWidget):
                         )
                     ),
                 )
-                local_peaks, properties = find_peaks(
+                local_peaks, _ = find_peaks(
                     visible_values,
                     height=minimum_height,
                     prominence=minimum_prominence,
                     distance=minimum_distance,
                 )
                 peak_indices = local_peaks + first_index
-                peak_prominences = properties["prominences"]
             else:
                 peak_indices = np.array([], dtype=int)
-                peak_prominences = np.array([], dtype=float)
 
-            detected_count = len(peak_indices)
-            if detected_count > self.MAX_LFP_PEAK_MARKERS:
-                strongest = np.argpartition(
-                    peak_prominences,
-                    -self.MAX_LFP_PEAK_MARKERS,
-                )[-self.MAX_LFP_PEAK_MARKERS:]
-                peak_indices = np.sort(peak_indices[strongest])
-
-            self.event_table.delete_events_by_source("lfp_peak")
+            self.event_table.delete_events_by_source("lfp_peak", emit=False)
             for peak_index in peak_indices:
                 video_time_sec = float(video_times[peak_index])
                 frame_index = min(
@@ -220,8 +195,8 @@ class MarkerPanel(QWidget):
                     emit=False,
                 )
 
-            if len(peak_indices):
-                self.event_table.events_changed.emit()
+            # Redraw once, after the complete replacement is visible in EventState.
+            self.event_table.events_changed.emit()
         except Exception as error:
             QMessageBox.warning(self, "Peak detection failed", str(error))
             return
@@ -229,13 +204,8 @@ class MarkerPanel(QWidget):
             QApplication.restoreOverrideCursor()
 
         added = len(peak_indices)
-        limit_note = (
-            f"\nDetected {detected_count}; kept the {added} most prominent peaks."
-            if detected_count > added
-            else ""
-        )
         QMessageBox.information(
             self,
             "LFP peaks",
-            f"Added {added} peak markers from channel {channel}.{limit_note}",
+            f"Added {added} peak markers from channel {channel}.",
         )
