@@ -5,10 +5,13 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
 from scipy.signal import find_peaks
+
+from ..app_state import VideoState
 
 
 class MarkerPanel(QWidget):
@@ -24,6 +27,7 @@ class MarkerPanel(QWidget):
         video_player,
         lfp_panel=None,
         sync_state=None,
+        video_state=None,
     ):
         super().__init__()
 
@@ -31,6 +35,7 @@ class MarkerPanel(QWidget):
         self.video_player = video_player
         self.lfp_panel = lfp_panel
         self.sync_state = sync_state
+        self.video_state = video_state or VideoState()
 
         led_on_button = QPushButton("LED On")
         led_off_button = QPushButton("LED Off")
@@ -40,7 +45,8 @@ class MarkerPanel(QWidget):
         seizure_button = QPushButton("Seizure-like")
         edit_button = QPushButton("Edit Selected")
         delete_button = QPushButton("Delete Selected")
-        find_peaks_button = QPushButton("Find LFP Peaks")
+        find_peaks_button = QPushButton("Find Peak")
+        find_peaks_button.setStyleSheet("font-size: 8pt;")
 
         for button in (
             led_on_button,
@@ -54,6 +60,7 @@ class MarkerPanel(QWidget):
             find_peaks_button,
         ):
             button.setFixedHeight(22)
+            button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
         select_roi_button.setToolTip("Select LED area and run brightness detection")
 
@@ -71,17 +78,17 @@ class MarkerPanel(QWidget):
         button_layout.setContentsMargins(2, 2, 2, 2)
         button_layout.setHorizontalSpacing(2)
         button_layout.setVerticalSpacing(2)
-        for column in range(6):
+        for column in range(3):
             button_layout.setColumnStretch(column, 1)
-        button_layout.addWidget(select_roi_button, 0, 0, 1, 2)
-        button_layout.addWidget(led_on_button, 0, 2, 1, 2)
-        button_layout.addWidget(led_off_button, 0, 4, 1, 2)
-        button_layout.addWidget(behavior_start_button, 1, 0, 1, 2)
-        button_layout.addWidget(behavior_end_button, 1, 2, 1, 2)
-        button_layout.addWidget(seizure_button, 1, 4, 1, 2)
-        button_layout.addWidget(delete_button, 2, 0, 1, 3)
-        button_layout.addWidget(edit_button, 2, 3, 1, 3)
-        button_layout.addWidget(find_peaks_button, 3, 0, 1, 6)
+        button_layout.addWidget(select_roi_button, 0, 0)
+        button_layout.addWidget(led_on_button, 0, 1)
+        button_layout.addWidget(led_off_button, 0, 2)
+        button_layout.addWidget(behavior_start_button, 1, 0)
+        button_layout.addWidget(behavior_end_button, 1, 1)
+        button_layout.addWidget(seizure_button, 1, 2)
+        button_layout.addWidget(delete_button, 2, 0)
+        button_layout.addWidget(edit_button, 2, 1)
+        button_layout.addWidget(find_peaks_button, 2, 2)
 
         layout = QVBoxLayout()
         layout.setContentsMargins(3, 3, 3, 3)
@@ -100,7 +107,7 @@ class MarkerPanel(QWidget):
         self.event_table.add_event(
             event_type=event_type,
             video_time_sec=self.video_player.current_time_sec(),
-            frame_index=self.video_player.video_state.current_frame,
+            frame_index=self.video_state.current_frame,
             note="",
         )
 
@@ -134,7 +141,7 @@ class MarkerPanel(QWidget):
             QMessageBox.warning(self, "No LFP channel", "Please select a channel.")
             return
 
-        metadata = self.video_player.video_state.metadata
+        metadata = self.video_state.metadata
         fps = float(metadata.using_fps)
         duration = float(metadata.duration_sec)
         offset = float(self.sync_state.time_offset_sec)

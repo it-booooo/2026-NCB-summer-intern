@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 
 from .. import signal_data
 from ..led_detection import LedBrightnessPoint, LedEvent
+from ..video_player.video_helpers import normalize_rotation_degrees
 
 
 class ImportController:
@@ -329,11 +330,10 @@ class ImportController:
                 rotation_degrees = video.get("rotation_degrees")
                 if rotation_degrees is None:
                     rotation_degrees = 180 if video.get("rotate_180_enabled", False) else 0
-                window.video_player.set_rotation_degrees(
-                    rotation_degrees,
-                    refresh=False,
-                    clear_roi=False,
-                )
+                rotation_degrees = normalize_rotation_degrees(rotation_degrees)
+                self.video_state.rotation_degrees = rotation_degrees
+                self.video_state.rotate_180_enabled = rotation_degrees == 180
+                window.video_player.update_rotation_buttons()
                 window.video_player.seek_frame(int(video.get("current_frame", 0)))
 
             if restored_timeline_xlim is not None:

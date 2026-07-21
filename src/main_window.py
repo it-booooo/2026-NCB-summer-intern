@@ -55,12 +55,14 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
         self.ttl_panel = TtlPanel(
             self.video_player,
             self.sync_state,
+            self.video_state,
         )
         self.marker_panel = MarkerPanel(
             self.event_table,
             self.video_player,
             self.lfp_panel,
             self.sync_state,
+            self.video_state,
         )
         self.import_controller = ImportController(
             self,

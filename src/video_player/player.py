@@ -38,7 +38,7 @@ class RoiVideoLabel(QLabel):
         self.hover_pos = None
         self.display_rect = QRect()
         self.frame_size = None
-        self._painting = False
+        self.display_pixmap = None
 
         # 儲存已完成選取的 LED ROI，座標格式是影片原始 frame 座標：
         # (x, y, width, height)
@@ -84,6 +84,11 @@ class RoiVideoLabel(QLabel):
         """
         self.display_rect = display_rect
         self.frame_size = frame_size
+
+    def set_display_pixmap(self, pixmap):
+        """Set the scaled video pixmap rendered by this label."""
+        self.display_pixmap = pixmap
+        self.update()
 
     def mousePressEvent(self, event):
         """Provide mouse press event functionality.
@@ -192,15 +197,18 @@ class RoiVideoLabel(QLabel):
         Args:
             event: Event record to process.
         """
-        if self._painting:
-            return
-        self._painting = True
-        super().paintEvent(event)
-
         painter = QPainter(self)
         if not painter.isActive():
-            self._painting = False
             return
+
+        painter.fillRect(self.rect(), Qt.black)
+        if self.display_pixmap is None:
+            painter.setPen(Qt.white)
+            painter.drawText(self.rect(), Qt.AlignCenter, self.text())
+            painter.end()
+            return
+
+        painter.drawPixmap(self.display_rect.topLeft(), self.display_pixmap)
 
         # 1. 永久顯示已儲存的 LED ROI
         if self.led_state.roi is not None:
@@ -212,7 +220,6 @@ class RoiVideoLabel(QLabel):
         # 2. 沒有進入 ROI 選取模式時，只顯示永久 ROI，不畫暫時框
         if not self.selecting_roi:
             painter.end()
-            self._painting = False
             return
 
         # 3. ROI 選取模式：顯示紅色游標小方框或拖曳框
@@ -228,12 +235,10 @@ class RoiVideoLabel(QLabel):
                 )
             )
             painter.end()
-            self._painting = False
             return
 
         if self.drag_start is None or self.drag_end is None:
             painter.end()
-            self._painting = False
             return
 
         drag_rect = QRect(self.drag_start, self.drag_end).normalized()
@@ -242,7 +247,6 @@ class RoiVideoLabel(QLabel):
         if not drag_rect.isNull():
             painter.drawRect(drag_rect)
         painter.end()
-        self._painting = False
 
 
 class VideoPlayer(QWidget):
@@ -326,7 +330,7 @@ class VideoPlayer(QWidget):
             lambda _checked=False: self.step_frame(1)
         )
         self.rotate_button.clicked.connect(self.toggle_rotate_180)
-        self.rotate_90_button.clicked.connect(self.rotate_90_clockwise)
+        self.rotate_90_button.clicked.connect(self.rotate_90_counterclockwise)
         self.slider.sliderMoved.connect(self.seek_frame)
         self.time_seek_input.returnPressed.connect(
             lambda: self.seek_to_input("time")
@@ -725,8 +729,8 @@ class VideoPlayer(QWidget):
         next_rotation = 0 if self.video_state.rotation_degrees == 180 else 180
         self.set_rotation_degrees(next_rotation)
 
-    def rotate_90_clockwise(self):
-        """Rotate the displayed video 90 degrees clockwise."""
+    def rotate_90_counterclockwise(self):
+        """Rotate the displayed video 90 degrees counterclockwise."""
         if not self.has_video():
             return
 
@@ -872,11 +876,7 @@ class VideoPlayer(QWidget):
             (self.current_pixmap.width(), self.current_pixmap.height()),
         )
 
-        self.video_label.setPixmap(scaled_pixmap)
-
-        # setPixmap 後主畫面會重繪，所以這裡補 update，
-        # 讓 QLabel 的 paintEvent 重新把 LED ROI 畫上去。
-        self.video_label.update()
+        self.video_label.set_display_pixmap(scaled_pixmap)
 
     def schedule_video_display_update(self):
         """Refresh after Qt has completed the active resize/paint event."""

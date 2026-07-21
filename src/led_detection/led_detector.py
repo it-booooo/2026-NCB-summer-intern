@@ -107,7 +107,7 @@ def compute_led_brightness_curve(
         video_path: Path of the video being processed.
         roi: LED region of interest as (x, y, width, height).
         rotate_180: Backward-compatible 180-degree rotation flag.
-        rotation_degrees: Clockwise display/analysis rotation.
+        rotation_degrees: Display/analysis rotation.
         using_fps: Frame rate used for time conversion.
         frame_step: Input used by this operation.
         start_frame: First video frame to process.
@@ -451,7 +451,7 @@ def refine_led_event_pairs_from_frame_deltas(
         roi: LED region of interest as (x, y, width, height).
         coarse_events: Input used by this operation.
         rotate_180: Backward-compatible 180-degree rotation flag.
-        rotation_degrees: Clockwise display/analysis rotation.
+        rotation_degrees: Display/analysis rotation.
         using_fps: Frame rate used for time conversion.
         window_sec: Input used by this operation.
         scan_start_frame: Input used by this operation.

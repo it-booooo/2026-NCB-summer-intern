@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..app_state import SyncState
+from ..app_state import SyncState, VideoState
 from ..synchronization.time_conversion import record_time_parts
 
 
@@ -22,9 +22,10 @@ class TtlPanel(QWidget):
     HEADERS = ["#", "Local time", "Record time"]
     markers_changed = Signal(dict)
 
-    def __init__(self, video_player=None, sync_state=None):
+    def __init__(self, video_player=None, sync_state=None, video_state=None):
         super().__init__()
         self.sync_state = sync_state or SyncState()
+        self.video_state = video_state or VideoState()
         self.video_player = video_player
 
         self.record_time_input = QLineEdit()
@@ -110,7 +111,7 @@ class TtlPanel(QWidget):
         """
         if self.video_player is None or not self.video_player.has_video():
             raise ValueError("Please import a video or enter a TTL time manually.")
-        if self.video_player.video_state.is_playing:
+        if self.video_state.is_playing:
             raise ValueError("Pause the video before adding its current time as TTL.")
         return self.video_player.current_time_sec()
 
