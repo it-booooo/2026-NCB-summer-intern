@@ -23,6 +23,7 @@ class VideoState:
     metadata: VideoMetadata | None = None
     current_frame: int = 0
     is_playing: bool = False
+    rotation_degrees: int = 0
     rotate_180_enabled: bool = False
 
 

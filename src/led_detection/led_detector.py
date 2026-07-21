@@ -2,7 +2,11 @@ from dataclasses import dataclass
 
 import cv2
 import numpy as np
-from ..video_player.video_helpers import open_video_capture
+from ..video_player.video_helpers import (
+    apply_frame_rotation,
+    normalize_rotation_degrees,
+    open_video_capture,
+)
 
 
 DETECTION_MODE = "frame_delta_mean_brightness"
@@ -88,6 +92,7 @@ def compute_led_brightness_curve(
     video_path,
     roi=None,
     rotate_180=False,
+    rotation_degrees=None,
     using_fps=30.0,
     frame_step=1,
     start_frame=0,
@@ -101,7 +106,8 @@ def compute_led_brightness_curve(
     Args:
         video_path: Path of the video being processed.
         roi: LED region of interest as (x, y, width, height).
-        rotate_180: Input used by this operation.
+        rotate_180: Backward-compatible 180-degree rotation flag.
+        rotation_degrees: Clockwise display/analysis rotation.
         using_fps: Frame rate used for time conversion.
         frame_step: Input used by this operation.
         start_frame: First video frame to process.
@@ -113,7 +119,15 @@ def compute_led_brightness_curve(
     if acceleration_info is not None:
         acceleration_info.clear()
 
+    if rotation_degrees is None:
+        rotation_degrees = 180 if rotate_180 else 0
+    rotation_degrees = normalize_rotation_degrees(rotation_degrees)
+    rotate_180 = rotation_degrees == 180
+
     try:
+        if rotation_degrees not in {0, 180}:
+            raise ValueError("OpenCL LED analysis does not support 90-degree rotation")
+
         from .led_opencl import compute_led_brightness_curve_opencl
 
         opencl_points = compute_led_brightness_curve_opencl(
@@ -183,8 +197,7 @@ def compute_led_brightness_curve(
         if not success:
             break
 
-        if rotate_180:
-            frame = cv2.rotate(frame, cv2.ROTATE_180)
+        frame = apply_frame_rotation(cv2, frame, rotation_degrees)
 
         points.append(
             LedBrightnessPoint(
@@ -417,6 +430,7 @@ def refine_led_event_pairs_from_frame_deltas(
     roi,
     coarse_events,
     rotate_180=False,
+    rotation_degrees=None,
     using_fps=30.0,
     window_sec=1.0,
     scan_start_frame=0,
@@ -436,7 +450,8 @@ def refine_led_event_pairs_from_frame_deltas(
         video_path: Path of the video being processed.
         roi: LED region of interest as (x, y, width, height).
         coarse_events: Input used by this operation.
-        rotate_180: Input used by this operation.
+        rotate_180: Backward-compatible 180-degree rotation flag.
+        rotation_degrees: Clockwise display/analysis rotation.
         using_fps: Frame rate used for time conversion.
         window_sec: Input used by this operation.
         scan_start_frame: Input used by this operation.
@@ -491,6 +506,7 @@ def refine_led_event_pairs_from_frame_deltas(
             video_path,
             roi=roi,
             rotate_180=rotate_180,
+            rotation_degrees=rotation_degrees,
             using_fps=fps,
             frame_step=1,
             start_frame=start_frame,

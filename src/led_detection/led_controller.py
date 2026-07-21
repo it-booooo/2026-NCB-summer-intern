@@ -155,6 +155,7 @@ class LedControllerMixin:
             video_path=self.video_state.metadata.path,
             roi=self.led_state.roi,
             rotate_180=self.video_state.rotate_180_enabled,
+            rotation_degrees=self.video_state.rotation_degrees,
             fps=self.video_state.metadata.using_fps,
             scan_start_frame=scan_start_frame,
             scan_end_frame=scan_end_frame,
@@ -199,7 +200,7 @@ class LedControllerMixin:
         return (
             self.video_state.metadata.path,
             tuple(self.led_state.roi) if self.led_state.roi is not None else None,
-            bool(self.video_state.rotate_180_enabled),
+            int(self.video_state.rotation_degrees),
             float(self.video_state.metadata.using_fps or 0.0),
             int(scan_start_frame),
             int(scan_end_frame),

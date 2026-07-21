@@ -134,16 +134,19 @@ class ExportController:
             (
                 _video_path,
                 roi,
-                rotate_180,
+                rotation_degrees,
                 fps,
                 start_frame,
                 end_frame,
                 coarse_step,
             ) = cache_key
+            if isinstance(rotation_degrees, bool):
+                rotation_degrees = 180 if rotation_degrees else 0
             brightness_cache.append(
                 {
                     "roi": roi,
-                    "rotate_180": rotate_180,
+                    "rotation_degrees": rotation_degrees,
+                    "rotate_180": int(rotation_degrees) == 180,
                     "fps": fps,
                     "start_frame": start_frame,
                     "end_frame": end_frame,
@@ -155,6 +158,7 @@ class ExportController:
         state = {
             "video": {
                 "current_frame": self.video_state.current_frame,
+                "rotation_degrees": self.video_state.rotation_degrees,
                 "rotate_180_enabled": self.video_state.rotate_180_enabled,
             },
             "data": {

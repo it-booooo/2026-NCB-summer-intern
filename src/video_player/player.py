@@ -15,8 +15,10 @@ from PySide6.QtWidgets import (
 from ..app_state import LedState, SyncState, VideoState
 from ..synchronization.time_conversion import absolute_time, relative_time
 from .video_helpers import (
+    apply_frame_rotation,
     format_time,
     frame_to_time_sec,
+    normalize_rotation_degrees,
     parse_time_input,
     parse_video_metadata,
     read_frame,
@@ -253,6 +255,7 @@ class VideoPlayer(QWidget):
         "Prev Frame": 88,
         "Next Frame": 88,
         "Rotate 180°": 100,
+        "Rotate 90°": 96,
     }
 
     def __init__(self, video_state=None, sync_state=None, led_state=None):
@@ -295,12 +298,14 @@ class VideoPlayer(QWidget):
         self.prev_frame_button = QPushButton("Prev Frame")
         self.next_frame_button = QPushButton("Next Frame")
         self.rotate_button = QPushButton("Rotate 180°")
+        self.rotate_90_button = QPushButton("Rotate 90°")
         self.control_buttons = [
             self.play_button,
             self.stop_button,
             self.prev_frame_button,
             self.next_frame_button,
             self.rotate_button,
+            self.rotate_90_button,
         ]
 
         for button in self.control_buttons:
@@ -321,6 +326,7 @@ class VideoPlayer(QWidget):
             lambda _checked=False: self.step_frame(1)
         )
         self.rotate_button.clicked.connect(self.toggle_rotate_180)
+        self.rotate_90_button.clicked.connect(self.rotate_90_clockwise)
         self.slider.sliderMoved.connect(self.seek_frame)
         self.time_seek_input.returnPressed.connect(
             lambda: self.seek_to_input("time")
@@ -541,6 +547,7 @@ class VideoPlayer(QWidget):
 
         self.video_state.current_frame = 0
         self.video_state.is_playing = False
+        self.video_state.rotation_degrees = 0
         self.video_state.rotate_180_enabled = False
         self.sync_state.video_time_origin_sec = None
 
@@ -556,7 +563,7 @@ class VideoPlayer(QWidget):
         self.mark_seek_input_valid(self.frame_seek_input, True)
 
         self.play_button.setText("Play")
-        self.rotate_button.setText("Rotate 180°")
+        self.update_rotation_buttons()
 
         self.display_frame(first_frame, 0)
         return True
@@ -715,13 +722,41 @@ class VideoPlayer(QWidget):
         if not self.has_video():
             return
 
-        self.video_state.rotate_180_enabled = not self.video_state.rotate_180_enabled
+        next_rotation = 0 if self.video_state.rotation_degrees == 180 else 180
+        self.set_rotation_degrees(next_rotation)
+
+    def rotate_90_clockwise(self):
+        """Rotate the displayed video 90 degrees clockwise."""
+        if not self.has_video():
+            return
+
+        self.set_rotation_degrees(self.video_state.rotation_degrees + 90)
+
+    def set_rotation_degrees(self, degrees, refresh=True, clear_roi=True):
+        """Apply a display and LED-analysis rotation in 90-degree increments."""
+        if not self.has_video():
+            return
+
+        rotation = normalize_rotation_degrees(degrees)
+        if rotation == self.video_state.rotation_degrees:
+            self.update_rotation_buttons()
+            return
+
+        self.video_state.rotation_degrees = rotation
+        self.video_state.rotate_180_enabled = rotation == 180
+        self.update_rotation_buttons()
+        if clear_roi:
+            self.clear_led_roi()
+        if refresh:
+            self.show_frame(self.video_state.current_frame)
+
+    def update_rotation_buttons(self):
+        """Keep rotation button labels in sync with the current orientation."""
+        rotation = normalize_rotation_degrees(self.video_state.rotation_degrees)
         self.rotate_button.setText(
-            "Rotation: 180°"
-            if self.video_state.rotate_180_enabled
-            else "Rotate 180°"
+            "Rotation: 180°" if rotation == 180 else "Rotate 180°"
         )
-        self.show_frame(self.video_state.current_frame)
+        self.rotate_90_button.setText("Rotate 90°")
 
     def show_frame(self, frame_index):
         """Show frame.
@@ -748,8 +783,11 @@ class VideoPlayer(QWidget):
         """
         import cv2
 
-        if self.video_state.rotate_180_enabled:
-            frame = cv2.rotate(frame, cv2.ROTATE_180)
+        frame = apply_frame_rotation(
+            cv2,
+            frame,
+            self.video_state.rotation_degrees,
+        )
 
         self.video_state.current_frame = int(frame_index)
 

@@ -3,12 +3,14 @@
 from .player import VideoPlayer
 from .video_helpers import (
     VideoMetadata,
+    apply_frame_rotation,
     format_time,
+    normalize_rotation_degrees,
     open_video_capture,
     parse_video_metadata,
 )
 
 __all__ = [
-    "VideoMetadata", "VideoPlayer", "format_time", "open_video_capture",
-    "parse_video_metadata",
+    "VideoMetadata", "VideoPlayer", "apply_frame_rotation", "format_time",
+    "normalize_rotation_degrees", "open_video_capture", "parse_video_metadata",
 ]

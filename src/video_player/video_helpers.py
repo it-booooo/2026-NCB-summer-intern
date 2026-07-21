@@ -48,6 +48,28 @@ def open_video_capture(cv2, video_path):
     )
 
 
+def normalize_rotation_degrees(degrees):
+    """Return a supported clockwise display rotation."""
+    try:
+        value = int(round(float(degrees or 0)))
+    except (TypeError, ValueError):
+        return 0
+
+    return value % 360 if value % 360 in {0, 90, 180, 270} else 0
+
+
+def apply_frame_rotation(cv2, frame, rotation_degrees=0):
+    """Rotate a decoded BGR frame clockwise for display or ROI analysis."""
+    rotation_degrees = normalize_rotation_degrees(rotation_degrees)
+    if rotation_degrees == 90:
+        return cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+    if rotation_degrees == 180:
+        return cv2.rotate(frame, cv2.ROTATE_180)
+    if rotation_degrees == 270:
+        return cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+    return frame
+
+
 def parse_video_metadata(cap, path, using_fps=None):
     """Parse video metadata.
 

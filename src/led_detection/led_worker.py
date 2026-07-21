@@ -22,6 +22,7 @@ class LedDetectionWorker(QThread):
         video_path,
         roi,
         rotate_180,
+        rotation_degrees,
         fps,
         scan_start_frame,
         scan_end_frame,
@@ -34,6 +35,7 @@ class LedDetectionWorker(QThread):
         self.video_path = video_path
         self.roi = roi
         self.rotate_180 = rotate_180
+        self.rotation_degrees = rotation_degrees
         self.fps = fps
         self.scan_start_frame = scan_start_frame
         self.scan_end_frame = scan_end_frame
@@ -68,6 +70,7 @@ class LedDetectionWorker(QThread):
                     self.video_path,
                     roi=self.roi,
                     rotate_180=self.rotate_180,
+                    rotation_degrees=self.rotation_degrees,
                     using_fps=self.fps,
                     frame_step=coarse_step,
                     start_frame=self.scan_start_frame,
@@ -107,6 +110,7 @@ class LedDetectionWorker(QThread):
                         roi=self.roi,
                         coarse_events=coarse_events,
                         rotate_180=self.rotate_180,
+                        rotation_degrees=self.rotation_degrees,
                         using_fps=self.fps,
                         window_sec=refine_window_sec,
                         scan_start_frame=self.scan_start_frame,

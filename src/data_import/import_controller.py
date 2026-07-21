@@ -308,10 +308,13 @@ class ImportController:
             if video_path and self.video_state.metadata is not None:
                 for cache in led.get("brightness_cache", []):
                     cache_roi = cache.get("roi")
+                    rotation_degrees = cache.get("rotation_degrees")
+                    if rotation_degrees is None:
+                        rotation_degrees = 180 if cache.get("rotate_180", False) else 0
                     cache_key = (
                         video_path,
                         tuple(cache_roi) if cache_roi is not None else None,
-                        bool(cache.get("rotate_180", False)),
+                        int(rotation_degrees),
                         float(cache.get("fps", 0.0)),
                         int(cache.get("start_frame", 0)),
                         int(cache.get("end_frame", 0)),
@@ -323,10 +326,13 @@ class ImportController:
                     ]
 
                 video = state.get("video", {})
-                rotate_180 = bool(video.get("rotate_180_enabled", False))
-                self.video_state.rotate_180_enabled = rotate_180
-                window.video_player.rotate_button.setText(
-                    "Rotation: 180°" if rotate_180 else "Rotate 180°"
+                rotation_degrees = video.get("rotation_degrees")
+                if rotation_degrees is None:
+                    rotation_degrees = 180 if video.get("rotate_180_enabled", False) else 0
+                window.video_player.set_rotation_degrees(
+                    rotation_degrees,
+                    refresh=False,
+                    clear_roi=False,
                 )
                 window.video_player.seek_frame(int(video.get("current_frame", 0)))
 
