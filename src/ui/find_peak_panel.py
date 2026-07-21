@@ -14,8 +14,6 @@ from PySide6.QtWidgets import (
 )
 from scipy.signal import find_peaks
 
-from ..app_state import AppState
-
 
 class FindPeakPanel(QWidget):
     DISPLAY_HEADERS = ["event type", "video time", "note"]
@@ -27,7 +25,9 @@ class FindPeakPanel(QWidget):
 
     def __init__(self, app_state, event_table, video_player, lfp_panel):
         super().__init__()
-        self.app_state = app_state or AppState()
+        self.video_state = app_state.video
+        self.sync_state = app_state.sync
+        self.event_state = app_state.events
         self.event_table = event_table
         self.video_player = video_player
         self.lfp_panel = lfp_panel
@@ -74,19 +74,11 @@ class FindPeakPanel(QWidget):
         self.setLayout(layout)
         self.refresh_table()
 
-    @property
-    def video_state(self):
-        return self.app_state.video
-
-    @property
-    def sync_state(self):
-        return self.app_state.sync
-
     def refresh_table(self):
         self.table.setRowCount(0)
         peak_events = [
             event
-            for event in self.app_state.events.events
+            for event in self.event_state.events
             if event.get("source") == "lfp_peak"
         ]
         for row, event in enumerate(peak_events):

@@ -507,9 +507,15 @@ class VideoPlayer(QWidget):
         self.sync_state.video_time_origin_sec = next_origin
         self.update_time_display()
 
-    def set_time_offset_text(self, text):
-        """Show the synchronization offset above the time seek controls."""
-        self.offset_label.setText(text)
+    def update_time_offset_display(self):
+        """Show the current synchronization offset from shared state."""
+        offset_sec = self.sync_state.time_offset_sec
+        if offset_sec is None:
+            self.offset_label.setText("Time offset (video - TTL): Not calculated")
+        else:
+            self.offset_label.setText(
+                f"Time offset (video - TTL): {offset_sec:.6f} sec"
+            )
 
     def frame_to_time_sec(self, frame_index):
         """Provide frame to time sec functionality.

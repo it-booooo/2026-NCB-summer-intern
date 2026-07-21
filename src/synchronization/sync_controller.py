@@ -1,8 +1,3 @@
-from PySide6.QtWidgets import QMessageBox
-
-
-
-
 def pair_event_intervals(events, start_type, end_type, interval_type):
     """Pair matching start/end point markers in table order."""
     intervals = []
@@ -49,9 +44,7 @@ class SyncControllerMixin:
         self.lfp_panel.clear_current_time_marker()
         self.lfp_panel.set_event_intervals([])
 
-        self.video_player.set_time_offset_text(
-            "Time offset (video - TTL): Not calculated"
-        )
+        self.video_player.update_time_offset_display()
         self.sync_panel.led_roi_label.setText("LED ROI: Not selected")
         self.sync_panel.set_roi_plot_idle()
         self.sync_panel.set_led_detection_status("LED detection: Not analyzed")
@@ -64,23 +57,6 @@ class SyncControllerMixin:
         """
         self.sync_state.time_marker_info = info
         self.update_time_offset()
-
-    def add_event(self, event_type):
-        """Add event.
-
-        Args:
-            event_type: Input used by this operation.
-        """
-        if not self.video_player.has_video():
-            QMessageBox.warning(self, "No video", "Please import a video first.")
-            return
-
-        self.event_table.add_event(
-            event_type=event_type,
-            video_time_sec=self.video_player.current_time_sec(),
-            frame_index=self.video_state.current_frame,
-            note="",
-        )
 
     def seek_video_marker_time(self, video_time_sec):
         """Seek video marker time.
@@ -154,10 +130,8 @@ class SyncControllerMixin:
         Args:
             None.
         """
-        self.video_player.set_time_offset_text(
-            "Time offset (video - TTL): Not calculated"
-        )
         self.sync_state.time_offset_sec = None
+        self.video_player.update_time_offset_display()
         self.video_player.set_sync_time_origin(None)
         self.lfp_panel.set_sync_time_origin(None)
         self.event_table.set_sync_time_origin(None)
@@ -185,9 +159,7 @@ class SyncControllerMixin:
         self.video_player.set_sync_time_origin(video_led_sec)
         self.lfp_panel.set_sync_time_origin(ttl_marker_sec)
         self.event_table.set_sync_time_origin(video_led_sec)
-        self.video_player.set_time_offset_text(
-            f"Time offset (video - TTL): {self.sync_state.time_offset_sec:.6f} sec"
-        )
+        self.video_player.update_time_offset_display()
         if (
             previous_video_origin_sec is None
             or abs(previous_video_origin_sec - video_led_sec) > 1e-6

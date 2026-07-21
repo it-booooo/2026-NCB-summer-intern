@@ -4,7 +4,6 @@ from typing import Callable, cast
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 
-from ..signal_data import csv_loader as csv_func
 from ..signal_data import readers as read
 from .chart_helpers import format_signal_label, install_x_navigation, resolve_plot_step
 

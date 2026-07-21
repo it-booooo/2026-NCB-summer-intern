@@ -2,12 +2,10 @@ from .. import charts as draw
 from .. import signal_data as signal_func
 from ..charts.chart_helpers import (
     clamp_xlim,
-    format_signal_label,
     format_time_tick,
     resolve_plot_step,
 )
 from ..app_state import DataState, SyncState
-from ..synchronization.time_conversion import relative_time
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
