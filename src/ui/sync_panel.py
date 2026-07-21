@@ -1,15 +1,18 @@
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QGridLayout,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QProgressBar,
     QPushButton,
     QSizePolicy,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -129,6 +132,14 @@ class SyncPanel(QWidget):
 
         self.offset_label = QLabel("Time offset: Not calculated")
 
+        self.marker_selector = QComboBox()
+        self.marker_selector.addItems(["TTL", "Video", "Find Peak"])
+        self.marker_selector.setFixedHeight(24)
+        self.marker_stack = QStackedWidget()
+        self.marker_selector.currentIndexChanged.connect(
+            self.marker_stack.setCurrentIndex
+        )
+
         self.led_scan_start_input.returnPressed.connect(
             self.normalize_led_scan_range_inputs
         )
@@ -187,21 +198,35 @@ class SyncPanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(2)
         layout.addLayout(info_grid)
-        self.embedded_panels_layout = QHBoxLayout()
-        self.embedded_panels_layout.setContentsMargins(0, 4, 0, 0)
-        self.embedded_panels_layout.setSpacing(6)
-        layout.addLayout(self.embedded_panels_layout, stretch=1)
+
+        marker_inner_layout = QVBoxLayout()
+        marker_inner_layout.setContentsMargins(4, 8, 4, 4)
+        marker_inner_layout.setSpacing(4)
+        marker_inner_layout.addWidget(self.marker_selector)
+        marker_inner_layout.addWidget(self.marker_stack, stretch=1)
+
+        self.marker_group = QGroupBox("Marker")
+        self.marker_group.setLayout(marker_inner_layout)
+        layout.addWidget(self.marker_group, stretch=1)
         self.setLayout(layout)
 
-    def set_embedded_panels(self, ttl_group, marker_group):
-        """Set embedded panels.
+    def set_marker_panels(self, ttl_panel, video_marker_panel, find_peak_panel):
+        """Set the panels shown by the Marker selector.
 
         Args:
-            ttl_group: Input used by this operation.
-            marker_group: Input used by this operation.
+            ttl_panel: TTL marker widget.
+            video_marker_panel: Video marker widget.
+            find_peak_panel: LFP peak marker widget.
         """
-        self.embedded_panels_layout.addWidget(ttl_group, stretch=1)
-        self.embedded_panels_layout.addWidget(marker_group, stretch=1)
+        while self.marker_stack.count():
+            widget = self.marker_stack.widget(0)
+            self.marker_stack.removeWidget(widget)
+            widget.setParent(None)
+
+        for panel in (ttl_panel, video_marker_panel, find_peak_panel):
+            self.marker_stack.addWidget(panel)
+
+        self.marker_selector.setCurrentIndex(1)
 
     def set_led_roi(self, roi):
         """Set led roi.

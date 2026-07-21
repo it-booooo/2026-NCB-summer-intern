@@ -220,12 +220,13 @@ class EventTable(QTableWidget):
         self.verticalHeader().setDefaultSectionSize(32)
 
         header = self.horizontalHeader()
+        header.setFixedHeight(24)
         header.setSectionResizeMode(0, QHeaderView.Fixed)
         header.setSectionResizeMode(1, QHeaderView.Fixed)
         header.setSectionResizeMode(2, QHeaderView.Stretch)
 
-        self.setColumnWidth(0, 78)
-        self.setColumnWidth(1, 78)
+        self.setColumnWidth(0, 92)
+        self.setColumnWidth(1, 92)
 
         self.setStyleSheet(
             """
@@ -383,6 +384,7 @@ class EventTable(QTableWidget):
         for column, value in enumerate(fixed_values):
             item = QTableWidgetItem(value)
             item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
+            item.setTextAlignment(Qt.AlignCenter)
             if column == self.EVENT_TYPE_COLUMN:
                 item.setData(self.FRAME_ROLE, event["frame_index"])
                 item.setData(self.SOURCE_ROLE, event["source"])

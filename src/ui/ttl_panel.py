@@ -33,12 +33,15 @@ class TtlPanel(QWidget):
         self.record_time_input.setToolTip(
             "Manual TTL record time. Accepts seconds or HH:MM:SS.ffffff."
         )
+        self.record_time_input.setFixedHeight(24)
         self.record_time_input.returnPressed.connect(self.add_ttl_marker)
 
         self.add_button = QPushButton("Add TTL")
+        self.add_button.setFixedHeight(24)
         self.add_button.clicked.connect(self.add_ttl_marker)
 
         self.remove_button = QPushButton("Remove TTL")
+        self.remove_button.setFixedHeight(24)
         self.remove_button.clicked.connect(self.remove_selected_marker)
 
         controls = QHBoxLayout()
@@ -54,7 +57,7 @@ class TtlPanel(QWidget):
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.verticalHeader().setVisible(False)
-        self.table.verticalHeader().setDefaultSectionSize(48)
+        self.table.verticalHeader().setDefaultSectionSize(32)
         self.table.setStyleSheet(
             """
             QTableWidget::item:selected {
@@ -66,7 +69,7 @@ class TtlPanel(QWidget):
         )
 
         header = self.table.horizontalHeader()
-        header.setFixedHeight(32)
+        header.setFixedHeight(24)
         header.setSectionResizeMode(0, QHeaderView.Fixed)
         header.setSectionResizeMode(1, QHeaderView.Stretch)
         header.setSectionResizeMode(2, QHeaderView.Stretch)
@@ -265,7 +268,7 @@ class TtlPanel(QWidget):
                 local_time_text = ""
             else:
                 local_time_text = (
-                    f"{local_time:%Y-%m-%d}\n"
+                    f"{local_time:%Y-%m-%d} "
                     f"{local_time.strftime('%H:%M:%S.%f')[:-3]} +08:00"
                 )
 

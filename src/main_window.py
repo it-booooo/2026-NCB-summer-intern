@@ -18,7 +18,14 @@ from .data_import import ImportController
 from .led_detection.led_controller import LedControllerMixin
 from .app_state import AppState
 from .synchronization.sync_controller import SyncControllerMixin
-from .ui import EventTable, LfpPanel, MarkerPanel, SyncPanel, TtlPanel
+from .ui import (
+    EventTable,
+    FindPeakPanel,
+    LfpPanel,
+    MarkerPanel,
+    SyncPanel,
+    TtlPanel,
+)
 from .video_player import VideoPlayer
 
 
@@ -60,9 +67,13 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
         self.marker_panel = MarkerPanel(
             self.event_table,
             self.video_player,
-            self.lfp_panel,
-            self.sync_state,
             self.video_state,
+        )
+        self.find_peak_panel = FindPeakPanel(
+            self.app_state,
+            self.event_table,
+            self.video_player,
+            self.lfp_panel,
         )
         self.import_controller = ImportController(
             self,
@@ -244,9 +255,6 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
             QSizePolicy.Policy.Minimum,
         )
         sync_group = self.create_group("Sync Area", self.sync_panel)
-        ttl_group = self.create_group("TTL", self.ttl_panel, margins=(6, 10, 6, 6))
-        marker_group = self.create_group("Video Marker", self.marker_panel)
-
         video_group = QGroupBox("Behavior Video")
         video_layout = QVBoxLayout()
         video_layout.setContentsMargins(4, 4, 4, 4)
@@ -254,7 +262,11 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
         video_layout.addWidget(self.video_player, stretch=1)
         video_group.setLayout(video_layout)
 
-        self.sync_panel.set_embedded_panels(ttl_group, marker_group)
+        self.sync_panel.set_marker_panels(
+            self.ttl_panel,
+            self.marker_panel,
+            self.find_peak_panel,
+        )
 
         lower_splitter = QSplitter(Qt.Orientation.Horizontal)
         lower_splitter.addWidget(sync_group)
