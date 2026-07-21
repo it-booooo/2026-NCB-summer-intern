@@ -269,9 +269,9 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
             spinbox.setSingleStep(0.1)
             spinbox.setSuffix(" σ")
 
-        height_input.setValue(float(self.marker_panel.LFP_PEAK_HEIGHT_SIGMA))
+        height_input.setValue(float(self.find_peak_panel.LFP_PEAK_HEIGHT_SIGMA))
         prominence_input.setValue(
-            float(self.marker_panel.LFP_PEAK_PROMINENCE_SIGMA)
+            float(self.find_peak_panel.LFP_PEAK_PROMINENCE_SIGMA)
         )
 
         form = QFormLayout()
@@ -292,8 +292,9 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
 
-        self.marker_panel.LFP_PEAK_HEIGHT_SIGMA = height_input.value()
-        self.marker_panel.LFP_PEAK_PROMINENCE_SIGMA = prominence_input.value()
+        self.find_peak_panel.LFP_PEAK_HEIGHT_SIGMA = height_input.value()
+        self.find_peak_panel.LFP_PEAK_PROMINENCE_SIGMA = prominence_input.value()
+        self.find_peak_panel.add_lfp_peaks()
 
     def create_layout(self):
         """Create layout.

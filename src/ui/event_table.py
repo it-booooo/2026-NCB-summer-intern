@@ -400,6 +400,10 @@ class EventTable(QTableWidget):
             lambda text, editor=note_editor: self.update_note_state(editor, text)
         )
         self.setCellWidget(row, self.NOTE_COLUMN, note_editor)
+        # LFP peaks have their own Find Peak table.  Keep the canonical event
+        # row so event/state indexes remain aligned, but do not expose it in
+        # the video/LED marker interface.
+        self.setRowHidden(row, event["source"] == "lfp_peak")
         if emit:
             self.events_changed.emit()
 

@@ -17,10 +17,8 @@ from scipy.signal import find_peaks
 
 class FindPeakPanel(QWidget):
     DISPLAY_HEADERS = ["event type", "video time", "note"]
-    MAX_LFP_PEAK_MARKERS = 50
     LFP_PEAK_HEIGHT_SIGMA = 8.0
     LFP_PEAK_PROMINENCE_SIGMA = 6.0
-    LFP_PEAK_HEIGHT_PERCENTILE = 99.9
     LFP_PEAK_MIN_DISTANCE_SEC = 1.0
 
     def __init__(self, app_state, event_table, video_player, lfp_panel):
@@ -140,15 +138,8 @@ class FindPeakPanel(QWidget):
                 if not np.isfinite(noise_sigma) or noise_sigma <= 0.0:
                     noise_sigma = np.finfo(float).eps
 
-                extreme_height = float(
-                    np.nanpercentile(
-                        visible_values,
-                        self.LFP_PEAK_HEIGHT_PERCENTILE,
-                    )
-                )
-                minimum_height = max(
-                    baseline + self.LFP_PEAK_HEIGHT_SIGMA * noise_sigma,
-                    extreme_height,
+                minimum_height = (
+                    baseline + self.LFP_PEAK_HEIGHT_SIGMA * noise_sigma
                 )
                 minimum_prominence = (
                     self.LFP_PEAK_PROMINENCE_SIGMA * noise_sigma
@@ -162,27 +153,17 @@ class FindPeakPanel(QWidget):
                         )
                     ),
                 )
-                local_peaks, properties = find_peaks(
+                local_peaks, _ = find_peaks(
                     visible_values,
                     height=minimum_height,
                     prominence=minimum_prominence,
                     distance=minimum_distance,
                 )
                 peak_indices = local_peaks + first_index
-                peak_prominences = properties["prominences"]
             else:
                 peak_indices = np.array([], dtype=int)
-                peak_prominences = np.array([], dtype=float)
 
-            detected_count = len(peak_indices)
-            if detected_count > self.MAX_LFP_PEAK_MARKERS:
-                strongest = np.argpartition(
-                    peak_prominences,
-                    -self.MAX_LFP_PEAK_MARKERS,
-                )[-self.MAX_LFP_PEAK_MARKERS:]
-                peak_indices = np.sort(peak_indices[strongest])
-
-            self.event_table.delete_events_by_source("lfp_peak")
+            self.event_table.delete_events_by_source("lfp_peak", emit=False)
             for peak_index in peak_indices:
                 video_time_sec = float(video_times[peak_index])
                 frame_index = min(
@@ -201,10 +182,8 @@ class FindPeakPanel(QWidget):
                     emit=False,
                 )
 
-            if len(peak_indices):
-                self.event_table.events_changed.emit()
-            else:
-                self.refresh_table()
+            # Redraw once, after the complete replacement is visible in EventState.
+            self.event_table.events_changed.emit()
         except Exception as error:
             QMessageBox.warning(self, "Peak detection failed", str(error))
             return
@@ -212,13 +191,8 @@ class FindPeakPanel(QWidget):
             QApplication.restoreOverrideCursor()
 
         added = len(peak_indices)
-        limit_note = (
-            f"\nDetected {detected_count}; kept the {added} most prominent peaks."
-            if detected_count > added
-            else ""
-        )
         QMessageBox.information(
             self,
             "LFP peaks",
-            f"Added {added} peak markers from channel {channel}.{limit_note}",
+            f"Added {added} peak markers from channel {channel}.",
         )
