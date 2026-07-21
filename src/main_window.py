@@ -76,6 +76,8 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
             self.event_table,
             self.video_player,
             self.video_state,
+            self.lfp_panel,
+            self.sync_state,
         )
         self.find_peak_panel = FindPeakPanel(
             self.app_state,
