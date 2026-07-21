@@ -111,7 +111,6 @@ class MarkerPanel(QWidget):
 
     def add_lfp_peaks(self):
         """Detect peaks in the selected LFP channel and add video markers."""
-        print(self.LFP_PEAK_HEIGHT_SIGMA, self.LFP_PEAK_PROMINENCE_SIGMA)
         if self.lfp_panel is None or self.sync_state is None:
             return
         if not self.video_player.has_video():
