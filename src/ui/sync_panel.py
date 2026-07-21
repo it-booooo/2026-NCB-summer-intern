@@ -5,7 +5,6 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QGridLayout,
-    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -115,7 +114,7 @@ class SyncPanel(QWidget):
         self.led_progress_bar.setStyleSheet(
             """
             QProgressBar {
-                background-color: #e6e6e6;
+                background-color: #ffffff;
                 border: none;
                 border-radius: 3px;
             }
@@ -129,8 +128,6 @@ class SyncPanel(QWidget):
         self.led_progress_label.setWordWrap(False)
 
         self.roi_plot_indicator = RoiPlotIndicator(self)
-
-        self.offset_label = QLabel("Time offset: Not calculated")
 
         self.marker_selector = QComboBox()
         self.marker_selector.addItems(["TTL", "Video", "Find Peak"])
@@ -148,7 +145,6 @@ class SyncPanel(QWidget):
         for label in [
             self.led_roi_label,
             self.led_detection_label,
-            self.offset_label,
         ]:
             label.setWordWrap(True)
             label.setContentsMargins(0, 0, 0, 0)
@@ -192,22 +188,15 @@ class SyncPanel(QWidget):
         progress_layout.addWidget(self.led_progress_bar)
         progress_layout.addWidget(self.led_progress_label, stretch=1)
         info_grid.addLayout(progress_layout, 3, 0, 1, 2)
-        info_grid.addWidget(self.offset_label, 4, 0, 1, 2)
+
+        self.video_marker_controls = QWidget()
+        self.video_marker_controls.setLayout(info_grid)
 
         layout = QVBoxLayout()
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(2)
-        layout.addLayout(info_grid)
-
-        marker_inner_layout = QVBoxLayout()
-        marker_inner_layout.setContentsMargins(4, 8, 4, 4)
-        marker_inner_layout.setSpacing(4)
-        marker_inner_layout.addWidget(self.marker_selector)
-        marker_inner_layout.addWidget(self.marker_stack, stretch=1)
-
-        self.marker_group = QGroupBox("Marker")
-        self.marker_group.setLayout(marker_inner_layout)
-        layout.addWidget(self.marker_group, stretch=1)
+        layout.setContentsMargins(0, 4, 0, 0)
+        layout.setSpacing(4)
+        layout.addWidget(self.marker_selector)
+        layout.addWidget(self.marker_stack, stretch=1)
         self.setLayout(layout)
 
     def set_marker_panels(self, ttl_panel, video_marker_panel, find_peak_panel):
@@ -223,6 +212,7 @@ class SyncPanel(QWidget):
             self.marker_stack.removeWidget(widget)
             widget.setParent(None)
 
+        video_marker_panel.set_status_panel(self.video_marker_controls)
         for panel in (ttl_panel, video_marker_panel, find_peak_panel):
             self.marker_stack.addWidget(panel)
 
@@ -530,10 +520,3 @@ class SyncPanel(QWidget):
         self.led_detection_label.setText(text)
         self.led_detection_label.setToolTip(text)
 
-    def set_offset(self, offset_sec):
-        """Set offset.
-
-        Args:
-            offset_sec: Input used by this operation.
-        """
-        self.offset_label.setText(f"Time offset (video - TTL): {offset_sec:.6f} sec")

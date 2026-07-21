@@ -49,7 +49,7 @@ class SyncControllerMixin:
         self.lfp_panel.clear_current_time_marker()
         self.lfp_panel.set_event_intervals([])
 
-        self.sync_panel.offset_label.setText(
+        self.video_player.set_time_offset_text(
             "Time offset (video - TTL): Not calculated"
         )
         self.sync_panel.led_roi_label.setText("LED ROI: Not selected")
@@ -154,7 +154,7 @@ class SyncControllerMixin:
         Args:
             None.
         """
-        self.sync_panel.offset_label.setText(
+        self.video_player.set_time_offset_text(
             "Time offset (video - TTL): Not calculated"
         )
         self.sync_state.time_offset_sec = None
@@ -185,7 +185,9 @@ class SyncControllerMixin:
         self.video_player.set_sync_time_origin(video_led_sec)
         self.lfp_panel.set_sync_time_origin(ttl_marker_sec)
         self.event_table.set_sync_time_origin(video_led_sec)
-        self.sync_panel.set_offset(self.sync_state.time_offset_sec)
+        self.video_player.set_time_offset_text(
+            f"Time offset (video - TTL): {self.sync_state.time_offset_sec:.6f} sec"
+        )
         if (
             previous_video_origin_sec is None
             or abs(previous_video_origin_sec - video_led_sec) > 1e-6

@@ -77,7 +77,21 @@ class MarkerPanel(QWidget):
         layout.addLayout(button_layout)
         layout.addWidget(self.event_table)
 
+        self.main_layout = layout
+        self.status_panel = None
         self.setLayout(layout)
+
+    def set_status_panel(self, status_panel):
+        """Place the LED analysis controls above the video marker buttons."""
+        if self.status_panel is status_panel:
+            return
+
+        if self.status_panel is not None:
+            self.main_layout.removeWidget(self.status_panel)
+            self.status_panel.setParent(None)
+
+        self.status_panel = status_panel
+        self.main_layout.insertWidget(0, status_panel)
 
     def add_event(self, event_type):
         """Add a manual event at the current video position."""

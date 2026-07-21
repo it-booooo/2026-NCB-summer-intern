@@ -1,6 +1,7 @@
 from PySide6.QtCore import QPoint, QRect, Qt, QTimer, Signal
 from PySide6.QtGui import QImage, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -281,8 +282,10 @@ class VideoPlayer(QWidget):
 
         self.info_label = QLabel("Frame: -- | FPS: --")
         self.time_label = QLabel("00:00.000 / 00:00.000")
+        self.offset_label = QLabel("Time offset (video - TTL): Not calculated")
         self.info_label.setWordWrap(False)
         self.time_label.setWordWrap(False)
+        self.offset_label.setWordWrap(False)
 
         self.time_seek_input = QLineEdit()
         self.time_seek_input.setPlaceholderText("time")
@@ -353,19 +356,31 @@ class VideoPlayer(QWidget):
         main_layout.setContentsMargins(4, 4, 4, 4)
         main_layout.setSpacing(2)
 
-        time_seek_layout = QHBoxLayout()
-        time_seek_layout.setContentsMargins(0, 0, 0, 0)
-        time_seek_layout.setSpacing(4)
-        time_seek_layout.addWidget(self.time_label)
-        time_seek_layout.addStretch()
-        time_seek_layout.addWidget(QLabel("Go time"))
-        time_seek_layout.addWidget(self.time_seek_input)
-        time_seek_layout.addWidget(QLabel("Go frame"))
-        time_seek_layout.addWidget(self.frame_seek_input)
+        seek_controls_layout = QHBoxLayout()
+        seek_controls_layout.setContentsMargins(0, 0, 0, 0)
+        seek_controls_layout.setSpacing(4)
+        seek_controls_layout.addWidget(QLabel("Go time"))
+        seek_controls_layout.addWidget(self.time_seek_input)
+        seek_controls_layout.addWidget(QLabel("Go frame"))
+        seek_controls_layout.addWidget(self.frame_seek_input)
+
+        status_seek_layout = QGridLayout()
+        status_seek_layout.setContentsMargins(0, 0, 0, 0)
+        status_seek_layout.setHorizontalSpacing(8)
+        status_seek_layout.setVerticalSpacing(1)
+        status_seek_layout.setColumnStretch(0, 1)
+        status_seek_layout.addWidget(self.info_label, 0, 0)
+        status_seek_layout.addWidget(
+            self.offset_label,
+            0,
+            1,
+            alignment=Qt.AlignLeft | Qt.AlignVCenter,
+        )
+        status_seek_layout.addWidget(self.time_label, 1, 0)
+        status_seek_layout.addLayout(seek_controls_layout, 1, 1)
 
         main_layout.addWidget(self.video_label)
-        main_layout.addWidget(self.info_label)
-        main_layout.addLayout(time_seek_layout)
+        main_layout.addLayout(status_seek_layout)
         main_layout.addWidget(self.slider)
 
         main_layout.setStretch(0, 1)
@@ -491,6 +506,10 @@ class VideoPlayer(QWidget):
         next_origin = None if origin_sec is None else max(float(origin_sec), 0.0)
         self.sync_state.video_time_origin_sec = next_origin
         self.update_time_display()
+
+    def set_time_offset_text(self, text):
+        """Show the synchronization offset above the time seek controls."""
+        self.offset_label.setText(text)
 
     def frame_to_time_sec(self, frame_index):
         """Provide frame to time sec functionality.
