@@ -1,22 +1,7 @@
-from dataclasses import dataclass
 import os
 from pathlib import Path
 
-
-@dataclass
-class VideoMetadata:
-    path: str
-    filename: str
-    file_format: str
-    codec: str
-    width: int
-    height: int
-    detected_fps: float
-    using_fps: float
-    total_frames: int
-    detected_duration_sec: float
-    duration_sec: float
-
+from ..app_state import VideoMetadata
 
 def open_video_capture(cv2, video_path):
     """Open a capture with hardware decoding when supported, then fall back to CPU."""

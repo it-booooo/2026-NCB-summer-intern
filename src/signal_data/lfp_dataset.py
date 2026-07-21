@@ -30,7 +30,7 @@ class LfpDataset:
     )
 
     @classmethod
-    def from_csv(cls, info: dict) -> "LfpDataset":
+    def from_csv(cls, info: dict) -> LfpDataset:
         path = info.get("path")
         if not path:
             raise ValueError("LFP path not found in info dictionary.")
