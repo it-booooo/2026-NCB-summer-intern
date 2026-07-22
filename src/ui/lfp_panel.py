@@ -1,5 +1,3 @@
-import re
-
 import numpy as np
 
 from .. import charts as draw
@@ -9,7 +7,8 @@ from ..charts.chart_helpers import (
     format_time_tick,
     resolve_plot_step,
 )
-from ..app_state import DataState, EventState, SyncState
+from ..app_state import DataState, SyncState
+from ..markers import MarkerKind, RecordPosition, marker_record_time
 from ..synchronization.time_conversion import relative_time
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
@@ -39,11 +38,11 @@ class LfpPanel(LfpAnalysisMixin, QWidget):
     PLAYBACK_CURSOR_FRACTION = 0.35
     PLAYBACK_EDGE_MARGIN_FRACTION = 0.18
 
-    def __init__(self, data_state=None, sync_state=None, event_state=None):
+    def __init__(self, data_state=None, sync_state=None, marker_store=None):
         super().__init__()
         self.data_state = data_state or DataState()
         self.sync_state = sync_state or SyncState()
-        self.event_state = event_state or EventState()
+        self.marker_store = marker_store
         self.setMinimumHeight(270)
 
         self.lfp_canvas = None
@@ -1000,25 +999,21 @@ class LfpPanel(LfpAnalysisMixin, QWidget):
                 self.current_lfp_filter_settings(),
             )
             record_times = dataset.record_time_s
-            offset = float(self.sync_state.time_offset_sec or 0.0)
             local_times: list[float] = []
             local_values: list[float] = []
 
-            for event in self.event_state.events:
-                event_type = str(event.get("event_type", "")).lower()
-                source = str(event.get("source", "")).lower()
-                if event_type != "lfp_peak" and source != "lfp_peak":
+            markers = self.marker_store.all() if self.marker_store is not None else ()
+            for marker in markers:
+                if marker.kind != MarkerKind.LFP_PEAK:
                     continue
-
-                channel_match = re.search(
-                    r"(?:^|[,;\s])channel\s*=\s*(\d+)",
-                    str(event.get("note", "")),
-                    re.IGNORECASE,
+                marker_channel = marker.payload.get("channel")
+                if marker_channel is not None and int(marker_channel) != channel:
+                    continue
+                peak_record_time = marker_record_time(
+                    marker, self.sync_state.time_offset_sec
                 )
-                if channel_match and int(channel_match.group(1)) != channel:
+                if peak_record_time is None:
                     continue
-
-                peak_record_time = float(event.get("video_time_sec", 0.0)) - offset
                 first_sample = int(
                     np.searchsorted(record_times, peak_record_time - 1.0, side="left")
                 )

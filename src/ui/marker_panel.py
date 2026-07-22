@@ -1,72 +1,47 @@
-from PySide6.QtCore import Qt
-import numpy as np
-from scipy.signal import find_peaks
 from PySide6.QtWidgets import (
     QGridLayout,
     QMessageBox,
     QPushButton,
     QSizePolicy,
     QVBoxLayout,
-    QWidget,
-    QApplication,
 )
 
 from ..app_state import VideoState
+from ..markers import Marker, MarkerKind, MarkerSource, VideoPosition
+from .marker_view_panel import MarkerViewPanel
 
 
-class MarkerPanel(QWidget):
-    LFP_PEAK_HEIGHT_SIGMA = 8.0
-    LFP_PEAK_PROMINENCE_SIGMA = 6.0
-    LFP_PEAK_MIN_DISTANCE_SEC = 1.0
+class MarkerPanel(MarkerViewPanel):
+    """Create and edit manual markers on the video timeline."""
 
-    def __init__(
-        self,
-        event_table,
-        video_player,
-        video_state=None,
-        lfp_panel=None,
-        sync_state=None,
-    ):
-        super().__init__()
-
+    def __init__(self, marker_store, event_table, video_player, video_state=None):
+        super().__init__(marker_store)
         self.event_table = event_table
         self.video_player = video_player
         self.video_state = video_state or VideoState()
 
-        self.lfp_panel = lfp_panel
-        self.sync_state = sync_state
-        led_on_button = QPushButton("LED On")
-        led_off_button = QPushButton("LED Off")
-        select_roi_button = QPushButton("Select LED")
-        behavior_start_button = QPushButton("Action Start")
-        behavior_end_button = QPushButton("Action End")
-        seizure_button = QPushButton("Seizure-like")
+        button_specs = [
+            ("LED On", MarkerKind.LED_ON),
+            ("LED Off", MarkerKind.LED_OFF),
+            ("Action Start", MarkerKind.BEHAVIOR_START),
+            ("Action End", MarkerKind.BEHAVIOR_END),
+            ("Seizure-like", MarkerKind.SEIZURE_LIKE),
+        ]
+        marker_buttons = []
+        for text, kind in button_specs:
+            button = QPushButton(text)
+            button.clicked.connect(lambda _checked=False, value=kind: self.add_marker(value))
+            marker_buttons.append(button)
+
         edit_button = QPushButton("Edit Selected")
         delete_button = QPushButton("Delete Selected")
-
-        for button in (
-            led_on_button,
-            led_off_button,
-            select_roi_button,
-            behavior_start_button,
-            behavior_end_button,
-            seizure_button,
-            edit_button,
-            delete_button,
-        ):
-            button.setFixedHeight(22)
-            button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-
-        select_roi_button.setToolTip("Select LED area and run brightness detection")
-
-        led_on_button.clicked.connect(lambda: self.add_event("LED_on"))
-        led_off_button.clicked.connect(lambda: self.add_event("LED_off"))
-        select_roi_button.clicked.connect(self.select_led_roi)
-        behavior_start_button.clicked.connect(lambda: self.add_event("behavior_start"))
-        behavior_end_button.clicked.connect(lambda: self.add_event("behavior_end"))
-        seizure_button.clicked.connect(lambda: self.add_event("seizure_like_event"))
         edit_button.clicked.connect(self.event_table.edit_selected_event)
         delete_button.clicked.connect(self.event_table.delete_selected_rows)
+
+        all_buttons = [*marker_buttons, edit_button, delete_button]
+        for button in all_buttons:
+            button.setFixedHeight(22)
+            button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
         button_layout = QGridLayout()
         button_layout.setContentsMargins(2, 2, 2, 2)
@@ -74,154 +49,29 @@ class MarkerPanel(QWidget):
         button_layout.setVerticalSpacing(2)
         for column in range(4):
             button_layout.setColumnStretch(column, 1)
-        button_layout.addWidget(select_roi_button, 0, 0)
-        button_layout.addWidget(led_on_button, 0, 1)
-        button_layout.addWidget(led_off_button, 0, 2)
-        button_layout.addWidget(edit_button, 0, 3)
-        button_layout.addWidget(behavior_start_button, 1, 0)
-        button_layout.addWidget(behavior_end_button, 1, 1)
-        button_layout.addWidget(seizure_button, 1, 2)
-        button_layout.addWidget(delete_button, 1, 3)
+        for index, button in enumerate(all_buttons):
+            button_layout.addWidget(button, index // 4, index % 4)
 
-        layout = QVBoxLayout()
+        layout = QVBoxLayout(self)
         layout.setContentsMargins(3, 3, 3, 3)
         layout.setSpacing(3)
         layout.addLayout(button_layout)
         layout.addWidget(self.event_table)
 
-        self.main_layout = layout
-        self.status_panel = None
-        self.setLayout(layout)
+    def accepts_marker(self, marker):
+        return isinstance(marker.position, VideoPosition)
 
-    def set_status_panel(self, status_panel):
-        """Place the LED analysis controls above the video marker buttons."""
-        if self.status_panel is status_panel:
-            return
-
-        if self.status_panel is not None:
-            self.main_layout.removeWidget(self.status_panel)
-            self.status_panel.setParent(None)
-
-        self.status_panel = status_panel
-        self.main_layout.insertWidget(0, status_panel)
-
-    def add_event(self, event_type):
-        """Add a manual event at the current video position."""
+    def add_marker(self, kind):
         if not self.video_player.has_video():
             QMessageBox.warning(self, "No video", "Please import a video first.")
             return
-
-        self.event_table.add_event(
-            event_type=event_type,
-            video_time_sec=self.video_player.current_time_sec(),
-            frame_index=self.video_state.current_frame,
-            note="",
-        )
-
-    def select_led_roi(self):
-        """Start LED ROI selection for the loaded video."""
-        if not self.video_player.has_video():
-            QMessageBox.warning(self, "No video", "Please import a video first.")
-            return
-
-        self.video_player.start_roi_selection()
-
-    def add_lfp_peaks(self):
-        """Detect peaks in the selected LFP channel and add video markers."""
-        if self.lfp_panel is None or self.sync_state is None:
-            return
-        if not self.video_player.has_video():
-            QMessageBox.warning(self, "No video", "Please import a video first.")
-            return
-        if self.sync_state.time_offset_sec is None:
-            QMessageBox.warning(
-                self,
-                "LFP is not synchronized",
-                "Please synchronize the video and LFP before finding peaks.",
+        self.marker_store.add(
+            Marker(
+                kind=kind,
+                source=MarkerSource.MANUAL,
+                position=VideoPosition(
+                    self.video_player.current_time_sec(),
+                    self.video_state.current_frame,
+                ),
             )
-            return
-
-        channel = self.lfp_panel.selected_channel(self.lfp_panel.lfp_channel_selector)
-        if channel is None:
-            QMessageBox.warning(self, "No LFP channel", "Please select a channel.")
-            return
-
-        metadata = self.video_player.video_state.metadata
-        fps = float(metadata.using_fps)
-        duration = float(metadata.duration_sec)
-        offset = float(self.sync_state.time_offset_sec)
-        QApplication.setOverrideCursor(Qt.WaitCursor)
-        try:
-            dataset = self.lfp_panel.ensure_lfp_dataset()
-            settings = self.lfp_panel.current_lfp_filter_settings()
-            values = dataset.signal_values(channel, settings)
-
-            video_times = dataset.record_time_s + offset
-            in_video = (video_times >= 0.0) & (video_times <= duration)
-            valid_indices = np.flatnonzero(in_video)
-            if valid_indices.size:
-                first_index = int(valid_indices[0])
-                last_index = int(valid_indices[-1]) + 1
-                visible_values = values[first_index:last_index]
-                baseline = float(np.nanmedian(visible_values))
-                mad = float(np.nanmedian(np.abs(visible_values - baseline)))
-                noise_sigma = 1.4826 * mad
-                if not np.isfinite(noise_sigma) or noise_sigma <= 0.0:
-                    noise_sigma = float(np.nanstd(visible_values))
-                if not np.isfinite(noise_sigma) or noise_sigma <= 0.0:
-                    noise_sigma = np.finfo(float).eps
-
-                minimum_height = baseline + self.LFP_PEAK_HEIGHT_SIGMA * noise_sigma
-                minimum_prominence = self.LFP_PEAK_PROMINENCE_SIGMA * noise_sigma
-                minimum_distance = max(
-                    1,
-                    int(
-                        round(
-                            dataset.sample_rate_hz(channel)
-                            * self.LFP_PEAK_MIN_DISTANCE_SEC
-                        )
-                    ),
-                )
-                local_peaks, _ = find_peaks(
-                    visible_values,
-                    height=minimum_height,
-                    prominence=minimum_prominence,
-                    distance=minimum_distance,
-                )
-                peak_indices = local_peaks + first_index
-            else:
-                peak_indices = np.array([], dtype=int)
-
-            self.event_table.delete_events_by_source("lfp_peak", emit=False)
-            for peak_index in peak_indices:
-                video_time_sec = float(video_times[peak_index])
-                frame_index = min(
-                    max(int(round(video_time_sec * fps)), 0),
-                    max(int(metadata.total_frames) - 1, 0),
-                )
-                self.event_table.add_event(
-                    event_type="LFP_peak",
-                    video_time_sec=video_time_sec,
-                    frame_index=frame_index,
-                    note=(
-                        f"channel={channel}, value={values[peak_index]:.6g}, "
-                        "positive peak"
-                    ),
-                    source="lfp_peak",
-                    emit=False,
-                )
-
-            # Redraw once, after the complete replacement is visible in EventState.
-            self.event_table.events_changed.emit()
-        except Exception as error:
-            QMessageBox.warning(self, "Peak detection failed", str(error))
-            return
-        finally:
-            QApplication.restoreOverrideCursor()
-
-        added = len(peak_indices)
-        QMessageBox.information(
-            self,
-            "LFP peaks",
-            f"Added {added} peak markers from channel {channel}.",
         )

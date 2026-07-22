@@ -20,6 +20,12 @@ from PySide6.QtWidgets import (
 )
 
 from .. import charts, signal_data, data_validation
+from ..markers import (
+    MarkerKind,
+    VideoPosition,
+    marker_to_dict,
+    marker_video_time,
+)
 from .lfp_image_dialog import LfpImageExportDialog
 from .file_writers import (
     export_events_csv,
@@ -38,8 +44,9 @@ class ExportController:
         self.video_state = self.app_state.video
         self.data_state = self.app_state.data
         self.sync_state = self.app_state.sync
+        self.ttl_state = self.app_state.ttl
         self.led_state = self.app_state.led
-        self.event_state = self.app_state.events
+        self.marker_store = window.marker_store
         self.last_lfp_export_directory = None
 
     def save_project(self):
@@ -83,8 +90,8 @@ class ExportController:
                 else None
             ),
             "ttl": (
-                self.sync_state.time_marker_info.get("path")
-                if self.sync_state.time_marker_info
+                self.ttl_state.metadata.get("path")
+                if self.ttl_state.metadata
                 else None
             ),
         }
@@ -114,20 +121,6 @@ class ExportController:
             if hasattr(value, "tolist"):
                 return value.tolist()
             raise TypeError(f"Unsupported project value: {type(value).__name__}")
-
-        ttl_info = self.sync_state.time_marker_info or {}
-        ttl_markers = []
-        for marker in ttl_info.get("markers", []):
-            ttl_markers.append(
-                {
-                    **dict(marker),
-                    "local_time": (
-                        marker["local_time"].isoformat()
-                        if marker.get("local_time") is not None
-                        else None
-                    ),
-                }
-            )
 
         brightness_cache = []
         for cache_key, points in self.led_state.brightness_cache.items():
@@ -171,31 +164,24 @@ class ExportController:
                 "follow_video_playback": self.data_state.follow_video_playback,
             },
             "sync": {
-                "time_marker_info": {
-                    "filename": ttl_info.get("filename"),
-                    "time_column_name": ttl_info.get("time_column_name"),
-                    "markers": ttl_markers,
-                }
-                if ttl_info
-                else None,
                 "time_offset_sec": self.sync_state.time_offset_sec,
                 "video_time_origin_sec": self.sync_state.video_time_origin_sec,
                 "record_time_origin_sec": self.sync_state.record_time_origin_sec,
             },
+            "ttl": {"metadata": dict(self.ttl_state.metadata or {})},
             "led": {
                 "roi": self.led_state.roi,
                 "analysis_points": self.led_state.analysis_points,
                 "analysis_threshold": self.led_state.analysis_threshold,
-                "analysis_events": self.led_state.analysis_events,
                 "analysis_stats": self.led_state.analysis_stats,
                 "analysis_status": self.led_state.analysis_status,
                 "brightness_cache": brightness_cache,
             },
-            "events": [dict(event) for event in self.event_state.events],
+            "markers": [marker_to_dict(marker) for marker in self.marker_store.all()],
         }
         manifest = {
             "format": "pig-analysis-project",
-            "version": 2,
+            "version": 3,
             "sources": sources,
         }
 
@@ -346,7 +332,34 @@ class ExportController:
         marker_type = marker_selector.currentData()
         file_type = file_type_selector.currentData()
         if marker_type == "video":
-            markers = [dict(event) for event in self.event_state.events]
+            markers = []
+            for marker in self.marker_store.all():
+                if marker.kind == MarkerKind.TTL:
+                    continue
+                video_time = marker_video_time(marker, self.sync_state.time_offset_sec)
+                if video_time is None:
+                    continue
+                frame_index = (
+                    marker.position.frame_index
+                    if isinstance(marker.position, VideoPosition)
+                    else int(
+                        marker.payload.get(
+                            "frame_index",
+                            round(
+                                video_time
+                                * float(self.video_state.metadata.using_fps or 0.0)
+                            ),
+                        )
+                    )
+                )
+                markers.append(
+                    {
+                        "event_type": marker.kind.value,
+                        "video_time_sec": video_time,
+                        "frame_index": frame_index,
+                        "note": marker.note,
+                    }
+                )
             filename_stem = "video_markers"
             writer = (
                 export_events_csv
@@ -354,8 +367,14 @@ class ExportController:
                 else export_events_excel
             )
         else:
-            marker_info = self.sync_state.time_marker_info or {}
-            markers = [dict(marker) for marker in marker_info.get("markers", [])]
+            markers = []
+            for marker in self.marker_store.by_kind(MarkerKind.TTL):
+                record_time = int(
+                    marker.payload.get(
+                        "record_time_us", round(marker.position.time_sec * 1_000_000)
+                    )
+                )
+                markers.append({"record_time": record_time, **marker.payload})
             filename_stem = "ttl_markers"
             writer = (
                 export_ttl_markers_csv

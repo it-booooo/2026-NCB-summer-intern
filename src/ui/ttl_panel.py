@@ -1,6 +1,6 @@
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
@@ -11,45 +11,44 @@ from PySide6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
-    QWidget,
 )
 
-from ..app_state import SyncState, VideoState
+from ..app_state import TtlState, VideoState
+from ..markers import Marker, MarkerKind, MarkerSource, RecordPosition
 from ..synchronization.time_conversion import record_time_parts
+from .marker_view_panel import MarkerViewPanel
 
 
-class TtlPanel(QWidget):
+class TtlPanel(MarkerViewPanel):
     HEADERS = ["#", "Local time", "Record time"]
-    markers_changed = Signal(dict)
+    MARKER_ID_ROLE = Qt.UserRole + 1
 
-    def __init__(self, video_player=None, sync_state=None, video_state=None):
-        super().__init__()
-        self.sync_state = sync_state or SyncState()
+    def __init__(
+        self,
+        marker_store,
+        ttl_state=None,
+        video_player=None,
+        video_state=None,
+    ):
+        super().__init__(marker_store)
+        self.ttl_state = ttl_state or TtlState()
         self.video_state = video_state or VideoState()
         self.video_player = video_player
 
         self.record_time_input = QLineEdit()
         self.record_time_input.setPlaceholderText("HH:MM:SS.ffffff")
-        self.record_time_input.setToolTip(
-            "Manual TTL record time. Accepts seconds or HH:MM:SS.ffffff."
-        )
         self.record_time_input.setFixedHeight(24)
         self.record_time_input.returnPressed.connect(self.add_ttl_marker)
-
-        self.add_button = QPushButton("Add TTL")
-        self.add_button.setFixedHeight(24)
-        self.add_button.clicked.connect(self.add_ttl_marker)
-
-        self.remove_button = QPushButton("Remove TTL")
-        self.remove_button.setFixedHeight(24)
-        self.remove_button.clicked.connect(self.remove_selected_marker)
+        add_button = QPushButton("Add TTL")
+        remove_button = QPushButton("Remove TTL")
+        add_button.clicked.connect(self.add_ttl_marker)
+        remove_button.clicked.connect(self.remove_selected_marker)
 
         controls = QHBoxLayout()
         controls.setContentsMargins(0, 0, 0, 0)
-        controls.setSpacing(4)
         controls.addWidget(self.record_time_input)
-        controls.addWidget(self.add_button)
-        controls.addWidget(self.remove_button)
+        controls.addWidget(add_button)
+        controls.addWidget(remove_button)
 
         self.table = QTableWidget(0, len(self.HEADERS))
         self.table.setHorizontalHeaderLabels(self.HEADERS)
@@ -57,61 +56,41 @@ class TtlPanel(QWidget):
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.verticalHeader().setVisible(False)
-        self.table.verticalHeader().setDefaultSectionSize(32)
-        self.table.setStyleSheet(
-            """
-            QTableWidget::item:selected {
-                background-color: #dcecff;
-                color: #111111;
-                border: 1px solid #2f80ed;
-            }
-            """
-        )
-
         header = self.table.horizontalHeader()
-        header.setFixedHeight(24)
         header.setSectionResizeMode(0, QHeaderView.Fixed)
         header.setSectionResizeMode(1, QHeaderView.Stretch)
         header.setSectionResizeMode(2, QHeaderView.Stretch)
         self.table.setColumnWidth(0, 38)
 
-        layout = QVBoxLayout()
+        layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
         layout.addLayout(controls)
         layout.addWidget(self.table)
-        self.setLayout(layout)
-
-    def empty_info(self):
-        """Provide empty info functionality.
-
-        Args:
-            None.
-        """
-        return {
-            "path": None,
-            "filename": "Manual TTL",
-            "time_column_name": None,
-            "marker_count": 0,
-            "markers": [],
-            "first_marker_sec": None,
-        }
-
-    def set_markers(self, info):
-        """Set markers.
-
-        Args:
-            info: Metadata or state information to store or use.
-        """
-        self.sync_state.time_marker_info = info
         self.refresh_table()
 
-    def paused_video_time_for_ttl(self):
-        """Pause d video time for ttl.
+    def accepts_marker(self, marker):
+        return marker.kind == MarkerKind.TTL
 
-        Args:
-            None.
-        """
+    def refresh_markers(self):
+        self.refresh_table()
+
+    def ttl_markers(self):
+        return sorted(
+            self.markers(),
+            key=lambda marker: marker.position.time_sec,
+        )
+
+    def set_markers(self, markers, metadata=None, emit=True):
+        self.ttl_state.metadata = dict(metadata or {}) if metadata else None
+        self.marker_store.replace_by_kind(
+            MarkerKind.TTL,
+            list(markers or []),
+            emit=emit,
+        )
+        if not emit:
+            self.refresh_table()
+
+    def paused_video_time_for_ttl(self):
         if self.video_player is None or not self.video_player.has_video():
             raise ValueError("Please import a video or enter a TTL time manually.")
         if self.video_state.is_playing:
@@ -119,96 +98,42 @@ class TtlPanel(QWidget):
         return self.video_player.current_time_sec()
 
     def add_ttl_marker(self):
-        """Add ttl marker.
-
-        Args:
-            None.
-        """
         text = self.record_time_input.text().strip()
-
-        if text:
-            try:
-                record_time = self.parse_record_time_us(text)
-            except ValueError as error:
-                QMessageBox.warning(self, "Invalid TTL record time", str(error))
-                return
-        else:
-            try:
-                video_time_sec = self.paused_video_time_for_ttl()
-                record_time = int(
-                    (Decimal(str(video_time_sec)) * 1_000_000).to_integral_value(
-                        rounding=ROUND_HALF_UP
-                    )
+        try:
+            record_time_us = (
+                self.parse_record_time_us(text)
+                if text
+                else int(
+                    (Decimal(str(self.paused_video_time_for_ttl())) * 1_000_000)
+                    .to_integral_value(rounding=ROUND_HALF_UP)
                 )
-            except (TypeError, InvalidOperation, ValueError) as error:
-                QMessageBox.warning(self, "Cannot add TTL", str(error))
-                return
+            )
+        except (TypeError, InvalidOperation, ValueError) as error:
+            QMessageBox.warning(self, "Cannot add TTL", str(error))
+            return
 
-        marker = self.create_record_time_marker(record_time)
-        info = self.sync_state.time_marker_info or self.empty_info()
-        markers = list(info.get("markers", []))
-        markers.append(marker)
-        markers.sort(key=lambda item: item["record_time"])
-        self._update_marker_info(markers, ensure_filename=True)
-
+        parts = record_time_parts(record_time_us)
+        self.marker_store.add(
+            Marker(
+                kind=MarkerKind.TTL,
+                source=MarkerSource.MANUAL,
+                position=RecordPosition(record_time_us / 1_000_000.0),
+                payload={"record_time_us": record_time_us, **parts},
+            )
+        )
         self.record_time_input.clear()
-        self.refresh_table()
-        self.markers_changed.emit(self.sync_state.time_marker_info)
 
     def remove_selected_marker(self):
-        """Remove selected marker.
-
-        Args:
-            None.
-        """
-        selected_rows = self.table.selectionModel().selectedRows()
-        if not selected_rows:
-            QMessageBox.information(
-                self,
-                "Remove TTL",
-                "Please select a TTL event to remove.",
-            )
+        selected = self.table.selectionModel().selectedRows()
+        if not selected:
+            QMessageBox.information(self, "Remove TTL", "Please select a TTL marker.")
             return
-
-        row = selected_rows[0].row()
-        info = self.sync_state.time_marker_info or self.empty_info()
-        markers = list(info.get("markers", []))
-        if row < 0 or row >= len(markers):
-            return
-
-        del markers[row]
-        self._update_marker_info(markers)
-
-        self.refresh_table()
-        self.markers_changed.emit(self.sync_state.time_marker_info)
-
-    def _update_marker_info(self, markers, ensure_filename=False):
-        """Keep the marker list and its derived summary fields consistent."""
-        updates = {
-            "marker_count": len(markers),
-            "markers": markers,
-            "first_marker_sec": (
-                markers[0]["record_time"] / 1_000_000.0 if markers else None
-            ),
-        }
-        if ensure_filename:
-            info = self.sync_state.time_marker_info or self.empty_info()
-            updates["filename"] = info.get("filename") or "Manual TTL"
-
-        self.sync_state.time_marker_info = {
-            **(self.sync_state.time_marker_info or self.empty_info()),
-            **updates,
-        }
+        item = self.table.item(selected[0].row(), 0)
+        self.marker_store.delete(item.data(self.MARKER_ID_ROLE))
 
     def parse_record_time_us(self, text):
-        """Parse record time us.
-
-        Args:
-            text: Text displayed to the user.
-        """
         if not text:
             raise ValueError("Please enter a TTL record time.")
-
         try:
             if ":" not in text:
                 seconds = Decimal(text)
@@ -216,76 +141,37 @@ class TtlPanel(QWidget):
                 parts = text.split(":")
                 if len(parts) != 3:
                     raise ValueError
-
-                hours = Decimal(parts[0])
-                minutes = Decimal(parts[1])
-                seconds_part = Decimal(parts[2])
-
+                hours, minutes, seconds_part = map(Decimal, parts)
                 if minutes >= 60 or seconds_part >= 60:
                     raise ValueError
-
                 seconds = hours * 3600 + minutes * 60 + seconds_part
         except (InvalidOperation, ValueError):
             raise ValueError(
-                "Use seconds or HH:MM:SS.ffffff, for example 12.345678 or 00:00:12.345678."
+                "Use seconds or HH:MM:SS.ffffff, for example 12.345678."
             ) from None
-
         if seconds < 0:
             raise ValueError("TTL record time cannot be negative.")
-
         return int((seconds * 1_000_000).to_integral_value(rounding=ROUND_HALF_UP))
 
-    def create_record_time_marker(self, record_time):
-        """Create record time marker.
-
-        Args:
-            record_time: Input used by this operation.
-        """
-        return {
-            "local_time_us": None,
-            "local_time": None,
-            "record_time": record_time,
-            **record_time_parts(record_time),
-            "source": "manual",
-        }
-
     def refresh_table(self):
-        """Refresh table.
-
-        Args:
-            None.
-        """
         self.table.setRowCount(0)
-
-        info = self.sync_state.time_marker_info or self.empty_info()
-        markers = info.get("markers", [])
-
-        for row, marker in enumerate(markers):
+        for row, marker in enumerate(self.ttl_markers()):
             self.table.insertRow(row)
-
-            local_time = marker.get("local_time")
-            if local_time is None:
-                local_time_text = ""
-            else:
-                local_time_text = (
-                    f"{local_time:%Y-%m-%d} "
-                    f"{local_time.strftime('%H:%M:%S.%f')[:-3]} +08:00"
+            local_time = marker.payload.get("local_time")
+            local_text = str(local_time or "")
+            record_time_us = int(
+                marker.payload.get(
+                    "record_time_us", round(marker.position.time_sec * 1_000_000)
                 )
-
-            record_time_text = (
-                f"{marker['record_hours']:02d}:"
-                f"{marker['record_minutes']:02d}:"
-                f"{marker['record_seconds']:02d}."
-                f"{marker['record_microseconds']:06d}"
             )
-
-            values = [
-                str(row + 1),
-                local_time_text,
-                record_time_text,
-            ]
-
-            for column, text in enumerate(values):
+            parts = record_time_parts(record_time_us)
+            record_text = (
+                f"{parts['record_hours']:02d}:{parts['record_minutes']:02d}:"
+                f"{parts['record_seconds']:02d}.{parts['record_microseconds']:06d}"
+            )
+            for column, text in enumerate((str(row + 1), local_text, record_text)):
                 item = QTableWidgetItem(text)
                 item.setTextAlignment(Qt.AlignCenter)
+                if column == 0:
+                    item.setData(self.MARKER_ID_ROLE, marker.marker_id)
                 self.table.setItem(row, column, item)

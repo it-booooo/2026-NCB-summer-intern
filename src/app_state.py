@@ -11,6 +11,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from .markers.models import Marker
+
 if TYPE_CHECKING:
     from .signal_data import LfpDataset
 
@@ -70,13 +72,19 @@ class DataState:
 class SyncState:
     """Shared video/record time relationship and derived display data."""
 
-    time_marker_info: dict[str, Any] | None = None
     time_offset_sec: float | None = None
     video_time_origin_sec: float | None = None
     record_time_origin_sec: float | None = None
     current_record_time_sec: float | None = None
     event_intervals: list[dict[str, Any]] = field(default_factory=list)
     loading_video: bool = False
+
+
+@dataclass
+class TtlState:
+    """Metadata for the currently imported TTL source file."""
+
+    metadata: dict[str, Any] | None = None
 
 
 @dataclass
@@ -87,16 +95,15 @@ class LedState:
     brightness_cache: dict[tuple[Any, ...], Any] = field(default_factory=dict)
     analysis_points: list[Any] | None = None
     analysis_threshold: float = 0.0
-    analysis_events: list[Any] | None = None
     analysis_stats: dict[str, Any] | None = None
     analysis_status: str | None = None
 
 
 @dataclass
-class EventState:
-    """Canonical event marker records displayed by ``EventTable``."""
+class MarkerState:
+    """Canonical markers shared by every marker panel and timeline view."""
 
-    events: list[dict[str, Any]] = field(default_factory=list)
+    markers: list[Marker] = field(default_factory=list)
 
 
 @dataclass
@@ -110,5 +117,6 @@ class AppState:
     video: VideoState = field(default_factory=VideoState)
     data: DataState = field(default_factory=DataState)
     sync: SyncState = field(default_factory=SyncState)
+    ttl: TtlState = field(default_factory=TtlState)
     led: LedState = field(default_factory=LedState)
-    events: EventState = field(default_factory=EventState)
+    markers: MarkerState = field(default_factory=MarkerState)

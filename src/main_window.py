@@ -21,12 +21,15 @@ from .data_export import ExportController
 from .data_import import ImportController
 from .led_detection.led_controller import LedControllerMixin
 from .app_state import AppState
+from .markers import MarkerStore
+from .signal_data import LfpAnalysisService
 from .synchronization.sync_controller import SyncControllerMixin
 from .ui import (
-    EventTable,
     FindPeakPanel,
+    LedAnalysisPanel,
     LfpPanel,
     MarkerPanel,
+    MarkerTable,
     SyncPanel,
     TtlPanel,
 )
@@ -44,8 +47,11 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
         self.video_state = self.app_state.video
         self.data_state = self.app_state.data
         self.sync_state = self.app_state.sync
+        self.ttl_state = self.app_state.ttl
         self.led_state = self.app_state.led
-        self.event_state = self.app_state.events
+        self.marker_state = self.app_state.markers
+        self.marker_store = MarkerStore(self.marker_state.markers)
+        self.lfp_service = LfpAnalysisService(self.data_state)
 
         self.setWindowTitle("Pig Behavior Video-LFP Synchronization Tool")
         self.resize(1280, 720)
@@ -56,34 +62,40 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
             self.sync_state,
             self.led_state,
         )
-        self.event_table = EventTable(
-            self.event_state,
+        self.event_table = MarkerTable(
+            self.marker_store,
             self.video_state,
             self.sync_state,
         )
         self.lfp_panel = LfpPanel(
             self.data_state,
             self.sync_state,
-            self.event_state,
+            self.marker_store,
         )
-        self.sync_panel = SyncPanel(self.led_state)
-        self.ttl_panel = TtlPanel(
+        self.sync_panel = SyncPanel()
+        self.led_analysis_panel = LedAnalysisPanel(
+            self.led_state,
             self.video_player,
-            self.sync_state,
+            self.marker_store,
+        )
+        self.ttl_panel = TtlPanel(
+            self.marker_store,
+            self.ttl_state,
+            self.video_player,
             self.video_state,
         )
         self.marker_panel = MarkerPanel(
+            self.marker_store,
             self.event_table,
             self.video_player,
             self.video_state,
-            self.lfp_panel,
-            self.sync_state,
         )
         self.find_peak_panel = FindPeakPanel(
-            self.app_state,
-            self.event_table,
+            self.marker_store,
+            self.lfp_service,
+            self.sync_state,
+            self.video_state,
             self.video_player,
-            self.lfp_panel,
         )
         self.import_controller = ImportController(
             self,
@@ -98,10 +110,10 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
         self.video_player.roi_selected.connect(self.set_led_roi)
         self.video_player.frame_changed.connect(self.update_waveform_current_time)
         self.lfp_panel.time_selected.connect(self.seek_video_record_time)
-        self.ttl_panel.markers_changed.connect(self.set_ttl_markers)
         self.event_table.events_changed.connect(self.update_time_offset)
         self.event_table.events_changed.connect(self.lfp_panel.update_lfp_peak_artist)
         self.event_table.video_time_selected.connect(self.seek_video_marker_time)
+        self.find_peak_panel.video_time_selected.connect(self.seek_video_marker_time)
 
         self.create_menu()
         self.create_layout()
@@ -294,7 +306,6 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
 
         self.find_peak_panel.LFP_PEAK_HEIGHT_SIGMA = height_input.value()
         self.find_peak_panel.LFP_PEAK_PROMINENCE_SIGMA = prominence_input.value()
-        self.find_peak_panel.add_lfp_peaks()
 
     def create_layout(self):
         """Create layout.
@@ -324,6 +335,7 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
             self.ttl_panel,
             self.marker_panel,
             self.find_peak_panel,
+            self.led_analysis_panel,
         )
 
         lower_splitter = QSplitter(Qt.Orientation.Horizontal)

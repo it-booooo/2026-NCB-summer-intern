@@ -1,7 +1,6 @@
 import json
 import shutil
 import tempfile
-from datetime import datetime
 from pathlib import Path
 from zipfile import BadZipFile, ZipFile
 
@@ -16,7 +15,13 @@ from PySide6.QtWidgets import (
 )
 
 from .. import signal_data
-from ..led_detection import LedBrightnessPoint, LedEvent
+from ..led_detection import LedBrightnessPoint
+from ..markers import (
+    MarkerSource,
+    marker_from_dict,
+    marker_from_legacy_event,
+    marker_from_legacy_ttl,
+)
 from ..video_player.video_helpers import normalize_rotation_degrees
 
 
@@ -40,8 +45,9 @@ class ImportController:
         self.video_state = self.app_state.video
         self.data_state = self.app_state.data
         self.sync_state = self.app_state.sync
+        self.ttl_state = self.app_state.ttl
         self.led_state = self.app_state.led
-        self.event_state = self.app_state.events
+        self.marker_store = window.marker_store
 
     def open_project(self):
         """Open a project archive and restore its referenced and bundled data."""
@@ -71,7 +77,7 @@ class ImportController:
                 state = json.loads(archive.read("state.json"))
                 if manifest.get("format") != "pig-analysis-project":
                     raise ValueError("This is not a Pig Analysis Project file.")
-                if manifest.get("version") not in (1, 2):
+                if manifest.get("version") not in (1, 2, 3):
                     raise ValueError(
                         f"Unsupported project version: {manifest.get('version')}"
                     )
@@ -234,45 +240,34 @@ class ImportController:
                 self.data_state.axis_info = info
                 window.lfp_panel.set_axis_info(info)
 
-            sync = state.get("sync", {})
             progress_label.setText("Restoring TTL and video markers...")
             progress_bar.setValue(90)
             progress_label.repaint()
             progress_bar.repaint()
-            saved_ttl_info = sync.get("time_marker_info")
-            if saved_ttl_info:
-                markers = []
-                for saved_marker in saved_ttl_info.get("markers", []):
-                    marker = dict(saved_marker)
-                    local_time = marker.get("local_time")
-                    marker["local_time"] = (
-                        datetime.fromisoformat(local_time) if local_time else None
-                    )
-                    markers.append(marker)
-                ttl_info = {
-                    "path": source_paths.get("ttl"),
+            if manifest.get("version") == 3:
+                restored_markers = [
+                    marker_from_dict(item) for item in state.get("markers", [])
+                ]
+                ttl_metadata = dict(state.get("ttl", {}).get("metadata") or {})
+            else:
+                legacy_offset = state.get("sync", {}).get("time_offset_sec")
+                restored_markers = [
+                    marker_from_legacy_event(item, offset_sec=legacy_offset)
+                    for item in state.get("events", [])
+                ]
+                saved_ttl_info = state.get("sync", {}).get("time_marker_info") or {}
+                restored_markers.extend(
+                    marker_from_legacy_ttl(item)
+                    for item in saved_ttl_info.get("markers", [])
+                )
+                ttl_metadata = {
                     "filename": saved_ttl_info.get("filename") or "Project TTL",
                     "time_column_name": saved_ttl_info.get("time_column_name"),
-                    "marker_count": len(markers),
-                    "markers": markers,
-                    "first_marker_sec": (
-                        markers[0]["record_time"] / 1_000_000.0
-                        if markers
-                        else None
-                    ),
                 }
-                window.ttl_panel.set_markers(ttl_info)
-                window.set_ttl_markers(ttl_info)
-
-            window.event_table.clear_events(emit=False)
-            for event in state.get("events", []):
-                window.event_table.add_event(
-                    event_type=event.get("event_type", ""),
-                    video_time_sec=event.get("video_time_sec", 0.0),
-                    frame_index=event.get("frame_index", 0),
-                    note=event.get("note", ""),
-                    source=event.get("source", "manual"),
-                )
+            if source_paths.get("ttl"):
+                ttl_metadata["path"] = source_paths["ttl"]
+            self.ttl_state.metadata = ttl_metadata or None
+            self.marker_store.replace_all(restored_markers)
 
             led = state.get("led", {})
             progress_label.setText("Restoring LED ROI and analysis...")
@@ -284,25 +279,22 @@ class ImportController:
                 restored_roi = tuple(int(value) for value in roi)
                 self.led_state.roi = restored_roi
                 window.video_player.set_led_roi(restored_roi)
-                window.sync_panel.set_led_roi(restored_roi)
+                window.led_analysis_panel.set_led_roi(restored_roi)
 
             analysis_points = [
                 LedBrightnessPoint(**point)
                 for point in led.get("analysis_points") or []
             ]
-            analysis_events = [
-                LedEvent(**event)
-                for event in led.get("analysis_events") or []
-            ]
+            detected_markers = self.marker_store.by_source(MarkerSource.LED_DETECTION)
             if led.get("analysis_status") is not None:
-                window.sync_panel.set_led_analysis(
+                window.led_analysis_panel.set_led_analysis(
                     analysis_points,
                     led.get("analysis_threshold", 0.0),
-                    analysis_events,
+                    detected_markers,
                     stats=led.get("analysis_stats") or {},
                     status=led.get("analysis_status"),
                 )
-                window.sync_panel.set_led_detection_status(
+                window.led_analysis_panel.set_led_detection_status(
                     "LED detection: restored from project."
                 )
 
@@ -468,5 +460,10 @@ class ImportController:
         if not path:
             return
         info = signal_data.parse_time_marker_csv_info(path)
-        window.set_ttl_markers(info)
-        window.ttl_panel.set_markers(info)
+        markers = [marker_from_legacy_ttl(item) for item in info.get("markers", [])]
+        metadata = {
+            key: value
+            for key, value in info.items()
+            if key not in {"markers", "marker_count", "first_marker_sec"}
+        }
+        window.ttl_panel.set_markers(markers, metadata=metadata)

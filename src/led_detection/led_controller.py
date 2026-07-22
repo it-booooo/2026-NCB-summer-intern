@@ -78,7 +78,7 @@ class LedControllerMixin:
             roi: LED region of interest as (x, y, width, height).
         """
         self.led_state.roi = roi
-        self.sync_panel.set_led_roi(roi)
+        self.led_analysis_panel.set_led_roi(roi)
         self.start_led_detection()
 
     def start_led_detection(self):
@@ -92,18 +92,18 @@ class LedControllerMixin:
 
         try:
             scan_start_sec, scan_end_sec, scan_start_frame, scan_end_frame = (
-                self.sync_panel.led_scan_range_sec(
+                self.led_analysis_panel.led_scan_range_sec(
                     self.video_state.metadata.using_fps,
                     self.video_state.metadata.total_frames,
                 )
             )
         except ValueError as error:
-            self.sync_panel.mark_scan_range_valid(False)
+            self.led_analysis_panel.mark_scan_range_valid(False)
             QMessageBox.warning(self, "Invalid LED scan range", str(error))
             return
 
         if scan_start_frame >= scan_end_frame:
-            self.sync_panel.mark_scan_range_valid(False)
+            self.led_analysis_panel.mark_scan_range_valid(False)
             QMessageBox.warning(
                 self,
                 "Invalid LED scan range",
@@ -111,10 +111,10 @@ class LedControllerMixin:
             )
             return
 
-        detect_multiple = self.sync_panel.detect_multiple_led_events()
+        detect_multiple = self.led_analysis_panel.detect_multiple_led_events()
         max_events = 1
         if detect_multiple:
-            if self.sync_state.time_marker_info is None:
+            if not self.marker_store.by_kind("TTL"):
                 QMessageBox.warning(
                     self,
                     "TTL marker required",
@@ -123,7 +123,7 @@ class LedControllerMixin:
                 return
 
             max_events = int(
-                self.sync_state.time_marker_info.get("marker_count") or 0
+                len(self.marker_store.by_kind("TTL"))
             )
             if max_events <= 0:
                 QMessageBox.warning(
@@ -145,12 +145,12 @@ class LedControllerMixin:
         cache_key = self.led_cache_key(scan_start_frame, scan_end_frame)
         cached_points = self.led_state.brightness_cache.get(cache_key)
 
-        self.sync_panel.set_led_detection_status(
+        self.led_analysis_panel.set_led_detection_status(
             "LED detection: using cached ROI brightness data."
             if cached_points is not None
             else "LED detection: analyzing ROI frame changes. You can wait here."
         )
-        self.sync_panel.begin_led_detection_progress()
+        self.led_analysis_panel.begin_led_detection_progress()
         self.led_worker = LedDetectionWorker(
             video_path=self.video_state.metadata.path,
             roi=self.led_state.roi,
@@ -254,17 +254,16 @@ class LedControllerMixin:
         status = format_led_detection_status(points, threshold, events, stats)
         if cache_hit:
             status += " | cached scan"
-        self.sync_panel.finish_led_detection_progress(has_events=bool(events))
-        self.sync_panel.set_led_analysis(
+        markers = self.add_led_events(events)
+        self.led_analysis_panel.finish_led_detection_progress(has_events=bool(markers))
+        self.led_analysis_panel.set_led_analysis(
             points,
             threshold,
-            events,
+            markers,
             stats=stats,
             status=status,
         )
-        self.event_table.delete_events_by_source("led_detection")
-        self.add_led_events(events)
-        self.sync_panel.set_led_detection_status(
+        self.led_analysis_panel.set_led_detection_status(
             "LED detection: complete. Click Analysis Info to view results."
             if events
             else "LED scan complete: no events found. Click Analysis Info to view results."
@@ -289,7 +288,7 @@ class LedControllerMixin:
         if self.led_worker is not None and worker is not self.led_worker:
             return
 
-        self.sync_panel.update_led_detection_progress(current_frame, total_frames)
+        self.led_analysis_panel.update_led_detection_progress(current_frame, total_frames)
 
     def update_led_detection_stage(self, worker, text):
         """Update led detection stage.
@@ -301,7 +300,7 @@ class LedControllerMixin:
         if self.led_worker is not None and worker is not self.led_worker:
             return
 
-        self.sync_panel.set_led_detection_stage(text)
+        self.led_analysis_panel.set_led_detection_stage(text)
 
     def fail_led_detection(self, worker, message):
         """Report failure for led detection.
@@ -313,8 +312,8 @@ class LedControllerMixin:
         if self.led_worker is not None and worker is not self.led_worker:
             return
 
-        self.sync_panel.fail_led_detection_progress()
-        self.sync_panel.set_led_detection_status("LED detection: failed")
+        self.led_analysis_panel.fail_led_detection_progress()
+        self.led_analysis_panel.set_led_detection_status("LED detection: failed")
         QMessageBox.warning(self, "LED detection failed", message)
 
     def cleanup_led_worker(self):

@@ -47,7 +47,11 @@ def ttl_marker_rows(markers):
     rows = []
     for index, marker in enumerate(markers, start=1):
         local_time = marker.get("local_time")
-        local_time_text = local_time.isoformat() if local_time is not None else ""
+        local_time_text = (
+            local_time.isoformat()
+            if local_time is not None and hasattr(local_time, "isoformat")
+            else str(local_time or "")
+        )
         record_time_us = int(marker.get("record_time", 0))
         record_time_text = (
             f"{int(marker.get('record_hours', 0)):02d}:"
