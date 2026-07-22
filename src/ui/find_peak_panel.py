@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
     QHeaderView,
+    QHBoxLayout,
     QMessageBox,
     QPushButton,
     QSizePolicy,
@@ -30,10 +31,14 @@ class FindPeakPanel(QWidget):
         self.video_player = video_player
         self.lfp_panel = lfp_panel
 
-        find_peaks_button = QPushButton("Find Peak")
-        find_peaks_button.setFixedHeight(26)
-        find_peaks_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        find_peaks_button.clicked.connect(self.add_lfp_peaks)
+        self.find_peaks_button = QPushButton("Find Peak")
+        self.delete_selected_button = QPushButton("Delete Selected")
+        for button in (self.find_peaks_button, self.delete_selected_button):
+            button.setFixedHeight(26)
+            button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.find_peaks_button.clicked.connect(self.add_lfp_peaks)
+        self.delete_selected_button.clicked.connect(self.delete_selected_peak)
+        self.delete_selected_button.setEnabled(False)
 
         self.table = QTableWidget(0, len(self.DISPLAY_HEADERS))
         self.table.setHorizontalHeaderLabels(self.DISPLAY_HEADERS)
@@ -63,11 +68,21 @@ class FindPeakPanel(QWidget):
             """
         )
         self.event_table.events_changed.connect(self.refresh_table)
+        self.table.itemSelectionChanged.connect(
+            lambda: self.delete_selected_button.setEnabled(
+                bool(self.table.selectionModel().selectedRows())
+            )
+        )
 
         layout = QVBoxLayout()
         layout.setContentsMargins(3, 3, 3, 3)
         layout.setSpacing(6)
-        layout.addWidget(find_peaks_button)
+        button_layout = QHBoxLayout()
+        button_layout.setContentsMargins(0, 0, 0, 0)
+        button_layout.setSpacing(6)
+        button_layout.addWidget(self.find_peaks_button, stretch=1)
+        button_layout.addWidget(self.delete_selected_button, stretch=1)
+        layout.addLayout(button_layout)
         layout.addWidget(self.table)
         self.setLayout(layout)
         self.refresh_table()
@@ -92,6 +107,27 @@ class FindPeakPanel(QWidget):
                 if column < 2:
                     item.setTextAlignment(Qt.AlignCenter)
                 self.table.setItem(row, column, item)
+
+    def delete_selected_peak(self):
+        """Delete the selected LFP peak from the canonical event state."""
+        selected_rows = self.table.selectionModel().selectedRows()
+        if not selected_rows:
+            return
+
+        peak_row = selected_rows[0].row()
+        peak_event_indices = [
+            index
+            for index, event in enumerate(self.event_state.events)
+            if event.get("source") == "lfp_peak"
+        ]
+        if peak_row < 0 or peak_row >= len(peak_event_indices):
+            return
+
+        del self.event_state.events[peak_event_indices[peak_row]]
+        self.event_table.events_changed.emit()
+
+        if self.table.rowCount() > 0:
+            self.table.selectRow(min(peak_row, self.table.rowCount() - 1))
 
     def add_lfp_peaks(self):
         """Detect peaks in the selected LFP channel and add video markers."""
