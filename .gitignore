@@ -24,7 +24,7 @@ output_data/
 *.png
 *.csv
 *.mp4
-*.pigporj
+*.pigproj
 
 
 # Versioned application asset

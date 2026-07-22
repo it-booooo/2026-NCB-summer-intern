@@ -7,19 +7,19 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QApplication,
     QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
     QFormLayout,
     QInputDialog,
-    QLabel,
     QMessageBox,
-    QProgressBar,
     QVBoxLayout,
 )
 
 from .. import charts, signal_data, data_validation
+from ..project_format import PROJECT_FORMAT, PROJECT_VERSION, file_fingerprint
 from .lfp_image_dialog import LfpImageExportDialog
 from .file_writers import (
     export_events_csv,
@@ -51,7 +51,7 @@ class ExportController:
                 "LED detection is running",
                 "Wait for LED detection to finish before saving the project.",
             )
-            return
+            return False
 
         path, _ = QFileDialog.getSaveFileName(
             self.window,
@@ -60,7 +60,7 @@ class ExportController:
             "Pig Analysis Project (*.pigproj)",
         )
         if not path:
-            return
+            return False
         output_path = Path(path)
         if output_path.suffix.lower() != ".pigproj":
             output_path = output_path.with_suffix(".pigproj")
@@ -98,10 +98,11 @@ class ExportController:
                     "Cannot save project",
                     f"Source file not found:\n{file_path}",
                 )
-                return
+                return False
             sources[source_type] = {
                 "external_path": str(file_path.resolve()),
                 "filename": file_path.name,
+                "fingerprint": file_fingerprint(file_path),
             }
 
         def record(value):
@@ -194,27 +195,15 @@ class ExportController:
             "events": [dict(event) for event in self.event_state.events],
         }
         manifest = {
-            "format": "pig-analysis-project",
-            "version": 2,
+            "format": PROJECT_FORMAT,
+            "version": PROJECT_VERSION,
             "sources": sources,
         }
 
-        progress = QDialog(self.window)
-        progress.setWindowTitle("Save Project")
-        progress.setWindowModality(Qt.WindowModality.WindowModal)
-        progress.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, False)
-        progress.setFixedSize(480, 140)
-        progress_label = QLabel("Preparing project...")
-        progress_bar = QProgressBar()
-        progress_bar.setRange(0, 100)
-        progress_bar.setValue(0)
-        progress_layout = QVBoxLayout(progress)
-        progress_layout.addWidget(progress_label)
-        progress_layout.addWidget(progress_bar)
-        progress.show()
-        progress.repaint()
-
+        self.window.statusBar().showMessage("Saving project...")
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         temporary_path = None
+        save_error = None
         try:
             manifest_bytes = json.dumps(
                 manifest,
@@ -242,41 +231,43 @@ class ExportController:
                     manifest_bytes,
                     compress_type=ZIP_DEFLATED,
                 )
-                progress_label.setText("Writing project information...")
-                progress_bar.setValue(45)
-                progress_label.repaint()
-                progress_bar.repaint()
+                self.window.statusBar().showMessage(
+                    "Saving project information..."
+                )
                 archive.writestr(
                     "state.json",
                     state_bytes,
                     compress_type=ZIP_DEFLATED,
                 )
-                progress_label.setText("Writing analysis state...")
-                progress_bar.setValue(95)
-                progress_label.repaint()
-                progress_bar.repaint()
+                self.window.statusBar().showMessage("Saving analysis state...")
             temporary_path.replace(output_path)
             temporary_path = None
-            progress_bar.setValue(100)
-            progress_bar.repaint()
         except Exception as error:
             if temporary_path is not None:
                 temporary_path.unlink(missing_ok=True)
-            progress.close()
+            save_error = error
+        finally:
+            QApplication.restoreOverrideCursor()
+            self.window.statusBar().clearMessage()
+
+        if save_error is not None:
             QMessageBox.warning(
                 self.window,
                 "Save project failed",
-                str(error),
+                str(save_error),
             )
-            return
-        finally:
-            progress.close()
+            return False
+
+        self.app_state.project.path = str(output_path.resolve())
+        self.app_state.project.dirty = False
+        self.window.update_project_title()
 
         QMessageBox.information(
             self.window,
             "Project Saved",
             f"Project saved to:\n{output_path}",
         )
+        return True
 
     def actions(self):
         # 第三個欄位是顯示給使用者的英文滑鼠懸停說明。

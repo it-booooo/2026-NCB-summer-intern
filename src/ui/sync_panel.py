@@ -1,4 +1,4 @@
-from PySide6.QtCore import QTimer, Qt
+from PySide6.QtCore import QTimer, Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -83,6 +83,8 @@ class RoiPlotIndicator(QLabel):
 
 
 class SyncPanel(QWidget):
+    project_changed = Signal()
+
     def __init__(self, led_state=None):
         super().__init__()
         self.led_state = led_state or LedState()
@@ -217,6 +219,12 @@ class SyncPanel(QWidget):
             self.marker_stack.addWidget(panel)
 
         self.marker_selector.setCurrentIndex(1)
+
+    def show_ttl_panel(self):
+        """Switch the Sync Area marker view to the TTL panel."""
+        ttl_index = self.marker_selector.findText("TTL")
+        if ttl_index >= 0:
+            self.marker_selector.setCurrentIndex(ttl_index)
 
     def set_led_roi(self, roi):
         """Set led roi.
@@ -362,6 +370,7 @@ class SyncPanel(QWidget):
             "done" if self.led_state.analysis_points else "empty"
         )
         self.analysis_info_button.setEnabled(True)
+        self.project_changed.emit()
 
     def show_analysis_info(self):
         """Show analysis info.
