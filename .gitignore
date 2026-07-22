@@ -24,8 +24,10 @@ output_data/
 *.png
 *.csv
 *.mp4
-*.pigproj
 
+# Incomplete project files only. Keep completed .pigproj files visible so
+# ignored-file cleanup cannot silently remove them.
+*.pigproj.*.tmp
 
 # Versioned application asset
 !input_data/icon.png
