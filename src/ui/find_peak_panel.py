@@ -1,8 +1,11 @@
 import numpy as np
+from matplotlib.figure import Figure
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
+    QDialog,
+    QDialogButtonBox,
     QHeaderView,
     QMessageBox,
     QPushButton,
@@ -10,6 +13,7 @@ from PySide6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
+    QHBoxLayout,
 )
 from scipy.signal import find_peaks
 
@@ -30,7 +34,7 @@ class FindPeakPanel(MarkerViewPanel):
     VIDEO_TIME_ROLE = Qt.UserRole + 1
     LFP_PEAK_HEIGHT_SIGMA = 8.0
     LFP_PEAK_PROMINENCE_SIGMA = 6.0
-    LFP_PEAK_MIN_DISTANCE_SEC = 1.0
+    LFP_PEAK_MIN_DISTANCE_SEC = 0.01
 
     def __init__(
         self,
@@ -48,11 +52,17 @@ class FindPeakPanel(MarkerViewPanel):
 
         self.find_peaks_button = QPushButton("Find Peak")
         self.delete_selected_button = QPushButton("Delete Selected")
-        for button in (self.find_peaks_button, self.delete_selected_button):
+        self.analysis_button = QPushButton("Analyze Peaks")
+        for button in (
+            self.find_peaks_button,
+            self.delete_selected_button,
+            self.analysis_button,
+        ):
             button.setFixedHeight(26)
             button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.find_peaks_button.clicked.connect(self.add_lfp_peaks)
         self.delete_selected_button.clicked.connect(self.delete_selected_peak)
+        self.analysis_button.clicked.connect(self.analyze_peaks)
         self.delete_selected_button.setEnabled(False)
         self.table = QTableWidget(0, len(self.DISPLAY_HEADERS))
         self.table.setHorizontalHeaderLabels(self.DISPLAY_HEADERS)
@@ -77,6 +87,7 @@ class FindPeakPanel(MarkerViewPanel):
         button_layout = QHBoxLayout()
         button_layout.addWidget(self.find_peaks_button, stretch=1)
         button_layout.addWidget(self.delete_selected_button, stretch=1)
+        button_layout.addWidget(self.analysis_button, stretch=1)
         layout.addLayout(button_layout)
         layout.addWidget(self.table)
         self.refresh_table()
@@ -140,6 +151,66 @@ class FindPeakPanel(MarkerViewPanel):
             self.marker_store.delete(markers[row].marker_id)
             if self.table.rowCount() > 0:
                 self.table.selectRow(min(row, self.table.rowCount() - 1))
+
+    def analyze_peaks(self):
+        """Analyze the detected peaks."""
+        peaks = self.marker_store.by_kind(MarkerKind.LFP_PEAK)
+        peak_per_second = {}
+        for marker in peaks:
+            video_time = marker_video_time(marker, self.sync_state.time_offset_sec)
+            if video_time is not None:
+                display_time = relative_time(
+                    video_time, self.sync_state.video_time_origin_sec
+                )
+                second = int(np.floor(display_time))
+                peak_per_second[second] = peak_per_second.get(second, 0) + 1
+
+        if not peak_per_second:
+            QMessageBox.information(
+                self, "LFP Peak Analysis", "No synchronized LFP peaks to analyze."
+            )
+            return
+
+        from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("LFP Peak Analysis")
+        dialog.resize(900, 500)
+
+        figure = Figure(figsize=(9, 5), constrained_layout=True)
+        canvas = FigureCanvas(figure)
+        seconds = sorted(peak_per_second)
+        time_label = (
+            "Sync time (s)"
+            if self.sync_state.video_time_origin_sec is not None
+            else "Video time (s)"
+        )
+
+        full_seconds = np.arange(seconds[0], seconds[-1] + 1)
+        counts = np.array(
+            [peak_per_second.get(int(second), 0) for second in full_seconds]
+        )
+
+        ax = figure.add_subplot(111)
+        ax.plot(full_seconds, counts, color="#1f77b4", linewidth=1.0)
+        ax.set_title("LFP peak count over time")
+        ax.set_xlabel(time_label)
+        ax.set_ylabel("Peaks per second")
+        ax.set_ylim(bottom=0)
+        ax.grid(alpha=0.25)
+
+        from matplotlib.ticker import MaxNLocator
+
+        ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(dialog.reject)
+
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(canvas, stretch=1)
+        layout.addWidget(buttons)
+        canvas.draw()
+        dialog.exec()
 
     def add_lfp_peaks(self):
         if not self.video_player.has_video():
@@ -212,5 +283,7 @@ class FindPeakPanel(MarkerViewPanel):
             QApplication.restoreOverrideCursor()
 
         QMessageBox.information(
-            self, "LFP peaks", f"Added {len(peak_indices)} peak markers from channel {channel}."
+            self,
+            "LFP peaks",
+            f"Added {len(peak_indices)} peak markers from channel {channel}.",
         )

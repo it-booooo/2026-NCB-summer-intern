@@ -311,20 +311,27 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
 
         height_input = QDoubleSpinBox(dialog)
         prominence_input = QDoubleSpinBox(dialog)
+        min_distance_input = QDoubleSpinBox(dialog)
         for spinbox in (height_input, prominence_input):
             spinbox.setDecimals(2)
             spinbox.setRange(0.0, 100.0)
             spinbox.setSingleStep(0.1)
             spinbox.setSuffix(" σ")
+        min_distance_input.setDecimals(3)
+        min_distance_input.setRange(0.01, 100.0)
+        min_distance_input.setSingleStep(0.01)
+        min_distance_input.setSuffix(" sec")
 
         height_input.setValue(float(self.find_peak_panel.LFP_PEAK_HEIGHT_SIGMA))
         prominence_input.setValue(
             float(self.find_peak_panel.LFP_PEAK_PROMINENCE_SIGMA)
         )
+        min_distance_input.setValue(float(self.find_peak_panel.LFP_PEAK_MIN_DISTANCE_SEC))
 
         form = QFormLayout()
         form.addRow("Peak height threshold:", height_input)
         form.addRow("Peak prominence threshold:", prominence_input)
+        form.addRow("Minimum peak distance:", min_distance_input)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save
@@ -342,6 +349,7 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
 
         self.find_peak_panel.LFP_PEAK_HEIGHT_SIGMA = height_input.value()
         self.find_peak_panel.LFP_PEAK_PROMINENCE_SIGMA = prominence_input.value()
+        self.find_peak_panel.LFP_PEAK_MIN_DISTANCE_SEC = min_distance_input.value()
 
     def create_layout(self):
         """Create layout.
