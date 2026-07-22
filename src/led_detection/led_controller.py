@@ -264,9 +264,9 @@ class LedControllerMixin:
             status=status,
         )
         self.led_analysis_panel.set_led_detection_status(
-            "LED detection: complete. Click Analysis Info to view results."
+            "LED detection: complete. Results are shown below."
             if events
-            else "LED scan complete: no events found. Click Analysis Info to view results."
+            else "LED scan complete: no events found. Results are shown below."
         )
 
         if not events:

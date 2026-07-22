@@ -1,8 +1,6 @@
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtWidgets import (
     QCheckBox,
-    QDialog,
-    QDialogButtonBox,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -91,13 +89,6 @@ class LedAnalysisPanel(MarkerViewPanel):
         self.video_player = video_player
 
         self.led_roi_label = QLabel("LED ROI: Not selected")
-        self.analysis_info_button = QPushButton("Analysis Info")
-        self.analysis_info_button.setFixedSize(108, 24)
-        self.analysis_info_button.setStyleSheet(
-            "font-size: 9pt; padding: 2px 6px;"
-        )
-        self.analysis_info_button.setEnabled(False)
-        self.analysis_info_button.clicked.connect(self.show_analysis_info)
         self.led_scan_start_input = QLineEdit()
         self.led_scan_start_input.setPlaceholderText("00:00.000")
         self.led_scan_start_input.setToolTip("LED scan start time. Blank = beginning.")
@@ -156,13 +147,7 @@ class LedAnalysisPanel(MarkerViewPanel):
         info_grid.setContentsMargins(0, 0, 0, 0)
         info_grid.setVerticalSpacing(1)
         info_grid.setColumnStretch(0, 1)
-        info_grid.addWidget(self.led_roi_label, 0, 0)
-        info_grid.addWidget(
-            self.analysis_info_button,
-            0,
-            1,
-            alignment=Qt.AlignRight | Qt.AlignVCenter,
-        )
+        info_grid.addWidget(self.led_roi_label, 0, 0, 1, 2)
 
         scan_range_layout = QHBoxLayout()
         scan_range_layout.setContentsMargins(0, 0, 0, 0)
@@ -192,11 +177,37 @@ class LedAnalysisPanel(MarkerViewPanel):
         self.video_marker_controls = QWidget()
         self.video_marker_controls.setLayout(info_grid)
 
+        self.analysis_status_labels = []
+        self.analysis_status_grid = QGridLayout()
+        self.analysis_status_grid.setContentsMargins(0, 0, 0, 0)
+        self.analysis_status_grid.setHorizontalSpacing(18)
+        self.analysis_status_grid.setVerticalSpacing(4)
+        for column in range(4):
+            self.analysis_status_grid.setColumnStretch(column, 1)
+
+        from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+        from matplotlib.figure import Figure
+
+        self.analysis_figure = Figure(figsize=(8, 2.2), tight_layout=True)
+        self.analysis_canvas = FigureCanvas(self.analysis_figure)
+        self.analysis_canvas.setMinimumHeight(180)
+        self.analysis_canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        self.analysis_details = QWidget()
+        analysis_details_layout = QVBoxLayout()
+        analysis_details_layout.setContentsMargins(0, 0, 0, 0)
+        analysis_details_layout.setSpacing(4)
+        analysis_details_layout.addLayout(self.analysis_status_grid)
+        analysis_details_layout.addWidget(self.analysis_canvas, stretch=1)
+        self.analysis_details.setLayout(analysis_details_layout)
+        self.analysis_details.setVisible(False)
+
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 4, 0, 0)
         layout.setSpacing(4)
-        layout.addWidget(self.video_marker_controls)
-        layout.addStretch()
+        layout.addWidget(self.video_marker_controls, 0, Qt.AlignTop)
+        layout.addWidget(self.analysis_details, stretch=1)
+        layout.addStretch(1)
         self.setLayout(layout)
 
     def accepts_marker(self, marker):
@@ -326,7 +337,7 @@ class LedAnalysisPanel(MarkerViewPanel):
         self.led_state.analysis_threshold = 0.0
         self.led_state.analysis_stats = None
         self.led_state.analysis_status = None
-        self.analysis_info_button.setEnabled(False)
+        self.clear_analysis_details()
         self.roi_plot_indicator.set_state("idle")
         self.led_progress_bar.setRange(0, 100)
         self.led_progress_bar.setValue(0)
@@ -354,50 +365,45 @@ class LedAnalysisPanel(MarkerViewPanel):
         self.roi_plot_indicator.set_state(
             "done" if self.led_state.analysis_points else "empty"
         )
-        self.analysis_info_button.setEnabled(True)
+        self.update_analysis_details(events)
 
-    def show_analysis_info(self):
-        """Show analysis info.
+    def clear_analysis_details(self):
+        """Clear the embedded LED analysis details."""
+        self.clear_analysis_status_grid()
+        self.analysis_figure.clear()
+        self.analysis_canvas.draw_idle()
+        self.analysis_details.setVisible(False)
 
-        Args:
-            None.
-        """
+    def clear_analysis_status_grid(self):
+        """Remove all status labels from the embedded analysis grid."""
+        while self.analysis_status_grid.count():
+            item = self.analysis_status_grid.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(None)
+        self.analysis_status_labels = []
+
+    def update_analysis_details(self, events=None):
+        """Render LED analysis status and plot below the progress bar."""
         if self.led_state.analysis_status is None:
             return
 
-        from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
-        from matplotlib.figure import Figure
+        self.clear_analysis_status_grid()
 
-        dialog = QDialog(self)
-        dialog.setWindowTitle("LED Analysis Info")
-        dialog.resize(900, 620)
-
-        status_grid = QGridLayout()
-        status_grid.setHorizontalSpacing(24)
-        status_grid.setVerticalSpacing(5)
-        status_grid.setColumnStretch(0, 1)
-        status_grid.setColumnStretch(1, 1)
-        status_grid.setColumnStretch(2, 1)
-        status_items = self.led_state.analysis_status.split(" | ")
+        status_items = self.compact_analysis_status_items()
         for index, text in enumerate(status_items):
             label = QLabel(text)
             label.setWordWrap(True)
             label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
             label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-            status_grid.addWidget(label, index // 3, index % 3)
+            self.analysis_status_grid.addWidget(label, index // 4, index % 4)
+            self.analysis_status_labels.append(label)
 
-        figure = Figure(figsize=(8, 3.5), tight_layout=True)
-        canvas = FigureCanvas(figure)
-        canvas.setMinimumHeight(300)
-        canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-
-        ax = figure.add_subplot(111)
+        self.analysis_figure.clear()
+        ax = self.analysis_figure.add_subplot(111)
         points = self.led_state.analysis_points or []
-        events = (
-            self.marker_store.by_source(MarkerSource.LED_DETECTION)
-            if self.marker_store is not None
-            else ()
-        )
+        if events is None:
+            events = self.marker_store.by_source(MarkerSource.LED_DETECTION)
         stats = self.led_state.analysis_stats or {}
         times = [point.video_time_sec for point in points]
         delta_times = [points[index].video_time_sec for index in range(1, len(points))]
@@ -432,16 +438,37 @@ class LedAnalysisPanel(MarkerViewPanel):
         ax.set_ylabel("ROI Brightness Delta", fontsize=8)
         ax.tick_params(axis="both", labelsize=8, pad=1)
         ax.grid(True, linewidth=0.4, alpha=0.35)
+        self.analysis_details.setVisible(True)
+        self.analysis_canvas.draw_idle()
 
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
-        buttons.rejected.connect(dialog.reject)
+    def compact_analysis_status_items(self):
+        """Return the most useful LED analysis fields for inline display."""
+        if not self.led_state.analysis_status:
+            return []
 
-        layout = QVBoxLayout(dialog)
-        layout.addLayout(status_grid)
-        layout.addWidget(canvas, stretch=1)
-        layout.addWidget(buttons)
-        canvas.draw_idle()
-        dialog.exec()
+        raw_items = self.led_state.analysis_status.split(" | ")
+        selected = []
+        wanted_fragments = (
+            "interval",
+            "scan frames=",
+            "points=",
+            "single",
+            "multiple",
+            "threshold=",
+            "duration=",
+            "scan=",
+            "brightness=",
+        )
+        for item in raw_items:
+            if not selected:
+                selected.append(item)
+                continue
+            if any(fragment in item for fragment in wanted_fragments):
+                selected.append(item)
+            if len(selected) >= 8:
+                break
+
+        return selected
 
     def begin_led_detection_progress(self):
         """Begin led detection progress.
