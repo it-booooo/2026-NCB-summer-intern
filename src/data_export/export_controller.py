@@ -250,7 +250,7 @@ class ExportController:
             (
                 "Export Markers...",
                 self.export_markers,
-                "Choose TTL or video markers and export them as CSV or Excel.",
+                "Export TTL, video, or peak markers as CSV/Excel, or export the LED Analysis plot as an image.",
             ),
             (
                 "Export Check Results",
@@ -271,21 +271,33 @@ class ExportController:
 
     def export_markers(self):
         # UI 流程只負責選擇格式與路徑；實際寫檔由 writers 模組處理。
-        """Choose a marker source and file type, then export it."""
+        """Export one Sync Area page as table data or an analysis image."""
         dialog = QDialog(self.window)
         dialog.setWindowTitle("Export Markers")
         dialog.setMinimumWidth(340)
 
         marker_selector = QComboBox()
-        marker_selector.addItem("Video markers", "video")
-        marker_selector.addItem("TTL markers", "ttl")
+        marker_selector.addItem("TTL", "ttl")
+        marker_selector.addItem("Video", "video")
+        marker_selector.addItem("Find Peak", "find_peak")
+        marker_selector.addItem("LED Analysis", "led_analysis")
 
         file_type_selector = QComboBox()
-        file_type_selector.addItem("CSV (.csv)", "csv")
-        file_type_selector.addItem("Excel (.xlsx)", "xlsx")
+
+        def refresh_file_types():
+            file_type_selector.clear()
+            if marker_selector.currentData() == "led_analysis":
+                file_type_selector.addItem("PNG (.png)", "png")
+                file_type_selector.addItem("JPG (.jpg)", "jpg")
+            else:
+                file_type_selector.addItem("CSV (.csv)", "csv")
+                file_type_selector.addItem("Excel (.xlsx)", "xlsx")
+
+        marker_selector.currentIndexChanged.connect(refresh_file_types)
+        refresh_file_types()
 
         form = QFormLayout()
-        form.addRow("Markers", marker_selector)
+        form.addRow("Sync Area", marker_selector)
         form.addRow("File type", file_type_selector)
 
         buttons = QDialogButtonBox(
@@ -306,42 +318,11 @@ class ExportController:
 
         marker_type = marker_selector.currentData()
         file_type = file_type_selector.currentData()
-        if marker_type == "video":
-            markers = []
-            for marker in self.marker_store.all():
-                if marker.kind == MarkerKind.TTL:
-                    continue
-                video_time = marker_video_time(marker, self.sync_state.time_offset_sec)
-                if video_time is None:
-                    continue
-                frame_index = (
-                    marker.position.frame_index
-                    if isinstance(marker.position, VideoPosition)
-                    else int(
-                        marker.payload.get(
-                            "frame_index",
-                            round(
-                                video_time
-                                * float(self.video_state.metadata.using_fps or 0.0)
-                            ),
-                        )
-                    )
-                )
-                markers.append(
-                    {
-                        "event_type": marker.kind.value,
-                        "video_time_sec": video_time,
-                        "frame_index": frame_index,
-                        "note": marker.note,
-                    }
-                )
-            filename_stem = "video_markers"
-            writer = (
-                export_events_csv
-                if file_type == "csv"
-                else export_events_excel
-            )
-        else:
+        if marker_type == "led_analysis":
+            self.export_led_analysis_image(file_type)
+            return
+
+        if marker_type == "ttl":
             markers = []
             for marker in self.marker_store.by_kind(MarkerKind.TTL):
                 record_time = int(
@@ -356,6 +337,20 @@ class ExportController:
                 if file_type == "csv"
                 else export_ttl_markers_excel
             )
+        elif marker_type == "find_peak":
+            markers = self.exportable_video_marker_rows(
+                self.marker_store.by_kind(MarkerKind.LFP_PEAK)
+            )
+            filename_stem = "find_peak_markers"
+            writer = export_events_csv if file_type == "csv" else export_events_excel
+        else:
+            markers = self.exportable_video_marker_rows(
+                marker
+                for marker in self.marker_store.all()
+                if marker.kind not in {MarkerKind.TTL, MarkerKind.LFP_PEAK}
+            )
+            filename_stem = "video_markers"
+            writer = export_events_csv if file_type == "csv" else export_events_excel
 
         if not markers:
             QMessageBox.information(
@@ -373,6 +368,57 @@ class ExportController:
         )
         if path:
             writer(path, markers)
+
+    def exportable_video_marker_rows(self, markers):
+        rows = []
+        fps = (
+            float(self.video_state.metadata.using_fps or 0.0)
+            if self.video_state.metadata
+            else 0.0
+        )
+        for marker in markers:
+            video_time = marker_video_time(marker, self.sync_state.time_offset_sec)
+            if video_time is None:
+                continue
+            frame_index = (
+                marker.position.frame_index
+                if isinstance(marker.position, VideoPosition)
+                else int(marker.payload.get("frame_index", round(video_time * fps)))
+            )
+            rows.append(
+                {
+                    "event_type": marker.kind.value,
+                    "video_time_sec": video_time,
+                    "frame_index": frame_index,
+                    "note": marker.note,
+                }
+            )
+        return rows
+
+    def export_led_analysis_image(self, file_type):
+        panel = self.window.led_analysis_panel
+        if panel.led_state.analysis_status is None:
+            QMessageBox.information(
+                self.window,
+                "No LED analysis",
+                "Run LED analysis before exporting the LED Analysis image.",
+            )
+            return
+
+        suffix = "jpg" if file_type == "jpg" else "png"
+        path, _ = QFileDialog.getSaveFileName(
+            self.window,
+            "Export LED Analysis Image",
+            f"led_analysis.{suffix}",
+            "JPEG Images (*.jpg)" if suffix == "jpg" else "PNG Images (*.png)",
+        )
+        if not path:
+            return
+        output_path = Path(path)
+        if output_path.suffix.lower() not in {".png", ".jpg", ".jpeg"}:
+            output_path = output_path.with_suffix(f".{suffix}")
+        save_format = "jpeg" if suffix == "jpg" else "png"
+        panel.analysis_figure.savefig(str(output_path), dpi=300, format=save_format)
 
 
     def export_check_results(self):
