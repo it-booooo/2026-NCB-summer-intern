@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import charts, signal_data, data_validation
+from ..project_format import PROJECT_FORMAT, PROJECT_VERSION, file_fingerprint
 from ..markers import (
     MarkerKind,
     VideoPosition,
@@ -58,7 +59,7 @@ class ExportController:
                 "LED detection is running",
                 "Wait for LED detection to finish before saving the project.",
             )
-            return
+            return False
 
         path, _ = QFileDialog.getSaveFileName(
             self.window,
@@ -67,7 +68,7 @@ class ExportController:
             "Pig Analysis Project (*.pigproj)",
         )
         if not path:
-            return
+            return False
         output_path = Path(path)
         if output_path.suffix.lower() != ".pigproj":
             output_path = output_path.with_suffix(".pigproj")
@@ -105,10 +106,11 @@ class ExportController:
                     "Cannot save project",
                     f"Source file not found:\n{file_path}",
                 )
-                return
+                return False
             sources[source_type] = {
                 "external_path": str(file_path.resolve()),
                 "filename": file_path.name,
+                "fingerprint": file_fingerprint(file_path),
             }
 
         def record(value):
@@ -180,8 +182,8 @@ class ExportController:
             "markers": [marker_to_dict(marker) for marker in self.marker_store.all()],
         }
         manifest = {
-            "format": "pig-analysis-project",
-            "version": 3,
+            "format": PROJECT_FORMAT,
+            "version": PROJECT_VERSION,
             "sources": sources,
         }
 
@@ -254,7 +256,7 @@ class ExportController:
                 "Save project failed",
                 str(error),
             )
-            return
+            return False
         finally:
             progress.close()
 
@@ -263,6 +265,10 @@ class ExportController:
             "Project Saved",
             f"Project saved to:\n{output_path}",
         )
+        self.app_state.project.path = str(output_path.resolve())
+        self.app_state.project.dirty = False
+        self.window.update_project_title()
+        return True
 
     def actions(self):
         # 第三個欄位是顯示給使用者的英文滑鼠懸停說明。

@@ -253,6 +253,7 @@ class RoiVideoLabel(QLabel):
 class VideoPlayer(QWidget):
     frame_changed = Signal(int, float)
     roi_selected = Signal(tuple)
+    project_changed = Signal()
 
     BUTTON_WIDTHS = {
         "Play": 64,
@@ -778,6 +779,7 @@ class VideoPlayer(QWidget):
             self.clear_led_roi()
         if refresh:
             self.show_frame(self.video_state.current_frame)
+        self.project_changed.emit()
 
     def update_rotation_buttons(self):
         """Keep rotation button labels in sync with the current orientation."""

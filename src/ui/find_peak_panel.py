@@ -46,10 +46,14 @@ class FindPeakPanel(MarkerViewPanel):
         self.video_state = video_state
         self.video_player = video_player
 
-        find_button = QPushButton("Find Peak")
-        find_button.setFixedHeight(26)
-        find_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        find_button.clicked.connect(self.add_lfp_peaks)
+        self.find_peaks_button = QPushButton("Find Peak")
+        self.delete_selected_button = QPushButton("Delete Selected")
+        for button in (self.find_peaks_button, self.delete_selected_button):
+            button.setFixedHeight(26)
+            button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.find_peaks_button.clicked.connect(self.add_lfp_peaks)
+        self.delete_selected_button.clicked.connect(self.delete_selected_peak)
+        self.delete_selected_button.setEnabled(False)
         self.table = QTableWidget(0, len(self.DISPLAY_HEADERS))
         self.table.setHorizontalHeaderLabels(self.DISPLAY_HEADERS)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -62,10 +66,18 @@ class FindPeakPanel(MarkerViewPanel):
         self.table.setColumnWidth(0, 110)
         self.table.setColumnWidth(1, 92)
         self.table.cellClicked.connect(self.handle_cell_clicked)
+        self.table.itemSelectionChanged.connect(
+            lambda: self.delete_selected_button.setEnabled(
+                bool(self.table.selectionModel().selectedRows())
+            )
+        )
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(3, 3, 3, 3)
-        layout.addWidget(find_button)
+        button_layout = QHBoxLayout()
+        button_layout.addWidget(self.find_peaks_button, stretch=1)
+        button_layout.addWidget(self.delete_selected_button, stretch=1)
+        layout.addLayout(button_layout)
         layout.addWidget(self.table)
         self.refresh_table()
 
@@ -116,6 +128,18 @@ class FindPeakPanel(MarkerViewPanel):
         video_time = item.data(self.VIDEO_TIME_ROLE) if item is not None else None
         if video_time is not None:
             self.video_time_selected.emit(float(video_time))
+
+    def delete_selected_peak(self):
+        """Delete the selected peak through the canonical marker store."""
+        selected_rows = self.table.selectionModel().selectedRows()
+        if not selected_rows:
+            return
+        markers = self.peak_markers()
+        row = selected_rows[0].row()
+        if 0 <= row < len(markers):
+            self.marker_store.delete(markers[row].marker_id)
+            if self.table.rowCount() > 0:
+                self.table.selectRow(min(row, self.table.rowCount() - 1))
 
     def add_lfp_peaks(self):
         if not self.video_player.has_video():

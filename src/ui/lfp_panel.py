@@ -33,6 +33,7 @@ from .lfp_analysis import LfpAnalysisMixin
 
 class LfpPanel(LfpAnalysisMixin, QWidget):
     time_selected = Signal(float)
+    project_changed = Signal()
 
     DEFAULT_PLAYBACK_WINDOW_SEC = 30.0
     PLAYBACK_CURSOR_FRACTION = 0.35
@@ -250,10 +251,12 @@ class LfpPanel(LfpAnalysisMixin, QWidget):
             ),
             "notch_quality": float(settings.notch_quality),
         }
+        self.project_changed.emit()
 
     def set_follow_video_playback(self, enabled):
         """Keep the playback-follow preference in the project state."""
         self.data_state.follow_video_playback = bool(enabled)
+        self.project_changed.emit()
 
 
     def create_frequency_spinbox(self, value):
@@ -976,6 +979,7 @@ class LfpPanel(LfpAnalysisMixin, QWidget):
         )
         self.store_lfp_filter_settings(self._applied_lfp_filter_settings)
         self.mark_lfp_filter_settings_pending()
+        self.project_changed.emit()
         if self.lfp_fig is None:
             return
         self.lfp_fig.set_lfp_signal_view(show_filtered)
@@ -1279,6 +1283,7 @@ class LfpPanel(LfpAnalysisMixin, QWidget):
             return
 
         setattr(self.data_state, step_attribute, step)
+        self.project_changed.emit()
         info = getattr(self.data_state, info_attribute)
         if not (info and info.get("path")):
             return

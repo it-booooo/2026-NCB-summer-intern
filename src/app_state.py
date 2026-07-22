@@ -107,6 +107,15 @@ class MarkerState:
 
 
 @dataclass
+class ProjectState:
+    """Current project file and unsaved-change state."""
+
+    path: str | None = None
+    dirty: bool = False
+    loading: bool = False
+
+
+@dataclass
 class AppState:
     """Composition root for all feature states.
 
@@ -120,3 +129,4 @@ class AppState:
     ttl: TtlState = field(default_factory=TtlState)
     led: LedState = field(default_factory=LedState)
     markers: MarkerState = field(default_factory=MarkerState)
+    project: ProjectState = field(default_factory=ProjectState)

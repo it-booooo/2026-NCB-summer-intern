@@ -22,6 +22,7 @@ from ..markers import (
     marker_from_legacy_event,
     marker_from_legacy_ttl,
 )
+from ..project_format import file_fingerprint, validate_manifest, validate_state
 from ..video_player.video_helpers import normalize_rotation_degrees
 
 
@@ -52,6 +53,8 @@ class ImportController:
     def open_project(self):
         """Open a project archive and restore its referenced and bundled data."""
         window = self.window
+        if not window.confirm_unsaved_changes("open another project"):
+            return
         if not window.stop_led_detection(wait=True):
             QMessageBox.information(
                 window,
@@ -81,6 +84,9 @@ class ImportController:
                     raise ValueError(
                         f"Unsupported project version: {manifest.get('version')}"
                     )
+                if manifest.get("version") == 3:
+                    validate_manifest(manifest)
+                    state = validate_state(state)
 
                 source_paths = {}
                 source_items = list(manifest.get("sources", {}).items())
@@ -126,6 +132,11 @@ class ImportController:
                                     "Select the original file to continue."
                                 )
                             source_path = Path(selected_path)
+                        expected = source.get("fingerprint")
+                        if expected is not None and file_fingerprint(source_path) != expected:
+                            raise ValueError(
+                                f"The selected {source_type} file is not the original project source."
+                            )
                         source_paths[source_type] = str(source_path.resolve())
                         continue
                     archive_path = source.get("archive_path", "")
@@ -349,6 +360,9 @@ class ImportController:
 
         previous_directory = getattr(window, "project_temp_directory", None)
         window.project_temp_directory = project_root
+        self.app_state.project.path = str(Path(path).resolve())
+        self.app_state.project.dirty = False
+        window.update_project_title()
         if previous_directory is not None:
             shutil.rmtree(previous_directory, ignore_errors=True)
         progress.close()
@@ -431,6 +445,7 @@ class ImportController:
                 self.video_state.metadata.using_fps,
                 self.video_state.metadata.total_frames,
             )
+            window.mark_project_dirty()
 
     def import_signal(self, signal_type):
         """Import an LFP or 3-axis CSV through the shared signal workflow."""
@@ -448,6 +463,7 @@ class ImportController:
             window.lfp_panel.set_axis_info(info)
 
         window.update_waveform_current_time()
+        window.mark_project_dirty()
 
     def import_time_marker(self):
         """Provide import time marker functionality.
@@ -467,3 +483,4 @@ class ImportController:
             if key not in {"markers", "marker_count", "first_marker_sec"}
         }
         window.ttl_panel.set_markers(markers, metadata=metadata)
+        window.mark_project_dirty()

@@ -1,4 +1,5 @@
 import shutil
+from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
@@ -108,15 +109,50 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
         self.led_worker = None
 
         self.video_player.roi_selected.connect(self.set_led_roi)
+        self.video_player.roi_selected.connect(self.mark_project_dirty)
+        self.video_player.project_changed.connect(self.mark_project_dirty)
         self.video_player.frame_changed.connect(self.update_waveform_current_time)
         self.lfp_panel.time_selected.connect(self.seek_video_record_time)
         self.event_table.events_changed.connect(self.update_time_offset)
         self.event_table.events_changed.connect(self.lfp_panel.update_lfp_peak_artist)
+        self.marker_store.changed.connect(self.mark_project_dirty)
+        self.lfp_panel.project_changed.connect(self.mark_project_dirty)
         self.event_table.video_time_selected.connect(self.seek_video_marker_time)
         self.find_peak_panel.video_time_selected.connect(self.seek_video_marker_time)
 
         self.create_menu()
         self.create_layout()
+        self.update_project_title()
+
+    def mark_project_dirty(self, *_args):
+        if self.app_state.project.loading:
+            return
+        self.app_state.project.dirty = True
+        self.update_project_title()
+
+    def update_project_title(self):
+        path = self.app_state.project.path
+        name = Path(path).name if path else "Untitled"
+        dirty = " *" if self.app_state.project.dirty else ""
+        self.setWindowTitle(
+            f"{name}{dirty} - Pig Behavior Video-LFP Synchronization Tool"
+        )
+
+    def confirm_unsaved_changes(self, action):
+        if not self.app_state.project.dirty:
+            return True
+        choice = QMessageBox.warning(
+            self,
+            "Unsaved Changes",
+            f"The current analysis has unsaved changes. Save before you {action}?",
+            QMessageBox.StandardButton.Save
+            | QMessageBox.StandardButton.Discard
+            | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Save,
+        )
+        if choice == QMessageBox.StandardButton.Save:
+            return bool(self.export_controller.save_project())
+        return choice == QMessageBox.StandardButton.Discard
 
     def add_action(self, menu, text, callback, description=""):
         """Add action.
@@ -362,6 +398,10 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
         Args:
             event: Event record to process.
         """
+        if not self.confirm_unsaved_changes("close the application"):
+            event.ignore()
+            return
+
         if self.stop_led_detection(wait=True):
             self.video_player.pause()
             if self.video_player.cap is not None:
