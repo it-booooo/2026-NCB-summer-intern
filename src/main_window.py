@@ -1,4 +1,3 @@
-import shutil
 from pathlib import Path
 
 from PySide6.QtCore import Qt
@@ -113,6 +112,7 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
         self.video_player.project_changed.connect(self.mark_project_dirty)
         self.video_player.frame_changed.connect(self.update_waveform_current_time)
         self.lfp_panel.time_selected.connect(self.seek_video_record_time)
+        self.ttl_panel.record_time_selected.connect(self.seek_video_record_time)
         self.event_table.events_changed.connect(self.update_time_offset)
         self.event_table.events_changed.connect(self.lfp_panel.update_lfp_peak_artist)
         self.marker_store.changed.connect(self.mark_project_dirty)
@@ -407,11 +407,6 @@ class MainWindow(LedControllerMixin, SyncControllerMixin, QMainWindow):
             if self.video_player.cap is not None:
                 self.video_player.cap.release()
                 self.video_player.cap = None
-
-            project_directory = getattr(self, "project_temp_directory", None)
-            if project_directory is not None:
-                shutil.rmtree(project_directory, ignore_errors=True)
-                self.project_temp_directory = None
 
             event.accept()
             return

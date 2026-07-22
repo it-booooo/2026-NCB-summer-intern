@@ -2,7 +2,9 @@ import json
 from pathlib import Path
 from zipfile import BadZipFile, ZipFile
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QApplication,
     QFileDialog,
     QMessageBox,
 )
@@ -75,16 +77,24 @@ class ImportController:
         if not path:
             return
 
+        error_title = None
+        error_message = None
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        QApplication.processEvents()
         try:
             staged = self.prepare_project_restore(path)
-        except (BadZipFile, KeyError, OSError, ValueError, json.JSONDecodeError) as error:
-            QMessageBox.warning(window, "Open project failed", str(error))
-            return
-
-        try:
             self.apply_project_restore(path, staged)
+        except (BadZipFile, KeyError, OSError, ValueError, json.JSONDecodeError) as error:
+            error_title = "Open project failed"
+            error_message = str(error)
         except Exception as error:
-            QMessageBox.warning(window, "Restore project failed", str(error))
+            error_title = "Restore project failed"
+            error_message = str(error)
+        finally:
+            QApplication.restoreOverrideCursor()
+
+        if error_message is not None:
+            QMessageBox.warning(window, error_title, error_message)
             return
 
         QMessageBox.information(
@@ -281,15 +291,9 @@ class ImportController:
                 )
             window.update_waveform_current_time()
 
-            previous_directory = getattr(window, "project_temp_directory", None)
-            window.project_temp_directory = None
             self.app_state.project.path = str(Path(path).resolve())
             self.app_state.project.dirty = False
             window.update_project_title()
-            if previous_directory is not None:
-                import shutil
-
-                shutil.rmtree(previous_directory, ignore_errors=True)
         finally:
             self.sync_state.loading_video = False
             self.app_state.project.loading = False

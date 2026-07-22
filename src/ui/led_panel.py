@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
 
 from ..led_detection.status_text import format_led_detection_status
 from ..app_state import LedState
-from ..markers import MarkerKind, MarkerSource, MarkerStore, marker_video_time
+from ..markers import MarkerKind, MarkerSource, marker_video_time
 from ..video_player.video_helpers import format_time, parse_time_input, time_sec_to_frame
 from .marker_view_panel import MarkerViewPanel
 
@@ -84,7 +84,9 @@ class LedAnalysisPanel(MarkerViewPanel):
     """LED ROI selection, scan controls, progress, and analysis details."""
 
     def __init__(self, led_state=None, video_player=None, marker_store=None):
-        super().__init__(marker_store or MarkerStore())
+        if marker_store is None:
+            raise ValueError("LedAnalysisPanel requires the shared MarkerStore.")
+        super().__init__(marker_store)
         self.led_state = led_state or LedState()
         self.video_player = video_player
 

@@ -106,7 +106,7 @@ QTableWidget {
     background-color: #ffffff;
     color: #111111;
     gridline-color: #d0d0d0;
-    selection-background-color: transparent;
+    selection-background-color: #dcecff;
     selection-color: #111111;
 }
 
@@ -116,7 +116,7 @@ QTableWidget::item {
 }
 
 QTableWidget::item:selected {
-    background-color: transparent;
+    background-color: #dcecff;
     color: #111111;
 }
 

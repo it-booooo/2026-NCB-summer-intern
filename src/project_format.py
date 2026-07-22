@@ -116,36 +116,11 @@ def validate_state(state):
     if not isinstance(data.get("lfp_filter_settings", {}), dict):
         raise ValueError("Project LFP filter settings are invalid.")
 
-    markers = state.get("markers", state.get("events", []))
+    markers = state.get("markers", [])
     if not isinstance(markers, list) or len(markers) > MAX_EVENTS:
         raise ValueError("Project marker list is invalid or too large.")
     for marker in markers:
-        if "position" in marker:
-            _validate_marker(marker)
-        else:
-            _validate_event(marker)
-
-    sync = state.get("sync", {})
-    ttl_info = sync.get("time_marker_info")
-    if ttl_info is not None:
-        if not isinstance(ttl_info, dict):
-            raise ValueError("Project TTL marker information is invalid.")
-        markers = ttl_info.get("markers", [])
-        if not isinstance(markers, list) or len(markers) > MAX_EVENTS:
-            raise ValueError("Project TTL marker list is invalid or too large.")
-        for marker in markers:
-            if not isinstance(marker, dict):
-                raise ValueError("Project TTL marker is invalid.")
-            record_time = marker.get("record_time")
-            if (
-                not isinstance(record_time, int)
-                or isinstance(record_time, bool)
-                or record_time < 0
-            ):
-                raise ValueError("Project TTL record time is invalid.")
-            local_time = marker.get("local_time")
-            if local_time is not None and not isinstance(local_time, str):
-                raise ValueError("Project TTL local time is invalid.")
+        _validate_marker(marker)
 
     led = state.get("led", {})
     roi = led.get("roi")
@@ -159,7 +134,7 @@ def validate_state(state):
         or roi[3] <= 0
     ):
         raise ValueError("Project LED ROI is invalid.")
-    for name in ("analysis_points", "analysis_events", "brightness_cache"):
+    for name in ("analysis_points", "brightness_cache"):
         value = led.get(name)
         if value is not None and (
             not isinstance(value, list) or len(value) > MAX_EVENTS
@@ -175,17 +150,12 @@ def validate_video_bounds(state, metadata):
     frame = state.get("video", {}).get("current_frame", 0)
     if metadata.total_frames <= 0 or frame >= metadata.total_frames:
         raise ValueError("Project current frame is outside the source video.")
-    for marker in state.get("markers", state.get("events", [])):
+    for marker in state.get("markers", []):
         position = marker.get("position")
         if position and position.get("domain") == "video":
             if position.get("frame_index", 0) >= metadata.total_frames:
                 raise ValueError("A project video marker frame is outside the source video.")
             if float(position.get("time_sec", 0.0)) > metadata.duration_sec:
-                raise ValueError("A project video marker time is outside the source video.")
-        elif not position:
-            if marker.get("frame_index", 0) >= metadata.total_frames:
-                raise ValueError("A project video marker frame is outside the source video.")
-            if float(marker.get("video_time_sec", 0.0)) > metadata.duration_sec:
                 raise ValueError("A project video marker time is outside the source video.")
     roi = state.get("led", {}).get("roi")
     if roi is None:
@@ -205,21 +175,6 @@ def _finite_number(value):
         and not isinstance(value, bool)
         and math.isfinite(float(value))
     )
-
-
-def _validate_event(event):
-    if not isinstance(event, dict):
-        raise ValueError("Project video marker is invalid.")
-    time_sec = event.get("video_time_sec", 0.0)
-    frame = event.get("frame_index", 0)
-    if not _finite_number(time_sec) or float(time_sec) < 0:
-        raise ValueError("Project video marker time is invalid.")
-    if not isinstance(frame, int) or isinstance(frame, bool) or frame < 0:
-        raise ValueError("Project video marker frame is invalid.")
-    for name in ("event_type", "note", "source"):
-        value = event.get(name, "")
-        if not isinstance(value, str) or len(value) > MAX_TEXT_LENGTH:
-            raise ValueError(f"Project video marker {name} is invalid.")
 
 
 def _validate_marker(marker):

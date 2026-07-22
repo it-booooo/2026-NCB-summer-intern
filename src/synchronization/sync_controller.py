@@ -80,6 +80,11 @@ class SyncControllerMixin:
         self.video_player.pause()
         self.video_player.seek_time_sec(video_time_sec)
         self.video_player.update_seek_inputs_from_current_frame()
+        if self.sync_state.time_offset_sec is not None:
+            self.lfp_panel.set_current_time_marker(
+                float(video_time_sec) - self.sync_state.time_offset_sec,
+                force_follow=True,
+            )
 
     def seek_video_record_time(self, record_time_sec):
         """Seek video record time.

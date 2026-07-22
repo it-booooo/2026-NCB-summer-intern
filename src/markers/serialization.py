@@ -66,21 +66,6 @@ def marker_from_dict(data: dict) -> Marker:
     return Marker(**marker_args)
 
 
-def marker_from_legacy_event(data: dict, offset_sec: float | None = None) -> Marker:
-    kind = marker_kind(data.get("event_type", ""))
-    video_time_sec = float(data.get("video_time_sec", 0.0))
-    position = VideoPosition(video_time_sec, int(data.get("frame_index", 0)))
-    if kind == MarkerKind.LFP_PEAK and offset_sec is not None:
-        position = RecordPosition(video_time_sec - float(offset_sec))
-    return Marker(
-        kind=kind,
-        source=marker_source(data.get("source", MarkerSource.MANUAL.value)),
-        position=position,
-        note=str(data.get("note", "")),
-        payload={"frame_index": int(data.get("frame_index", 0))},
-    )
-
-
 def marker_from_legacy_ttl(data: dict, source=MarkerSource.TTL_IMPORT) -> Marker:
     record_time_us = int(data.get("record_time", 0))
     payload = {

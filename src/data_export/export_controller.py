@@ -5,7 +5,9 @@ from datetime import datetime
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QApplication,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -70,46 +72,6 @@ class ExportController:
         if output_path.suffix.lower() != ".pigproj":
             output_path = output_path.with_suffix(".pigproj")
 
-        sources = {}
-        source_candidates = {
-            "video": (
-                self.video_state.metadata.path
-                if self.video_state.metadata is not None
-                else None
-            ),
-            "lfp": (
-                self.data_state.lfp_info.get("path")
-                if self.data_state.lfp_info
-                else None
-            ),
-            "axis": (
-                self.data_state.axis_info.get("path")
-                if self.data_state.axis_info
-                else None
-            ),
-            "ttl": (
-                self.ttl_state.metadata.get("path")
-                if self.ttl_state.metadata
-                else None
-            ),
-        }
-        for source_type, source_path in source_candidates.items():
-            if not source_path:
-                continue
-            file_path = Path(source_path)
-            if not file_path.is_file():
-                QMessageBox.warning(
-                    self.window,
-                    "Cannot save project",
-                    f"Source file not found:\n{file_path}",
-                )
-                return False
-            sources[source_type] = {
-                "external_path": str(file_path.resolve()),
-                "filename": file_path.name,
-                "fingerprint": file_fingerprint(file_path),
-            }
-
         def record(value):
             if is_dataclass(value):
                 return asdict(value)
@@ -121,71 +83,108 @@ class ExportController:
                 return value.tolist()
             raise TypeError(f"Unsupported project value: {type(value).__name__}")
 
-        brightness_cache = []
-        for cache_key, points in self.led_state.brightness_cache.items():
-            (
-                _video_path,
-                roi,
-                rotation_degrees,
-                fps,
-                start_frame,
-                end_frame,
-                coarse_step,
-            ) = cache_key
-            if isinstance(rotation_degrees, bool):
-                rotation_degrees = 180 if rotation_degrees else 0
-            brightness_cache.append(
-                {
-                    "roi": roi,
-                    "rotation_degrees": rotation_degrees,
-                    "rotate_180": int(rotation_degrees) == 180,
-                    "fps": fps,
-                    "start_frame": start_frame,
-                    "end_frame": end_frame,
-                    "coarse_step": coarse_step,
-                    "points": points,
-                }
-            )
-
-        state = {
-            "video": {
-                "current_frame": self.video_state.current_frame,
-                "rotation_degrees": self.video_state.rotation_degrees,
-                "rotate_180_enabled": self.video_state.rotate_180_enabled,
-            },
-            "data": {
-                "lfp_step": self.data_state.lfp_step,
-                "axis_step": self.data_state.axis_step,
-                "line_noise_hz": self.data_state.line_noise_hz,
-                "timeline_xlim": self.data_state.timeline_xlim,
-                "selected_lfp_channel": self.data_state.selected_lfp_channel,
-                "lfp_filter_settings": self.data_state.lfp_filter_settings,
-                "follow_video_playback": self.data_state.follow_video_playback,
-            },
-            "sync": {
-                "time_offset_sec": self.sync_state.time_offset_sec,
-                "video_time_origin_sec": self.sync_state.video_time_origin_sec,
-                "record_time_origin_sec": self.sync_state.record_time_origin_sec,
-            },
-            "ttl": {"metadata": dict(self.ttl_state.metadata or {})},
-            "led": {
-                "roi": self.led_state.roi,
-                "analysis_points": self.led_state.analysis_points,
-                "analysis_threshold": self.led_state.analysis_threshold,
-                "analysis_stats": self.led_state.analysis_stats,
-                "analysis_status": self.led_state.analysis_status,
-                "brightness_cache": brightness_cache,
-            },
-            "markers": [marker_to_dict(marker) for marker in self.marker_store.all()],
-        }
-        manifest = {
-            "format": PROJECT_FORMAT,
-            "version": PROJECT_VERSION,
-            "sources": sources,
-        }
-
+        error_message = None
         temporary_path = None
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        QApplication.processEvents()
         try:
+            sources = {}
+            source_candidates = {
+                "video": (
+                    self.video_state.metadata.path
+                    if self.video_state.metadata is not None
+                    else None
+                ),
+                "lfp": (
+                    self.data_state.lfp_info.get("path")
+                    if self.data_state.lfp_info
+                    else None
+                ),
+                "axis": (
+                    self.data_state.axis_info.get("path")
+                    if self.data_state.axis_info
+                    else None
+                ),
+                "ttl": (
+                    self.ttl_state.metadata.get("path")
+                    if self.ttl_state.metadata
+                    else None
+                ),
+            }
+            for source_type, source_path in source_candidates.items():
+                if not source_path:
+                    continue
+                file_path = Path(source_path)
+                if not file_path.is_file():
+                    raise ValueError(f"Source file not found:\n{file_path}")
+                sources[source_type] = {
+                    "external_path": str(file_path.resolve()),
+                    "filename": file_path.name,
+                    "fingerprint": file_fingerprint(file_path),
+                }
+
+            brightness_cache = []
+            for cache_key, points in self.led_state.brightness_cache.items():
+                (
+                    _video_path,
+                    roi,
+                    rotation_degrees,
+                    fps,
+                    start_frame,
+                    end_frame,
+                    coarse_step,
+                ) = cache_key
+                if isinstance(rotation_degrees, bool):
+                    rotation_degrees = 180 if rotation_degrees else 0
+                brightness_cache.append(
+                    {
+                        "roi": roi,
+                        "rotation_degrees": rotation_degrees,
+                        "rotate_180": int(rotation_degrees) == 180,
+                        "fps": fps,
+                        "start_frame": start_frame,
+                        "end_frame": end_frame,
+                        "coarse_step": coarse_step,
+                        "points": points,
+                    }
+                )
+
+            state = {
+                "video": {
+                    "current_frame": self.video_state.current_frame,
+                    "rotation_degrees": self.video_state.rotation_degrees,
+                    "rotate_180_enabled": self.video_state.rotate_180_enabled,
+                },
+                "data": {
+                    "lfp_step": self.data_state.lfp_step,
+                    "axis_step": self.data_state.axis_step,
+                    "line_noise_hz": self.data_state.line_noise_hz,
+                    "timeline_xlim": self.data_state.timeline_xlim,
+                    "selected_lfp_channel": self.data_state.selected_lfp_channel,
+                    "lfp_filter_settings": self.data_state.lfp_filter_settings,
+                    "follow_video_playback": self.data_state.follow_video_playback,
+                },
+                "sync": {
+                    "time_offset_sec": self.sync_state.time_offset_sec,
+                    "video_time_origin_sec": self.sync_state.video_time_origin_sec,
+                    "record_time_origin_sec": self.sync_state.record_time_origin_sec,
+                },
+                "ttl": {"metadata": dict(self.ttl_state.metadata or {})},
+                "led": {
+                    "roi": self.led_state.roi,
+                    "analysis_points": self.led_state.analysis_points,
+                    "analysis_threshold": self.led_state.analysis_threshold,
+                    "analysis_stats": self.led_state.analysis_stats,
+                    "analysis_status": self.led_state.analysis_status,
+                    "brightness_cache": brightness_cache,
+                },
+                "markers": [marker_to_dict(marker) for marker in self.marker_store.all()],
+            }
+            manifest = {
+                "format": PROJECT_FORMAT,
+                "version": PROJECT_VERSION,
+                "sources": sources,
+            }
             manifest_bytes = json.dumps(
                 manifest,
                 indent=2,
@@ -222,11 +221,12 @@ class ExportController:
         except Exception as error:
             if temporary_path is not None:
                 temporary_path.unlink(missing_ok=True)
-            QMessageBox.warning(
-                self.window,
-                "Save project failed",
-                str(error),
-            )
+            error_message = str(error)
+        finally:
+            QApplication.restoreOverrideCursor()
+
+        if error_message is not None:
+            QMessageBox.warning(self.window, "Save project failed", error_message)
             return False
 
         QMessageBox.information(

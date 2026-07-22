@@ -22,6 +22,7 @@ from ..markers import (
     marker_video_time,
 )
 from ..synchronization import relative_time
+from .event_table import NoteEditor
 from .marker_view_panel import MarkerViewPanel
 
 
@@ -29,6 +30,7 @@ class FindPeakPanel(MarkerViewPanel):
     DISPLAY_HEADERS = ["marker type", "video time", "note"]
     video_time_selected = Signal(float)
     VIDEO_TIME_ROLE = Qt.UserRole + 1
+    MARKER_ID_ROLE = Qt.UserRole + 2
     LFP_PEAK_HEIGHT_SIGMA = 8.0
     LFP_PEAK_PROMINENCE_SIGMA = 6.0
     LFP_PEAK_MIN_DISTANCE_SEC = 1.0
@@ -46,6 +48,7 @@ class FindPeakPanel(MarkerViewPanel):
         self.sync_state = sync_state
         self.video_state = video_state
         self.video_player = video_player
+        self._refreshing = False
 
         self.find_peaks_button = QPushButton("Find Peak")
         self.delete_selected_button = QPushButton("Delete Selected")
@@ -67,11 +70,7 @@ class FindPeakPanel(MarkerViewPanel):
         self.table.setColumnWidth(0, 110)
         self.table.setColumnWidth(1, 92)
         self.table.cellClicked.connect(self.handle_cell_clicked)
-        self.table.itemSelectionChanged.connect(
-            lambda: self.delete_selected_button.setEnabled(
-                bool(self.table.selectionModel().selectedRows())
-            )
-        )
+        self.table.itemSelectionChanged.connect(self.update_selection_state)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(3, 3, 3, 3)
@@ -92,43 +91,92 @@ class FindPeakPanel(MarkerViewPanel):
         return self.markers()
 
     def refresh_table(self):
+        current_id = self.selected_marker_id()
+        self._refreshing = True
         self.table.setRowCount(0)
-        offset = self.sync_state.time_offset_sec
-        is_synchronized = self.sync_state.video_time_origin_sec is not None
-        self.table.setHorizontalHeaderItem(
-            1,
-            QTableWidgetItem("sync time" if is_synchronized else "video time"),
-        )
-        for row, marker in enumerate(self.peak_markers()):
-            self.table.insertRow(row)
-            video_time = marker_video_time(marker, offset)
-            display_time = (
-                relative_time(video_time, self.sync_state.video_time_origin_sec)
-                if video_time is not None
-                else None
+        try:
+            offset = self.sync_state.time_offset_sec
+            is_synchronized = self.sync_state.video_time_origin_sec is not None
+            self.table.setHorizontalHeaderItem(
+                1,
+                QTableWidgetItem("sync time" if is_synchronized else "video time"),
             )
-            values = (
-                marker.kind.value,
-                f"{display_time:.3f}" if display_time is not None else "--",
-                marker.note,
-            )
-            for column, text in enumerate(values):
-                item = QTableWidgetItem(text)
-                item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
-                if column == 1 and video_time is not None:
-                    item.setData(self.VIDEO_TIME_ROLE, video_time)
-                if column < 2:
-                    item.setTextAlignment(Qt.AlignCenter)
-                self.table.setItem(row, column, item)
+            for row, marker in enumerate(self.peak_markers()):
+                self.table.insertRow(row)
+                video_time = marker_video_time(marker, offset)
+                display_time = (
+                    relative_time(video_time, self.sync_state.video_time_origin_sec)
+                    if video_time is not None
+                    else None
+                )
+
+                type_item = QTableWidgetItem(marker.kind.value)
+                type_item.setData(self.MARKER_ID_ROLE, marker.marker_id)
+                type_item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
+                type_item.setTextAlignment(Qt.AlignCenter)
+
+                time_item = QTableWidgetItem(
+                    f"{display_time:.3f}" if display_time is not None else "--"
+                )
+                time_item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
+                time_item.setTextAlignment(Qt.AlignCenter)
+                if video_time is not None:
+                    time_item.setData(self.VIDEO_TIME_ROLE, video_time)
+
+                self.table.setItem(row, 0, type_item)
+                self.table.setItem(row, 1, time_item)
+
+                note_editor = NoteEditor(marker.note)
+                note_editor.selection_requested.connect(
+                    lambda editor=note_editor: self.select_note_editor_row(editor)
+                )
+                note_editor.editingFinished.connect(
+                    lambda editor=note_editor, marker_id=marker.marker_id: self.update_note(
+                        marker_id, editor.text()
+                    )
+                )
+                self.table.setCellWidget(row, 2, note_editor)
+                if marker.marker_id == current_id:
+                    self.table.selectRow(row)
+        finally:
+            self._refreshing = False
+        self.update_selection_state()
 
     def handle_cell_clicked(self, row, column):
-        """Seek to a peak when its displayed time is clicked."""
-        if column != 1:
-            return
-        item = self.table.item(row, column)
+        """Seek to a peak when any cell in its row is clicked."""
+        item = self.table.item(row, 1)
         video_time = item.data(self.VIDEO_TIME_ROLE) if item is not None else None
         if video_time is not None:
             self.video_time_selected.emit(float(video_time))
+
+    def selected_marker_id(self):
+        row = self.table.currentRow()
+        item = self.table.item(row, 0) if row >= 0 else None
+        return item.data(self.MARKER_ID_ROLE) if item is not None else None
+
+    def select_note_editor_row(self, editor):
+        for row in range(self.table.rowCount()):
+            if self.table.cellWidget(row, 2) is editor:
+                self.table.selectRow(row)
+                item = self.table.item(row, 1)
+                video_time = item.data(self.VIDEO_TIME_ROLE) if item is not None else None
+                if video_time is not None:
+                    self.video_time_selected.emit(float(video_time))
+                return
+
+    def update_note(self, marker_id, note):
+        if not self._refreshing:
+            self.marker_store.update(marker_id, note=str(note))
+
+    def update_selection_state(self):
+        selected_rows = {
+            index.row() for index in self.table.selectionModel().selectedRows()
+        }
+        self.delete_selected_button.setEnabled(bool(selected_rows))
+        for row in range(self.table.rowCount()):
+            editor = self.table.cellWidget(row, 2)
+            if editor is not None:
+                editor.set_row_selected(row in selected_rows)
 
     def delete_selected_peak(self):
         """Delete the selected peak through the canonical marker store."""

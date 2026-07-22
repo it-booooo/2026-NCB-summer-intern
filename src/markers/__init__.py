@@ -9,7 +9,6 @@ from .models import (
 )
 from .serialization import (
     marker_from_dict,
-    marker_from_legacy_event,
     marker_from_legacy_ttl,
     marker_to_dict,
 )
@@ -22,7 +21,6 @@ __all__ = [
     "RecordPosition",
     "VideoPosition",
     "marker_from_dict",
-    "marker_from_legacy_event",
     "marker_from_legacy_ttl",
     "marker_record_time",
     "marker_to_dict",

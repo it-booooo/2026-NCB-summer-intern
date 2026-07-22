@@ -1,6 +1,6 @@
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
@@ -22,6 +22,8 @@ from .marker_view_panel import MarkerViewPanel
 class TtlPanel(MarkerViewPanel):
     HEADERS = ["#", "Local time", "Record time"]
     MARKER_ID_ROLE = Qt.UserRole + 1
+    RECORD_TIME_ROLE = Qt.UserRole + 2
+    record_time_selected = Signal(float)
 
     def __init__(
         self,
@@ -56,6 +58,7 @@ class TtlPanel(MarkerViewPanel):
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.verticalHeader().setVisible(False)
+        self.table.cellClicked.connect(self.handle_cell_clicked)
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.Fixed)
         header.setSectionResizeMode(1, QHeaderView.Stretch)
@@ -131,6 +134,14 @@ class TtlPanel(MarkerViewPanel):
         item = self.table.item(selected[0].row(), 0)
         self.marker_store.delete(item.data(self.MARKER_ID_ROLE))
 
+    def handle_cell_clicked(self, row, column):
+        item = self.table.item(row, 0)
+        if item is None:
+            return
+        record_time_sec = item.data(self.RECORD_TIME_ROLE)
+        if record_time_sec is not None:
+            self.record_time_selected.emit(float(record_time_sec))
+
     def parse_record_time_us(self, text):
         if not text:
             raise ValueError("Please enter a TTL record time.")
@@ -174,4 +185,5 @@ class TtlPanel(MarkerViewPanel):
                 item.setTextAlignment(Qt.AlignCenter)
                 if column == 0:
                     item.setData(self.MARKER_ID_ROLE, marker.marker_id)
+                    item.setData(self.RECORD_TIME_ROLE, marker.position.time_sec)
                 self.table.setItem(row, column, item)
