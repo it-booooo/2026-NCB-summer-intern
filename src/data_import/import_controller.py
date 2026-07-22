@@ -4,14 +4,9 @@ import tempfile
 from pathlib import Path
 from zipfile import BadZipFile, ZipFile
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QDialog,
     QFileDialog,
-    QLabel,
     QMessageBox,
-    QProgressBar,
-    QVBoxLayout,
 )
 
 from .. import signal_data
@@ -73,7 +68,6 @@ class ImportController:
             return
 
         project_root = Path(tempfile.mkdtemp(prefix="pigproj_"))
-        progress = None
         try:
             with ZipFile(path, "r") as archive:
                 manifest = json.loads(archive.read("manifest.json"))
@@ -90,27 +84,6 @@ class ImportController:
 
                 source_paths = {}
                 source_items = list(manifest.get("sources", {}).items())
-                total_source_bytes = sum(
-                    archive.getinfo(source.get("archive_path", "")).file_size
-                    for _source_type, source in source_items
-                    if source.get("archive_path", "") in archive.namelist()
-                )
-                completed_source_bytes = 0
-                progress = QDialog(window)
-                progress.setWindowTitle("Open Project")
-                progress.setWindowModality(Qt.WindowModality.WindowModal)
-                progress.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, False)
-                progress.setFixedSize(480, 140)
-                progress_label = QLabel("Reading project...")
-                progress_bar = QProgressBar()
-                progress_bar.setRange(0, 100)
-                progress_bar.setValue(0)
-                progress_layout = QVBoxLayout(progress)
-                progress_layout.addWidget(progress_label)
-                progress_layout.addWidget(progress_bar)
-                progress.show()
-                progress.repaint()
-
                 for source_type, source in source_items:
                     external_path = source.get("external_path")
                     if external_path:
@@ -158,37 +131,13 @@ class ImportController:
                                 if not chunk:
                                     break
                                 output_file.write(chunk)
-                                completed_source_bytes += len(chunk)
-                                progress_label.setText(
-                                    f"Extracting {source_type} data..."
-                                )
-                                progress_bar.setValue(
-                                    min(
-                                        int(
-                                            completed_source_bytes
-                                            * 70
-                                            / max(total_source_bytes, 1)
-                                        ),
-                                        70,
-                                    )
-                                )
-                                progress_label.repaint()
-                                progress_bar.repaint()
                     source_paths[source_type] = str(destination)
-                progress_bar.setValue(70)
-                progress_bar.repaint()
         except (BadZipFile, KeyError, OSError, ValueError, json.JSONDecodeError) as error:
             shutil.rmtree(project_root, ignore_errors=True)
-            if progress is not None:
-                progress.close()
             QMessageBox.warning(window, "Open project failed", str(error))
             return
 
         try:
-            progress_label.setText("Restoring analysis settings...")
-            progress_bar.setValue(72)
-            progress_label.repaint()
-            progress_bar.repaint()
             data = state.get("data", {})
             self.data_state.lfp_step = data.get("lfp_step")
             self.data_state.axis_step = data.get("axis_step")
@@ -214,10 +163,6 @@ class ImportController:
 
             video_path = source_paths.get("video")
             if video_path:
-                progress_label.setText("Loading video...")
-                progress_bar.setValue(75)
-                progress_label.repaint()
-                progress_bar.repaint()
                 self.sync_state.loading_video = True
                 try:
                     if not window.video_player.load_video(video_path):
@@ -233,28 +178,16 @@ class ImportController:
 
             lfp_path = source_paths.get("lfp")
             if lfp_path:
-                progress_label.setText("Loading LFP waveform...")
-                progress_bar.setValue(82)
-                progress_label.repaint()
-                progress_bar.repaint()
                 info = signal_data.parse_lfp_csv_info(lfp_path)
                 self.data_state.lfp_info = info
                 window.lfp_panel.set_lfp_info(info)
 
             axis_path = source_paths.get("axis")
             if axis_path:
-                progress_label.setText("Loading 3-axis waveform...")
-                progress_bar.setValue(87)
-                progress_label.repaint()
-                progress_bar.repaint()
                 info = signal_data.parse_lfp_csv_info(axis_path)
                 self.data_state.axis_info = info
                 window.lfp_panel.set_axis_info(info)
 
-            progress_label.setText("Restoring TTL and video markers...")
-            progress_bar.setValue(90)
-            progress_label.repaint()
-            progress_bar.repaint()
             if manifest.get("version") == 3:
                 restored_markers = [
                     marker_from_dict(item) for item in state.get("markers", [])
@@ -281,10 +214,6 @@ class ImportController:
             self.marker_store.replace_all(restored_markers)
 
             led = state.get("led", {})
-            progress_label.setText("Restoring LED ROI and analysis...")
-            progress_bar.setValue(94)
-            progress_label.repaint()
-            progress_bar.repaint()
             roi = led.get("roi")
             if roi is not None:
                 restored_roi = tuple(int(value) for value in roi)
@@ -345,16 +274,11 @@ class ImportController:
                     source="timeline",
                 )
             window.update_waveform_current_time()
-            progress_label.setText("Project restored.")
-            progress_bar.setValue(100)
-            progress_label.repaint()
-            progress_bar.repaint()
         except Exception as error:
             if window.video_player.cap is not None:
                 window.video_player.cap.release()
                 window.video_player.cap = None
             shutil.rmtree(project_root, ignore_errors=True)
-            progress.close()
             QMessageBox.warning(window, "Restore project failed", str(error))
             return
 
@@ -365,7 +289,6 @@ class ImportController:
         window.update_project_title()
         if previous_directory is not None:
             shutil.rmtree(previous_directory, ignore_errors=True)
-        progress.close()
         QMessageBox.information(
             window,
             "Project Opened",
@@ -483,4 +406,5 @@ class ImportController:
             if key not in {"markers", "marker_count", "first_marker_sec"}
         }
         window.ttl_panel.set_markers(markers, metadata=metadata)
+        window.sync_panel.show_panel("TTL")
         window.mark_project_dirty()

@@ -5,7 +5,6 @@ from datetime import datetime
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -13,9 +12,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QInputDialog,
-    QLabel,
     QMessageBox,
-    QProgressBar,
     QVBoxLayout,
 )
 
@@ -187,21 +184,6 @@ class ExportController:
             "sources": sources,
         }
 
-        progress = QDialog(self.window)
-        progress.setWindowTitle("Save Project")
-        progress.setWindowModality(Qt.WindowModality.WindowModal)
-        progress.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, False)
-        progress.setFixedSize(480, 140)
-        progress_label = QLabel("Preparing project...")
-        progress_bar = QProgressBar()
-        progress_bar.setRange(0, 100)
-        progress_bar.setValue(0)
-        progress_layout = QVBoxLayout(progress)
-        progress_layout.addWidget(progress_label)
-        progress_layout.addWidget(progress_bar)
-        progress.show()
-        progress.repaint()
-
         temporary_path = None
         try:
             manifest_bytes = json.dumps(
@@ -230,35 +212,22 @@ class ExportController:
                     manifest_bytes,
                     compress_type=ZIP_DEFLATED,
                 )
-                progress_label.setText("Writing project information...")
-                progress_bar.setValue(45)
-                progress_label.repaint()
-                progress_bar.repaint()
                 archive.writestr(
                     "state.json",
                     state_bytes,
                     compress_type=ZIP_DEFLATED,
                 )
-                progress_label.setText("Writing analysis state...")
-                progress_bar.setValue(95)
-                progress_label.repaint()
-                progress_bar.repaint()
             temporary_path.replace(output_path)
             temporary_path = None
-            progress_bar.setValue(100)
-            progress_bar.repaint()
         except Exception as error:
             if temporary_path is not None:
                 temporary_path.unlink(missing_ok=True)
-            progress.close()
             QMessageBox.warning(
                 self.window,
                 "Save project failed",
                 str(error),
             )
             return False
-        finally:
-            progress.close()
 
         QMessageBox.information(
             self.window,
