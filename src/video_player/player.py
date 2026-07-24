@@ -1,5 +1,5 @@
 from PySide6.QtCore import QPoint, QRect, Qt, QTimer, Signal
-from PySide6.QtGui import QImage, QPainter, QPen, QPixmap
+from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 
 from ..app_state import LedState, SyncState, VideoState
 from ..synchronization.time_conversion import absolute_time, relative_time
+from .roi_video_label import RoiVideoLabel
 from .video_helpers import (
     apply_frame_rotation,
     format_time,
@@ -27,233 +28,13 @@ from .video_helpers import (
 )
 
 
-class RoiVideoLabel(QLabel):
-    roi_selected = Signal(tuple)
-
-    def __init__(self, text, led_state=None):
-        super().__init__(text)
-        self.led_state = led_state or LedState()
-        self.selecting_roi = False
-        self.drag_start = None
-        self.drag_end = None
-        self.hover_pos = None
-        self.display_rect = QRect()
-        self.frame_size = None
-        self.display_pixmap = None
-
-        # 儲存已完成選取的 LED ROI，座標格式是影片原始 frame 座標：
-        # (x, y, width, height)
-
-    def set_roi_selection_enabled(self, enabled):
-        """Set roi selection enabled.
-
-        Args:
-            enabled: Whether the feature should be enabled.
-        """
-        self.selecting_roi = enabled
-        self.setMouseTracking(enabled)
-        self.setCursor(Qt.CrossCursor if enabled else Qt.ArrowCursor)
-        self.drag_start = None
-        self.drag_end = None
-        self.hover_pos = None
-        self.update()
-
-    def set_saved_roi(self, roi):
-        """Set saved roi.
-
-        Args:
-            roi: LED region of interest as (x, y, width, height).
-        """
-        self.led_state.roi = roi
-        self.update()
-
-    def clear_saved_roi(self):
-        """Clear saved roi.
-
-        Args:
-            None.
-        """
-        self.led_state.roi = None
-        self.update()
-
-    def set_display_geometry(self, display_rect, frame_size):
-        """Set display geometry.
-
-        Args:
-            display_rect: Input used by this operation.
-            frame_size: Input used by this operation.
-        """
-        self.display_rect = display_rect
-        self.frame_size = frame_size
-
-    def set_display_pixmap(self, pixmap):
-        """Set the scaled video pixmap rendered by this label."""
-        self.display_pixmap = pixmap
-        self.update()
-
-    def mousePressEvent(self, event):
-        """Provide mouse press event functionality.
-
-        Args:
-            event: Event record to process.
-        """
-        if self.selecting_roi and self.display_rect.contains(event.position().toPoint()):
-            self.drag_start = event.position().toPoint()
-            self.drag_end = self.drag_start
-            self.update()
-            return
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event):
-        """Provide mouse move event functionality.
-
-        Args:
-            event: Event record to process.
-        """
-        if self.selecting_roi and self.drag_start is None:
-            self.hover_pos = event.position().toPoint()
-            self.update()
-            return
-
-        if self.selecting_roi and self.drag_start is not None:
-            self.drag_end = event.position().toPoint()
-            self.update()
-            return
-
-        super().mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event):
-        """Provide mouse release event functionality.
-
-        Args:
-            event: Event record to process.
-        """
-        if self.selecting_roi and self.drag_start is not None:
-            self.drag_end = event.position().toPoint()
-            roi = self.current_roi()
-            self.set_roi_selection_enabled(False)
-
-            if roi is not None:
-                self.set_saved_roi(roi)
-                self.roi_selected.emit(roi)
-
-            return
-
-        super().mouseReleaseEvent(event)
-
-    def current_roi(self):
-        """Provide current roi functionality.
-
-        Args:
-            None.
-        """
-        if not self.frame_size or self.drag_start is None or self.drag_end is None:
-            return None
-
-        rect = QRect(self.drag_start, self.drag_end).normalized()
-        rect = rect.intersected(self.display_rect)
-
-        if rect.width() < 3 or rect.height() < 3:
-            return None
-
-        frame_width, frame_height = self.frame_size
-        scale_x = frame_width / self.display_rect.width()
-        scale_y = frame_height / self.display_rect.height()
-
-        x = int((rect.x() - self.display_rect.x()) * scale_x)
-        y = int((rect.y() - self.display_rect.y()) * scale_y)
-        width = int(rect.width() * scale_x)
-        height = int(rect.height() * scale_y)
-
-        return (x, y, width, height)
-
-    def roi_to_display_rect(self, roi):
-        """Provide roi to display rect functionality.
-
-        Args:
-            roi: LED region of interest as (x, y, width, height).
-        """
-        if roi is None or not self.frame_size or self.display_rect.isNull():
-            return None
-
-        frame_width, frame_height = self.frame_size
-        if frame_width <= 0 or frame_height <= 0:
-            return None
-
-        x, y, width, height = roi
-
-        scale_x = self.display_rect.width() / frame_width
-        scale_y = self.display_rect.height() / frame_height
-
-        display_x = self.display_rect.x() + int(x * scale_x)
-        display_y = self.display_rect.y() + int(y * scale_y)
-        display_w = int(width * scale_x)
-        display_h = int(height * scale_y)
-
-        return QRect(display_x, display_y, display_w, display_h)
-
-    def paintEvent(self, event):
-        """Provide paint event functionality.
-
-        Args:
-            event: Event record to process.
-        """
-        painter = QPainter(self)
-        if not painter.isActive():
-            return
-
-        painter.fillRect(self.rect(), Qt.black)
-        if self.display_pixmap is None:
-            painter.setPen(Qt.white)
-            painter.drawText(self.rect(), Qt.AlignCenter, self.text())
-            painter.end()
-            return
-
-        painter.drawPixmap(self.display_rect.topLeft(), self.display_pixmap)
-
-        # 1. 永久顯示已儲存的 LED ROI
-        if self.led_state.roi is not None:
-            saved_rect = self.roi_to_display_rect(self.led_state.roi)
-            if saved_rect is not None:
-                painter.setPen(QPen(Qt.green, 2, Qt.SolidLine))
-                painter.drawRect(saved_rect)
-
-        # 2. 沒有進入 ROI 選取模式時，只顯示永久 ROI，不畫暫時框
-        if not self.selecting_roi:
-            painter.end()
-            return
-
-        # 3. ROI 選取模式：顯示紅色游標小方框或拖曳框
-        painter.setPen(QPen(Qt.red, 2, Qt.SolidLine))
-
-        if self.drag_start is None and self.hover_pos is not None:
-            painter.drawRect(
-                QRect(
-                    self.hover_pos.x() - 8,
-                    self.hover_pos.y() - 8,
-                    16,
-                    16,
-                )
-            )
-            painter.end()
-            return
-
-        if self.drag_start is None or self.drag_end is None:
-            painter.end()
-            return
-
-        drag_rect = QRect(self.drag_start, self.drag_end).normalized()
-        drag_rect = drag_rect.intersected(self.display_rect)
-
-        if not drag_rect.isNull():
-            painter.drawRect(drag_rect)
-        painter.end()
-
-
 class VideoPlayer(QWidget):
     frame_changed = Signal(int, float)
     roi_selected = Signal(tuple)
     project_changed = Signal()
+
+    STATUS_UPDATE_INTERVAL_FRAMES = 5
+    FRAME_SIGNAL_INTERVAL_FRAMES = 3
 
     BUTTON_WIDTHS = {
         "Play": 64,
@@ -581,7 +362,7 @@ class VideoPlayer(QWidget):
         self.video_state.rotate_180_enabled = False
         self.sync_state.video_time_origin_sec = None
 
-        # 換影片時清掉舊影片的 LED ROI，避免座標套到新影片。
+        # Clear old LED ROI when switching videos so coordinates do not leak.
         self.clear_led_roi()
 
         self.slider.setRange(0, max(metadata.total_frames - 1, 0))
@@ -625,9 +406,17 @@ class VideoPlayer(QWidget):
         Args:
             None.
         """
+        was_playing = self.video_state.is_playing
         self.video_state.is_playing = False
         self.timer.stop()
         self.play_button.setText("Play")
+        if was_playing and self.has_video():
+            self.update_frame_status_display()
+            self.update_time_display()
+            self.frame_seek_input.setPlaceholderText(
+                str(self.video_state.current_frame)
+            )
+            self.emit_frame_changed()
 
     def stop(self):
         """Provide stop functionality.
@@ -840,21 +629,54 @@ class VideoPlayer(QWidget):
         self.current_pixmap = QPixmap.fromImage(image)
         self.update_video_display()
 
+        if self.should_update_during_playback(
+            frame_index,
+            self.STATUS_UPDATE_INTERVAL_FRAMES,
+        ):
+            self.update_frame_status_display()
+            self.update_time_display()
+            self.frame_seek_input.setPlaceholderText(str(frame_index))
+
+        if self.should_update_during_playback(
+            frame_index,
+            self.FRAME_SIGNAL_INTERVAL_FRAMES,
+        ):
+            self.emit_frame_changed(frame_index)
+
+    def should_update_during_playback(self, frame_index, interval_frames):
+        """Return whether a non-video playback update should run this frame."""
+        if not self.video_state.is_playing:
+            return True
+
+        metadata = self.video_state.metadata
+        total_frames = metadata.total_frames if metadata else 0
+        frame_index = int(frame_index)
+
+        return (
+            frame_index <= 0
+            or (total_frames > 0 and frame_index >= total_frames - 1)
+            or frame_index % max(int(interval_frames), 1) == 0
+        )
+
+    def emit_frame_changed(self, frame_index=None):
+        """Emit the current frame/time for synchronized views."""
+        if frame_index is None:
+            frame_index = self.video_state.current_frame
+
+        self.frame_changed.emit(int(frame_index), self.current_time_sec())
+
+    def update_frame_status_display(self):
+        """Update frame and FPS status text from shared video state."""
         metadata = self.video_state.metadata
         detected_fps = metadata.detected_fps if metadata else 0.0
         using_fps = metadata.using_fps if metadata else 0.0
         total_frames = metadata.total_frames if metadata else 0
+        frame_index = self.video_state.current_frame
 
         self.info_label.setText(
             f"Frame: {frame_index} / {max(total_frames - 1, 0)} | "
             f"Detected FPS: {detected_fps:.2f} | Using FPS: {using_fps:.2f}"
         )
-
-        self.update_time_display()
-        self.frame_seek_input.setPlaceholderText(str(frame_index))
-
-        current_sec = self.current_time_sec()
-        self.frame_changed.emit(frame_index, current_sec)
 
     def update_time_display(self):
         """Update time display.
@@ -889,10 +711,16 @@ class VideoPlayer(QWidget):
         if self.current_pixmap is None:
             return
 
+        transformation_mode = (
+            Qt.FastTransformation
+            if self.video_state.is_playing
+            else Qt.SmoothTransformation
+        )
+
         scaled_pixmap = self.current_pixmap.scaled(
             self.video_label.size(),
             Qt.KeepAspectRatio,
-            Qt.SmoothTransformation,
+            transformation_mode,
         )
 
         x = (self.video_label.width() - scaled_pixmap.width()) // 2
