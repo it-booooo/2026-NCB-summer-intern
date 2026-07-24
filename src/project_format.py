@@ -5,7 +5,6 @@ import math
 import string
 from pathlib import Path
 
-
 PROJECT_FORMAT = "pig-analysis-project"
 PROJECT_VERSION = 3
 ALLOWED_SOURCE_TYPES = frozenset({"video", "lfp", "axis", "ttl"})
@@ -53,7 +52,7 @@ def validate_manifest(manifest):
         raise ValueError("Project sources must be a JSON object.")
     unknown = set(sources) - ALLOWED_SOURCE_TYPES
     if unknown:
-        raise ValueError(f"Unsupported project source type: {sorted(unknown)[0]}")
+        raise ValueError(f"Unsupported project source type: {min(unknown)}")
     for source_type, source in sources.items():
         if not isinstance(source, dict):
             raise ValueError(f"Project {source_type} source is invalid.")

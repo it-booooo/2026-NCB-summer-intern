@@ -1,4 +1,6 @@
-from PySide6.QtCore import QTimer, Qt
+from typing import ClassVar
+
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QCheckBox,
     QGridLayout,
@@ -12,16 +14,20 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..led_detection.status_text import format_led_detection_status
 from ..app_state import LedState
+from ..led_detection.status_text import format_led_detection_status
 from ..markers import MarkerKind, MarkerSource, marker_video_time
-from ..video_player.video_helpers import format_time, parse_time_input, time_sec_to_frame
+from ..video_player.video_helpers import (
+    format_time,
+    parse_time_input,
+    time_sec_to_frame,
+)
 from .marker_view_panel import MarkerViewPanel
 
 
 class RoiPlotIndicator(QLabel):
     SPINNER_FRAMES = ("◜", "◝", "◞", "◟")
-    STATE_TOOLTIPS = {
+    STATE_TOOLTIPS: ClassVar[dict[str, str]] = {
         "idle": "ROI plot has not been generated.",
         "rendering": "Analyzing LED ROI...",
         "done": "ROI plot generated.",

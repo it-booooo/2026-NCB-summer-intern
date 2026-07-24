@@ -1,3 +1,5 @@
+from typing import ClassVar
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -21,7 +23,6 @@ from ..markers import (
     VideoPosition,
 )
 from ..synchronization.time_conversion import relative_time
-
 
 VIDEO_MARKER_KINDS = [kind for kind in MarkerKind if kind != MarkerKind.TTL]
 
@@ -79,7 +80,7 @@ class EventEditDialog(QDialog):
             return
         self.updating_video_position = True
         try:
-            frame_index = int(round(float(video_time_sec) * self.fps))
+            frame_index = round(float(video_time_sec) * self.fps)
             frame_index = max(
                 self.frame_input.minimum(),
                 min(frame_index, self.frame_input.maximum()),
@@ -141,7 +142,7 @@ class NoteEditor(QLineEdit):
 class MarkerTable(QTableWidget):
     """Video-marker view backed by the shared ``MarkerStore``."""
 
-    DISPLAY_HEADERS = ["marker type", "video time", "note"]
+    DISPLAY_HEADERS: ClassVar[list[str]] = ["marker type", "video time", "note"]
     events_changed = Signal()
     video_time_selected = Signal(float)
     MARKER_ID_ROLE = Qt.UserRole + 1

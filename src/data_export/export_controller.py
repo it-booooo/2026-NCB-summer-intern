@@ -18,21 +18,21 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from .. import charts, signal_data, data_validation
-from ..project_format import PROJECT_FORMAT, PROJECT_VERSION, file_fingerprint
+from .. import charts, data_validation, signal_data
 from ..markers import (
     MarkerKind,
     VideoPosition,
     marker_to_dict,
     marker_video_time,
 )
-from .lfp_image_dialog import LfpImageExportDialog
+from ..project_format import PROJECT_FORMAT, PROJECT_VERSION, file_fingerprint
 from .file_writers import (
     export_events_csv,
     export_events_excel,
     export_ttl_markers_csv,
     export_ttl_markers_excel,
 )
+from .lfp_image_dialog import LfpImageExportDialog
 
 
 @dataclass
@@ -43,6 +43,7 @@ class ExportContext:
     led_analysis_panel: object
     led_controller: object
     project_controller: object
+    find_peak_panel: object
 
 
 class ExportController:
@@ -288,6 +289,11 @@ class ExportController:
                 "Export LFP Images...",
                 self.export_lfp_images,
                 "Configure and batch-export the LFP waveform, power spectrum, and spectrogram.",
+            ),
+            (
+                "Export Peak analyze Image",
+                self.export_peak_image,
+                "Export the LFP peak analysis plot as a PNG image.",
             ),
         ]
 
@@ -696,10 +702,58 @@ class ExportController:
 
     def _lfp_filename(self, channel, settings, suffix):
         # 將通道、處理模式與同步後的時間範圍編入預設檔名，方便辨識輸出內容。
-        panel = self.context.lfp_panel
         info = self.data_state.lfp_info
         filename = info.get("filename", "lfp") if info else "lfp"
         stem = filename.rsplit(".", 1)[0]
         mode = "processed" if settings.show_filtered else "raw"
         middle = f"_{suffix}" if suffix else ""
         return f"{stem}_channel_{channel}_{mode}{middle}.png"
+    def export_peak_image(self):
+        """Export peak image.
+
+        Args:
+            None.
+        """
+        panel = self.context.find_peak_panel
+        if panel is None:
+            QMessageBox.information(
+                self.parent, "No Find Peak panel", "Please open the Find Peak panel first."
+            )
+            return
+
+        path, _ = QFileDialog.getSaveFileName(
+            self.parent,
+            "Export Find Peak Image",
+            "find_peak.png",
+            "PNG Images (*.png);;All Files (*)",
+        )
+
+        if not path:
+            return
+
+        figure = None
+        try:
+            figure_data = panel.create_peak_analysis_figure()
+            if figure_data is None:
+                QMessageBox.information(
+                    self.parent,
+                    "LFP Peak Analysis",
+                    "No synchronized LFP peaks to export.",
+                )
+                return
+            figure, _, _ = figure_data
+            figure.savefig(path, dpi=300)
+        except Exception as error:
+            QMessageBox.warning(
+                self.parent, "Export Find Peak image failed", str(error)
+            )
+            return
+        finally:
+            if figure is not None:
+                figure.clear()
+
+        QMessageBox.information(
+            self.parent,
+            "Find Peak Image Exported",
+            f"Find Peak image exported to:\n{path}",
+        )

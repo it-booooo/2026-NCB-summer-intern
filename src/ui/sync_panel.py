@@ -1,10 +1,17 @@
+from typing import ClassVar
+
 from PySide6.QtWidgets import QComboBox, QStackedWidget, QVBoxLayout, QWidget
 
 
 class SyncPanel(QWidget):
     """Container that switches between the independent marker panels."""
 
-    PANEL_NAMES = ["TTL", "Video", "Find Peak", "LED Analysis"]
+    PANEL_NAMES: ClassVar[list[str]] = [
+        "TTL",
+        "Video",
+        "Find Peak",
+        "LED Analysis",
+    ]
 
     def __init__(self):
         super().__init__()

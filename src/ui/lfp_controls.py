@@ -1,8 +1,8 @@
 """Reusable controls for the LFP panel."""
 
-from PySide6.QtWidgets import QComboBox
 from matplotlib.patches import Rectangle
 from matplotlib.ticker import FuncFormatter
+from PySide6.QtWidgets import QComboBox
 
 from ..charts.chart_helpers import clamp_xlim, format_time_tick
 from ..synchronization.time_conversion import relative_time

@@ -119,7 +119,7 @@ class LedController(QObject):
             return
 
         try:
-            scan_start_sec, scan_end_sec, scan_start_frame, scan_end_frame = (
+            _scan_start_sec, _scan_end_sec, scan_start_frame, scan_end_frame = (
                 self.led_analysis_panel.led_scan_range_sec(
                     self.video_state.metadata.using_fps,
                     self.video_state.metadata.total_frames,
@@ -152,9 +152,7 @@ class LedController(QObject):
                 )
                 return
 
-            max_events = int(
-                len(self.marker_store.by_kind("TTL"))
-            )
+            max_events = len(self.marker_store.by_kind("TTL"))
             if max_events <= 0:
                 QMessageBox.warning(
                     self.dialog_parent,
@@ -163,14 +161,17 @@ class LedController(QObject):
                 )
                 return
 
-        if self.led_worker is not None and self.led_worker.isRunning():
-            if not self.stop_led_detection(wait=True):
-                QMessageBox.information(
-                    self.dialog_parent,
-                    "LED detection",
-                    "LED detection is still stopping. Please try again in a moment.",
-                )
-                return
+        if (
+            self.led_worker is not None
+            and self.led_worker.isRunning()
+            and not self.stop_led_detection(wait=True)
+        ):
+            QMessageBox.information(
+                self.dialog_parent,
+                "LED detection",
+                "LED detection is still stopping. Please try again in a moment.",
+            )
+            return
 
         cache_key = self.led_cache_key(scan_start_frame, scan_end_frame)
         cached_points = self.led_state.brightness_cache.get(cache_key)

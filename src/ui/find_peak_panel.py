@@ -1,12 +1,18 @@
+from typing import ClassVar
+
 import numpy as np
+from matplotlib.figure import Figure
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
-    QHeaderView,
+    QDialog,
+    QDialogButtonBox,
     QHBoxLayout,
+    QHeaderView,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
@@ -27,7 +33,7 @@ from .marker_view_panel import MarkerViewPanel
 
 
 class FindPeakPanel(MarkerViewPanel):
-    DISPLAY_HEADERS = ["marker type", "video time", "note"]
+    DISPLAY_HEADERS: ClassVar[list[str]] = ["marker type", "video time", "note"]
     video_time_selected = Signal(float)
     VIDEO_TIME_ROLE = Qt.UserRole + 1
     MARKER_ID_ROLE = Qt.UserRole + 2
@@ -51,11 +57,17 @@ class FindPeakPanel(MarkerViewPanel):
 
         self.find_peaks_button = QPushButton("Find Peak")
         self.delete_selected_button = QPushButton("Delete Selected")
-        for button in (self.find_peaks_button, self.delete_selected_button):
+        self.analysis_button = QPushButton("Analyze Peaks")
+        for button in (
+            self.find_peaks_button,
+            self.delete_selected_button,
+            self.analysis_button,
+        ):
             button.setFixedHeight(26)
             button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.find_peaks_button.clicked.connect(self.add_lfp_peaks)
         self.delete_selected_button.clicked.connect(self.delete_selected_peak)
+        self.analysis_button.clicked.connect(self.analyze_peaks)
         self.delete_selected_button.setEnabled(False)
         self.table = QTableWidget(0, len(self.DISPLAY_HEADERS))
         self.table.setHorizontalHeaderLabels(self.DISPLAY_HEADERS)
@@ -76,6 +88,7 @@ class FindPeakPanel(MarkerViewPanel):
         button_layout = QHBoxLayout()
         button_layout.addWidget(self.find_peaks_button, stretch=1)
         button_layout.addWidget(self.delete_selected_button, stretch=1)
+        button_layout.addWidget(self.analysis_button, stretch=1)
         layout.addLayout(button_layout)
         layout.addWidget(self.table)
         self.refresh_table()
@@ -130,8 +143,8 @@ class FindPeakPanel(MarkerViewPanel):
                     lambda editor=note_editor: self.select_note_editor_row(editor)
                 )
                 note_editor.editingFinished.connect(
-                    lambda editor=note_editor, marker_id=marker.marker_id: self.update_note(
-                        marker_id, editor.text()
+                    lambda editor=note_editor, marker_id=marker.marker_id: (
+                        self.update_note(marker_id, editor.text())
                     )
                 )
                 self.table.setCellWidget(row, 2, note_editor)
@@ -158,7 +171,9 @@ class FindPeakPanel(MarkerViewPanel):
             if self.table.cellWidget(row, 2) is editor:
                 self.table.selectRow(row)
                 item = self.table.item(row, 1)
-                video_time = item.data(self.VIDEO_TIME_ROLE) if item is not None else None
+                video_time = (
+                    item.data(self.VIDEO_TIME_ROLE) if item is not None else None
+                )
                 if video_time is not None:
                     self.video_time_selected.emit(float(video_time))
                 return
@@ -176,6 +191,100 @@ class FindPeakPanel(MarkerViewPanel):
             editor = self.table.cellWidget(row, 2)
             if editor is not None:
                 editor.set_row_selected(row in selected_rows)
+
+    def create_peak_analysis_figure(self):
+        """Create the peak analysis figure without attaching it to a Qt canvas."""
+        peaks = self.marker_store.by_kind(MarkerKind.LFP_PEAK)
+        peak_per_minute = {}
+        for marker in peaks:
+            video_time = marker_video_time(marker, self.sync_state.time_offset_sec)
+            if video_time is not None:
+                display_time = relative_time(
+                    video_time, self.sync_state.video_time_origin_sec
+                )
+                minute = int(np.floor(display_time / 60))
+                peak_per_minute[minute] = peak_per_minute.get(minute, 0) + 1
+
+        if not peak_per_minute:
+            return None
+
+        minutes = sorted(peak_per_minute)
+        duration_minutes = max(1, minutes[-1] - minutes[0] + 1)
+        canvas_width = min(16_000, max(900, round(duration_minutes * 2.5)))
+        canvas_height = 500
+
+        figure = Figure(
+            figsize=(canvas_width / 100, canvas_height / 100),
+            dpi=100,
+            constrained_layout=True,
+        )
+
+        time_label = (
+            "Sync time (min)"
+            if self.sync_state.video_time_origin_sec is not None
+            else "Video time (min)"
+        )
+
+        minutes = sorted(peak_per_minute)
+        counts = np.array([peak_per_minute[minute] for minute in minutes])
+
+        ax = figure.add_subplot(111)
+        ax.bar(
+            minutes,
+            counts,
+            width=0.85,
+            color="#1f77b4",
+            edgecolor="none",
+        )
+        ax.set_title("LFP peak count over time")
+        ax.set_xlabel(time_label)
+        ax.set_ylabel("Peaks per minute")
+        ax.set_xlim(minutes[0] - 0.5, minutes[-1] + 0.5)
+        ax.set_ylim(bottom=0)
+        ax.grid(axis="y", alpha=0.25)
+
+        from matplotlib.ticker import MaxNLocator
+
+        ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+        return figure, canvas_width, canvas_height
+
+    def analyze_peaks(self):
+        """Analyze the detected peaks."""
+        figure_data = self.create_peak_analysis_figure()
+        if figure_data is None:
+            QMessageBox.information(
+                self, "LFP Peak Analysis", "No synchronized LFP peaks to analyze."
+            )
+            return
+
+        figure, canvas_width, canvas_height = figure_data
+
+        from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("LFP Peak Analysis")
+        canvas = FigureCanvas(figure)
+        canvas.setMinimumSize(canvas_width, canvas_height)
+        canvas.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(dialog.reject)
+
+        layout = QVBoxLayout(dialog)
+        scroll_area = QScrollArea()
+        scroll_area.setWidget(canvas)
+        scroll_area.setWidgetResizable(False)
+        scroll_area.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        layout.addWidget(scroll_area, stretch=1)
+        layout.addWidget(buttons)
+
+        available = dialog.screen().availableGeometry()
+        dialog.resize(
+            min(canvas_width + 40, round(available.width() * 0.9)),
+            min(canvas_height + 80, round(available.height() * 0.9)),
+        )
+        canvas.draw()
+        dialog.exec()
 
     def delete_selected_peak(self):
         """Delete the selected peak through the canonical marker store."""
@@ -228,42 +337,55 @@ class FindPeakPanel(MarkerViewPanel):
                     sigma = float(np.nanstd(visible))
                 if not np.isfinite(sigma) or sigma <= 0.0:
                     sigma = np.finfo(float).eps
-                local_peaks, _ = find_peaks(
-                    visible,
-                    height=(
-                        baseline
-                        + self.analysis_settings.lfp_peak_height_sigma * sigma
-                    ),
-                    prominence=(
-                        self.analysis_settings.lfp_peak_prominence_sigma * sigma
-                    ),
-                    distance=max(
-                        1,
-                        round(
-                            dataset.sample_rate_hz(channel)
-                            * self.analysis_settings.lfp_peak_min_distance_sec
-                        ),
-                    ),
-                )
-                peak_indices = local_peaks + first
+            distance = max(
+                1,
+                round(
+                    dataset.sample_rate_hz(channel)
+                    * self.analysis_settings.lfp_peak_min_distance_sec
+                ),
+            )
+            prominence = self.analysis_settings.lfp_peak_prominence_sigma * sigma
+            height_delta = self.analysis_settings.lfp_peak_height_sigma * sigma
+
+            positive_peaks, _ = find_peaks(
+                visible,
+                height=baseline + height_delta,
+                prominence=prominence,
+                distance=distance,
+            )
+
+            negative_peaks, _ = find_peaks(
+                -visible,
+                height=-baseline + height_delta,
+                prominence=prominence,
+                distance=distance,
+            )
+
+            local_peaks = np.sort(np.concatenate((positive_peaks, negative_peaks)))
+            peak_indices = local_peaks + first
 
             markers = [
                 Marker(
                     kind=MarkerKind.LFP_PEAK,
                     source=MarkerSource.LFP_DETECTION,
                     position=RecordPosition(float(dataset.record_time_s[index])),
-                    note=f"channel={channel}, value={values[index]:.6g}, positive peak",
+                    note=(
+                        f"channel={channel}, value={values[index]:.6g}, "
+                        f"{'negative' if values[index] < baseline else 'positive'} peak"
+                    ),
                     payload={"channel": channel, "value": float(values[index])},
                 )
                 for index in peak_indices
             ]
             self.marker_store.replace_by_source(MarkerSource.LFP_DETECTION, markers)
-        except Exception as error:
+        except (KeyError, OSError, RuntimeError, TypeError, ValueError) as error:
             QMessageBox.warning(self, "Peak detection failed", str(error))
             return
         finally:
             QApplication.restoreOverrideCursor()
 
         QMessageBox.information(
-            self, "LFP peaks", f"Added {len(peak_indices)} peak markers from channel {channel}."
+            self,
+            "LFP peaks",
+            f"Added {len(peak_indices)} peak markers from channel {channel}.",
         )

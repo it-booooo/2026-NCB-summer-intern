@@ -5,7 +5,6 @@ from pathlib import Path
 from src.app_state import AppState
 from src.project_format import validate_state
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 

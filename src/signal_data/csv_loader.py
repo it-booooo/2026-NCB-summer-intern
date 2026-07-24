@@ -4,8 +4,6 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-from pyqtgraph import units
-
 from ..synchronization.time_conversion import record_time_parts
 
 

@@ -1,4 +1,5 @@
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from typing import ClassVar
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
@@ -20,7 +21,7 @@ from .marker_view_panel import MarkerViewPanel
 
 
 class TtlPanel(MarkerViewPanel):
-    HEADERS = ["#", "Local time", "Record time"]
+    HEADERS: ClassVar[list[str]] = ["#", "Local time", "Record time"]
     MARKER_ID_ROLE = Qt.UserRole + 1
     RECORD_TIME_ROLE = Qt.UserRole + 2
     record_time_selected = Signal(float)

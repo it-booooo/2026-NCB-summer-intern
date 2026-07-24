@@ -1,15 +1,6 @@
 import numpy as np
-
-from .. import charts as draw
-from .. import signal_data as signal_func
-from ..charts.chart_helpers import (
-    clamp_xlim,
-    format_time_tick,
-    resolve_plot_step,
-)
-from ..app_state import DataState, SyncState
-from ..markers import MarkerKind, RecordPosition, marker_record_time
-from ..synchronization.time_conversion import relative_time
+from matplotlib.figure import Figure
+from matplotlib.ticker import FuncFormatter
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -25,10 +16,17 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from matplotlib.figure import Figure
-from matplotlib.ticker import FuncFormatter
-from .lfp_controls import PlaybackAwareComboBox, SharedTimelineSlider
+
+from .. import charts as draw
+from .. import signal_data as signal_func
+from ..app_state import DataState, SyncState
+from ..charts.chart_helpers import (
+    clamp_xlim,
+    format_time_tick,
+)
+from ..markers import MarkerKind, marker_record_time
 from .lfp_analysis import LfpAnalysisMixin
+from .lfp_controls import PlaybackAwareComboBox, SharedTimelineSlider
 
 
 class LfpPanel(LfpAnalysisMixin, QWidget):

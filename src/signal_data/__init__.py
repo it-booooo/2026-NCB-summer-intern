@@ -7,6 +7,7 @@ from .csv_loader import (
     parse_time_marker_csv_info,
     read_csv_preview,
 )
+from .lfp_dataset import LfpDataset
 from .lfp_processing import (
     LfpFilterSettings,
     LfpSegment,
@@ -17,7 +18,6 @@ from .lfp_processing import (
     prepare_lfp_signal,
     sample_rate_for_channel,
 )
-from .lfp_dataset import LfpDataset
 from .lfp_service import LfpAnalysisService
 
 __all__ = [

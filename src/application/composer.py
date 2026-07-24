@@ -125,6 +125,7 @@ class ApplicationComposer:
             led_analysis_panel=led_analysis_panel,
             led_controller=led_controller,
             project_controller=project_controller,
+            find_peak_panel=find_peak_panel,
         )
         import_controller = ImportController(import_context, state)
         export_controller = ExportController(export_context, state)

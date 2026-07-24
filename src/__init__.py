@@ -30,18 +30,18 @@ def __getattr__(name):
     return value
 
 __all__ = [
-    "EventTable",
-    "MarkerState",
-    "export_events_csv",
-    "export_events_excel",
-    "LfpPanel",
-    "LedState",
-    "MarkerPanel",
+    "AppState",
     "DataState",
+    "EventTable",
+    "LedState",
+    "LfpPanel",
+    "MarkerPanel",
+    "MarkerState",
     "SyncPanel",
     "SyncState",
     "TtlState",
-    "AppState",
     "VideoPlayer",
     "VideoState",
+    "export_events_csv",
+    "export_events_excel",
 ]

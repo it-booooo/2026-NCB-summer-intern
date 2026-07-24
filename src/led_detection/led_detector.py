@@ -2,12 +2,12 @@ from dataclasses import dataclass
 
 import cv2
 import numpy as np
+
 from ..video_player.video_helpers import (
     apply_frame_rotation,
     normalize_rotation_degrees,
     open_video_capture,
 )
-
 
 DETECTION_MODE = "frame_delta_mean_brightness"
 DETECTION_MODE_LABEL = "Frame delta"

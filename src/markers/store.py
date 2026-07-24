@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from .models import Marker, MarkerKind, MarkerSource, marker_kind, marker_source
+from .models import Marker, marker_kind, marker_source
 
 
 class CallbackSignal:

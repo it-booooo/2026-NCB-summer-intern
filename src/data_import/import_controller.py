@@ -1,6 +1,7 @@
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import ClassVar
 from zipfile import BadZipFile, ZipFile
 
 from PySide6.QtCore import Qt
@@ -50,11 +51,11 @@ class ImportContext:
 class ImportController:
     """Own all file-selection and import workflows for the main window."""
 
-    SIGNAL_IMPORT_TITLES = {
+    SIGNAL_IMPORT_TITLES: ClassVar[dict[str, str]] = {
         "lfp": "Import LFP (.csv)",
         "axis": "Import 3-axis (.csv)",
     }
-    PROJECT_SOURCE_DIALOGS = {
+    PROJECT_SOURCE_DIALOGS: ClassVar[dict[str, tuple[str, str]]] = {
         "video": ("Locate Project Video", "Video Files (*.mp4);;All Files (*)"),
         "lfp": ("Locate Project LFP File", "CSV Files (*.csv);;All Files (*)"),
         "axis": ("Locate Project 3-axis File", "CSV Files (*.csv);;All Files (*)"),

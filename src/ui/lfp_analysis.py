@@ -1,6 +1,7 @@
 """LFP analysis dialogs and figure creation used by ``LfpPanel``."""
 
 import numpy as np
+from matplotlib.figure import Figure
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog,
@@ -10,7 +11,6 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QVBoxLayout,
 )
-from matplotlib.figure import Figure
 
 from .. import signal_data as signal_func
 from ..charts.chart_helpers import format_signal_label, resolve_plot_step
