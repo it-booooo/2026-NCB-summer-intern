@@ -107,6 +107,15 @@ class MarkerState:
 
 
 @dataclass
+class AnalysisSettings:
+    """User-adjustable analysis parameters shared by UI and services."""
+
+    lfp_peak_height_sigma: float = 8.0
+    lfp_peak_prominence_sigma: float = 6.0
+    lfp_peak_min_distance_sec: float = 0.01
+
+
+@dataclass
 class ProjectState:
     """Current project file and unsaved-change state."""
 
@@ -129,4 +138,5 @@ class AppState:
     ttl: TtlState = field(default_factory=TtlState)
     led: LedState = field(default_factory=LedState)
     markers: MarkerState = field(default_factory=MarkerState)
+    analysis: AnalysisSettings = field(default_factory=AnalysisSettings)
     project: ProjectState = field(default_factory=ProjectState)

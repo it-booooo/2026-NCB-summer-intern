@@ -83,7 +83,7 @@ def validate_state(state):
     """Validate persisted values before they are applied to AppState or widgets."""
     if not isinstance(state, dict):
         raise ValueError("Project state must be a JSON object.")
-    for section in ("video", "data", "sync", "led"):
+    for section in ("video", "data", "analysis", "sync", "led"):
         if not isinstance(state.get(section, {}), dict):
             raise ValueError(f"Project {section} state is invalid.")
 
@@ -115,6 +115,21 @@ def validate_state(state):
         raise ValueError("Project timeline range is invalid.")
     if not isinstance(data.get("lfp_filter_settings", {}), dict):
         raise ValueError("Project LFP filter settings are invalid.")
+
+    analysis = state.get("analysis", {})
+    for name in ("lfp_peak_height_sigma", "lfp_peak_prominence_sigma"):
+        value = analysis.get(name)
+        if value is not None and (
+            not _finite_number(value) or float(value) < 0
+        ):
+            raise ValueError(f"Project analysis setting {name} is invalid.")
+    min_distance = analysis.get("lfp_peak_min_distance_sec")
+    if min_distance is not None and (
+        not _finite_number(min_distance) or float(min_distance) <= 0
+    ):
+        raise ValueError(
+            "Project analysis setting lfp_peak_min_distance_sec is invalid."
+        )
 
     markers = state.get("markers", state.get("events", []))
     if not isinstance(markers, list) or len(markers) > MAX_EVENTS:

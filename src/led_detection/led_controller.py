@@ -1,11 +1,37 @@
+from PySide6.QtCore import QObject
 from PySide6.QtWidgets import QMessageBox
 
 from .led_worker import LedDetectionWorker, coarse_scan_step_for_fps
 from .status_text import format_led_detection_status
 
 
-class LedControllerMixin:
+class LedController(QObject):
     """LED ROI selection, background detection, and status handling."""
+
+    def __init__(
+        self,
+        *,
+        dialog_parent,
+        video_player,
+        video_state,
+        led_state,
+        led_analysis_panel,
+        marker_store,
+        add_led_events,
+    ):
+        super().__init__(dialog_parent)
+        self.dialog_parent = dialog_parent
+        self.video_player = video_player
+        self.video_state = video_state
+        self.led_state = led_state
+        self.led_analysis_panel = led_analysis_panel
+        self.marker_store = marker_store
+        self.add_led_events = add_led_events
+        self.led_worker = None
+
+    def connect_signals(self):
+        """Connect LED-owned interactions."""
+        self.video_player.roi_selected.connect(self.set_led_roi)
 
     def show_opencl_status(self):
         """Show opencl status.
@@ -19,7 +45,7 @@ class LedControllerMixin:
             status = opencl_status()
         except Exception as error:
             QMessageBox.warning(
-                self,
+                self.dialog_parent,
                 "OpenCL GPU",
                 f"OpenCL check failed:\n{error}",
             )
@@ -27,7 +53,7 @@ class LedControllerMixin:
 
         if not status.get("available"):
             QMessageBox.warning(
-                self,
+                self.dialog_parent,
                 "OpenCL GPU",
                 "OpenCL GPU is not available.\n\n"
                 f"Reason: {status.get('reason', 'unknown')}\n\n"
@@ -36,7 +62,7 @@ class LedControllerMixin:
             return
 
         QMessageBox.information(
-            self,
+            self.dialog_parent,
             "OpenCL GPU",
             "OpenCL GPU is available.\n\n"
             f"Device: {status.get('device')}\n"
@@ -67,7 +93,9 @@ class LedControllerMixin:
             None.
         """
         if not self.video_player.has_video():
-            QMessageBox.warning(self, "No video", "Please import a video first.")
+            QMessageBox.warning(
+                self.dialog_parent, "No video", "Please import a video first."
+            )
             return
         self.video_player.start_roi_selection()
 
@@ -99,13 +127,15 @@ class LedControllerMixin:
             )
         except ValueError as error:
             self.led_analysis_panel.mark_scan_range_valid(False)
-            QMessageBox.warning(self, "Invalid LED scan range", str(error))
+            QMessageBox.warning(
+                self.dialog_parent, "Invalid LED scan range", str(error)
+            )
             return
 
         if scan_start_frame >= scan_end_frame:
             self.led_analysis_panel.mark_scan_range_valid(False)
             QMessageBox.warning(
-                self,
+                self.dialog_parent,
                 "Invalid LED scan range",
                 "LED scan range is too short after converting to frames.",
             )
@@ -116,7 +146,7 @@ class LedControllerMixin:
         if detect_multiple:
             if not self.marker_store.by_kind("TTL"):
                 QMessageBox.warning(
-                    self,
+                    self.dialog_parent,
                     "TTL marker required",
                     "Please import TTL CSV before detecting multiple LED events.",
                 )
@@ -127,7 +157,7 @@ class LedControllerMixin:
             )
             if max_events <= 0:
                 QMessageBox.warning(
-                    self,
+                    self.dialog_parent,
                     "TTL marker required",
                     "The imported TTL CSV does not contain any TTL events.",
                 )
@@ -136,7 +166,7 @@ class LedControllerMixin:
         if self.led_worker is not None and self.led_worker.isRunning():
             if not self.stop_led_detection(wait=True):
                 QMessageBox.information(
-                    self,
+                    self.dialog_parent,
                     "LED detection",
                     "LED detection is still stopping. Please try again in a moment.",
                 )
@@ -271,7 +301,7 @@ class LedControllerMixin:
 
         if not events:
             QMessageBox.warning(
-                self,
+                self.dialog_parent,
                 "No LED event found",
                 "The scan completed successfully, but no LED event was found.\n\n"
                 "Please select the ROI again, adjust the scan range, or add markers manually.",
@@ -314,7 +344,9 @@ class LedControllerMixin:
 
         self.led_analysis_panel.fail_led_detection_progress()
         self.led_analysis_panel.set_led_detection_status("LED detection: failed")
-        QMessageBox.warning(self, "LED detection failed", message)
+        QMessageBox.warning(
+            self.dialog_parent, "LED detection failed", message
+        )
 
     def cleanup_led_worker(self):
         """Provide cleanup led worker functionality.
