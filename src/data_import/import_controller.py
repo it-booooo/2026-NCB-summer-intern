@@ -1,6 +1,7 @@
 import json
 import shutil
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from zipfile import BadZipFile, ZipFile
 
@@ -26,6 +27,22 @@ from ..project_format import file_fingerprint, validate_manifest, validate_state
 from ..video_player.video_helpers import normalize_rotation_degrees
 
 
+@dataclass
+class ImportContext:
+    """Explicit UI and workflow dependencies used by imports."""
+
+    parent: object
+    marker_store: object
+    video_player: object
+    event_table: object
+    lfp_panel: object
+    ttl_panel: object
+    led_analysis_panel: object
+    project_controller: object
+    sync_controller: object
+    led_controller: object
+
+
 class ImportController:
     """Own all file-selection and import workflows for the main window."""
 
@@ -40,31 +57,34 @@ class ImportController:
         "ttl": ("Locate Project TTL File", "CSV Files (*.csv);;All Files (*)"),
     }
 
-    def __init__(self, window, app_state):
-        self.window = window
+    def __init__(self, context, app_state):
+        self.context = context
+        self.parent = context.parent
         self.app_state = app_state
         self.video_state = self.app_state.video
         self.data_state = self.app_state.data
         self.sync_state = self.app_state.sync
         self.ttl_state = self.app_state.ttl
         self.led_state = self.app_state.led
-        self.marker_store = window.marker_store
+        self.marker_store = context.marker_store
 
     def open_project(self):
         """Open a project archive and restore its referenced and bundled data."""
-        window = self.window
-        if not window.confirm_unsaved_changes("open another project"):
+        context = self.context
+        if not context.project_controller.confirm_unsaved_changes(
+            "open another project"
+        ):
             return
-        if not window.stop_led_detection(wait=True):
+        if not context.led_controller.stop_led_detection(wait=True):
             QMessageBox.information(
-                window,
+                self.parent,
                 "LED detection",
                 "LED detection is still stopping. Please try again in a moment.",
             )
             return
 
         path, _ = QFileDialog.getOpenFileName(
-            window,
+            self.parent,
             "Open Project",
             "",
             "Pig Analysis Project (*.pigproj)",
@@ -96,7 +116,7 @@ class ImportController:
                     if source.get("archive_path", "") in archive.namelist()
                 )
                 completed_source_bytes = 0
-                progress = QDialog(window)
+                progress = QDialog(self.parent)
                 progress.setWindowTitle("Open Project")
                 progress.setWindowModality(Qt.WindowModality.WindowModal)
                 progress.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, False)
@@ -121,7 +141,7 @@ class ImportController:
                                 ("Locate Project Source File", "All Files (*)"),
                             )
                             selected_path, _ = QFileDialog.getOpenFileName(
-                                window,
+                                self.parent,
                                 title,
                                 str(source_path.parent),
                                 file_filter,
@@ -181,7 +201,9 @@ class ImportController:
             shutil.rmtree(project_root, ignore_errors=True)
             if progress is not None:
                 progress.close()
-            QMessageBox.warning(window, "Open project failed", str(error))
+            QMessageBox.warning(
+                self.parent, "Open project failed", str(error)
+            )
             return
 
         try:
@@ -210,7 +232,26 @@ class ImportController:
             self.data_state.follow_video_playback = bool(
                 data.get("follow_video_playback", True)
             )
-            window.lfp_panel.apply_project_state()
+            analysis = state.get("analysis", {})
+            self.app_state.analysis.lfp_peak_height_sigma = float(
+                analysis.get(
+                    "lfp_peak_height_sigma",
+                    self.app_state.analysis.lfp_peak_height_sigma,
+                )
+            )
+            self.app_state.analysis.lfp_peak_prominence_sigma = float(
+                analysis.get(
+                    "lfp_peak_prominence_sigma",
+                    self.app_state.analysis.lfp_peak_prominence_sigma,
+                )
+            )
+            self.app_state.analysis.lfp_peak_min_distance_sec = float(
+                analysis.get(
+                    "lfp_peak_min_distance_sec",
+                    self.app_state.analysis.lfp_peak_min_distance_sec,
+                )
+            )
+            context.lfp_panel.apply_project_state()
 
             video_path = source_paths.get("video")
             if video_path:
@@ -220,13 +261,13 @@ class ImportController:
                 progress_bar.repaint()
                 self.sync_state.loading_video = True
                 try:
-                    if not window.video_player.load_video(video_path):
+                    if not context.video_player.load_video(video_path):
                         raise ValueError("The bundled video could not be loaded.")
                 finally:
                     self.sync_state.loading_video = False
                 self.led_state.brightness_cache.clear()
-                window.reset_sync_state_for_new_video()
-                window.event_table.set_video_timing(
+                context.sync_controller.reset_sync_state_for_new_video()
+                context.event_table.set_video_timing(
                     self.video_state.metadata.using_fps,
                     self.video_state.metadata.total_frames,
                 )
@@ -239,7 +280,7 @@ class ImportController:
                 progress_bar.repaint()
                 info = signal_data.parse_lfp_csv_info(lfp_path)
                 self.data_state.lfp_info = info
-                window.lfp_panel.set_lfp_info(info)
+                context.lfp_panel.set_lfp_info(info)
 
             axis_path = source_paths.get("axis")
             if axis_path:
@@ -249,7 +290,7 @@ class ImportController:
                 progress_bar.repaint()
                 info = signal_data.parse_lfp_csv_info(axis_path)
                 self.data_state.axis_info = info
-                window.lfp_panel.set_axis_info(info)
+                context.lfp_panel.set_axis_info(info)
 
             progress_label.setText("Restoring TTL and video markers...")
             progress_bar.setValue(90)
@@ -289,8 +330,8 @@ class ImportController:
             if roi is not None:
                 restored_roi = tuple(int(value) for value in roi)
                 self.led_state.roi = restored_roi
-                window.video_player.set_led_roi(restored_roi)
-                window.led_analysis_panel.set_led_roi(restored_roi)
+                context.video_player.set_led_roi(restored_roi)
+                context.led_analysis_panel.set_led_roi(restored_roi)
 
             analysis_points = [
                 LedBrightnessPoint(**point)
@@ -298,14 +339,14 @@ class ImportController:
             ]
             detected_markers = self.marker_store.by_source(MarkerSource.LED_DETECTION)
             if led.get("analysis_status") is not None:
-                window.led_analysis_panel.set_led_analysis(
+                context.led_analysis_panel.set_led_analysis(
                     analysis_points,
                     led.get("analysis_threshold", 0.0),
                     detected_markers,
                     stats=led.get("analysis_stats") or {},
                     status=led.get("analysis_status"),
                 )
-                window.led_analysis_panel.set_led_detection_status(
+                context.led_analysis_panel.set_led_detection_status(
                     "LED detection: restored from project."
                 )
 
@@ -336,38 +377,37 @@ class ImportController:
                 rotation_degrees = normalize_rotation_degrees(rotation_degrees)
                 self.video_state.rotation_degrees = rotation_degrees
                 self.video_state.rotate_180_enabled = rotation_degrees == 180
-                window.video_player.update_rotation_buttons()
-                window.video_player.seek_frame(int(video.get("current_frame", 0)))
+                context.video_player.update_rotation_buttons()
+                context.video_player.seek_frame(int(video.get("current_frame", 0)))
 
             if restored_timeline_xlim is not None:
-                window.lfp_panel.set_shared_xlim(
+                context.lfp_panel.set_shared_xlim(
                     *restored_timeline_xlim,
                     source="timeline",
                 )
-            window.update_waveform_current_time()
+            context.sync_controller.update_waveform_current_time()
             progress_label.setText("Project restored.")
             progress_bar.setValue(100)
             progress_label.repaint()
             progress_bar.repaint()
         except Exception as error:
-            if window.video_player.cap is not None:
-                window.video_player.cap.release()
-                window.video_player.cap = None
+            if context.video_player.cap is not None:
+                context.video_player.cap.release()
+                context.video_player.cap = None
             shutil.rmtree(project_root, ignore_errors=True)
             progress.close()
-            QMessageBox.warning(window, "Restore project failed", str(error))
+            QMessageBox.warning(
+                self.parent, "Restore project failed", str(error)
+            )
             return
 
-        previous_directory = getattr(window, "project_temp_directory", None)
-        window.project_temp_directory = project_root
+        context.project_controller.replace_temp_directory(project_root)
         self.app_state.project.path = str(Path(path).resolve())
         self.app_state.project.dirty = False
-        window.update_project_title()
-        if previous_directory is not None:
-            shutil.rmtree(previous_directory, ignore_errors=True)
+        context.project_controller.update_title()
         progress.close()
         QMessageBox.information(
-            window,
+            self.parent,
             "Project Opened",
             f"Project restored from:\n{path}",
         )
@@ -408,7 +448,7 @@ class ImportController:
             title: Dialog title displayed to the user.
         """
         path, _ = QFileDialog.getOpenFileName(
-            self.window, title, "", "CSV Files (*.csv);;All Files (*)"
+            self.parent, title, "", "CSV Files (*.csv);;All Files (*)"
         )
         return path
 
@@ -418,38 +458,38 @@ class ImportController:
         Args:
             None.
         """
-        window = self.window
-        if not window.stop_led_detection(wait=True):
+        context = self.context
+        if not context.led_controller.stop_led_detection(wait=True):
             QMessageBox.information(
-                window, "LED detection",
+                self.parent, "LED detection",
                 "LED detection is still stopping. Please try again in a moment.",
             )
             return
 
         path, _ = QFileDialog.getOpenFileName(
-            window, "Open MP4", "", "Video Files (*.mp4)"
+            self.parent, "Open MP4", "", "Video Files (*.mp4)"
         )
         if not path:
             return
 
         self.sync_state.loading_video = True
         try:
-            loaded = window.video_player.load_video(path)
+            loaded = context.video_player.load_video(path)
         finally:
             self.sync_state.loading_video = False
 
         if loaded:
             self.led_state.brightness_cache.clear()
-            window.reset_sync_state_for_new_video()
-            window.event_table.set_video_timing(
+            context.sync_controller.reset_sync_state_for_new_video()
+            context.event_table.set_video_timing(
                 self.video_state.metadata.using_fps,
                 self.video_state.metadata.total_frames,
             )
-            window.mark_project_dirty()
+            context.project_controller.mark_dirty()
 
     def import_signal(self, signal_type):
         """Import an LFP or 3-axis CSV through the shared signal workflow."""
-        window = self.window
+        context = self.context
         path = self.open_csv_file(self.SIGNAL_IMPORT_TITLES[signal_type])
         if not path:
             return
@@ -457,13 +497,13 @@ class ImportController:
         info = signal_data.parse_lfp_csv_info(path)
         if signal_type == "lfp":
             self.data_state.lfp_info = info
-            window.lfp_panel.set_lfp_info(info)
+            context.lfp_panel.set_lfp_info(info)
         else:
             self.data_state.axis_info = info
-            window.lfp_panel.set_axis_info(info)
+            context.lfp_panel.set_axis_info(info)
 
-        window.update_waveform_current_time()
-        window.mark_project_dirty()
+        context.sync_controller.update_waveform_current_time()
+        context.project_controller.mark_dirty()
 
     def import_time_marker(self):
         """Provide import time marker functionality.
@@ -471,7 +511,7 @@ class ImportController:
         Args:
             None.
         """
-        window = self.window
+        context = self.context
         path = self.open_csv_file("Import Time Marker (.csv)")
         if not path:
             return
@@ -482,5 +522,5 @@ class ImportController:
             for key, value in info.items()
             if key not in {"markers", "marker_count", "first_marker_sec"}
         }
-        window.ttl_panel.set_markers(markers, metadata=metadata)
-        window.mark_project_dirty()
+        context.ttl_panel.set_markers(markers, metadata=metadata)
+        context.project_controller.mark_dirty()

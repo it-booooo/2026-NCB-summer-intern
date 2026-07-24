@@ -1,6 +1,6 @@
 import json
 import tempfile
-from dataclasses import asdict, is_dataclass
+from dataclasses import asdict, dataclass, is_dataclass
 from datetime import datetime
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
@@ -36,33 +36,45 @@ from .file_writers import (
 )
 
 
+@dataclass
+class ExportContext:
+    """Explicit UI and workflow dependencies used by exports."""
+
+    parent: object
+    marker_store: object
+    lfp_panel: object
+    led_controller: object
+    project_controller: object
+
+
 class ExportController:
     """Own all save dialogs, export validation, and output generation."""
 
-    def __init__(self, window, app_state):
-        self.window = window
+    def __init__(self, context, app_state):
+        self.context = context
+        self.parent = context.parent
         self.app_state = app_state
         self.video_state = self.app_state.video
         self.data_state = self.app_state.data
         self.sync_state = self.app_state.sync
         self.ttl_state = self.app_state.ttl
         self.led_state = self.app_state.led
-        self.marker_store = window.marker_store
+        self.marker_store = context.marker_store
         self.last_lfp_export_directory = None
 
     def save_project(self):
         """Save project state while referencing every source file by path."""
-        worker = self.window.led_worker
+        worker = self.context.led_controller.led_worker
         if worker is not None and worker.isRunning():
             QMessageBox.information(
-                self.window,
+                self.parent,
                 "LED detection is running",
                 "Wait for LED detection to finish before saving the project.",
             )
             return False
 
         path, _ = QFileDialog.getSaveFileName(
-            self.window,
+            self.parent,
             "Save Project",
             "analysis.pigproj",
             "Pig Analysis Project (*.pigproj)",
@@ -102,7 +114,7 @@ class ExportController:
             file_path = Path(source_path)
             if not file_path.is_file():
                 QMessageBox.warning(
-                    self.window,
+                    self.parent,
                     "Cannot save project",
                     f"Source file not found:\n{file_path}",
                 )
@@ -165,6 +177,17 @@ class ExportController:
                 "lfp_filter_settings": self.data_state.lfp_filter_settings,
                 "follow_video_playback": self.data_state.follow_video_playback,
             },
+            "analysis": {
+                "lfp_peak_height_sigma": (
+                    self.app_state.analysis.lfp_peak_height_sigma
+                ),
+                "lfp_peak_prominence_sigma": (
+                    self.app_state.analysis.lfp_peak_prominence_sigma
+                ),
+                "lfp_peak_min_distance_sec": (
+                    self.app_state.analysis.lfp_peak_min_distance_sec
+                ),
+            },
             "sync": {
                 "time_offset_sec": self.sync_state.time_offset_sec,
                 "video_time_origin_sec": self.sync_state.video_time_origin_sec,
@@ -187,7 +210,7 @@ class ExportController:
             "sources": sources,
         }
 
-        progress = QDialog(self.window)
+        progress = QDialog(self.parent)
         progress.setWindowTitle("Save Project")
         progress.setWindowModality(Qt.WindowModality.WindowModal)
         progress.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, False)
@@ -252,7 +275,7 @@ class ExportController:
                 temporary_path.unlink(missing_ok=True)
             progress.close()
             QMessageBox.warning(
-                self.window,
+                self.parent,
                 "Save project failed",
                 str(error),
             )
@@ -261,13 +284,13 @@ class ExportController:
             progress.close()
 
         QMessageBox.information(
-            self.window,
+            self.parent,
             "Project Saved",
             f"Project saved to:\n{output_path}",
         )
         self.app_state.project.path = str(output_path.resolve())
         self.app_state.project.dirty = False
-        self.window.update_project_title()
+        self.context.project_controller.update_title()
         return True
 
     def actions(self):
@@ -303,7 +326,7 @@ class ExportController:
     def export_markers(self):
         # UI 流程只負責選擇格式與路徑；實際寫檔由 writers 模組處理。
         """Choose a marker source and file type, then export it."""
-        dialog = QDialog(self.window)
+        dialog = QDialog(self.parent)
         dialog.setWindowTitle("Export Markers")
         dialog.setMinimumWidth(340)
 
@@ -390,14 +413,14 @@ class ExportController:
 
         if not markers:
             QMessageBox.information(
-                self.window, "No markers", "There are no markers to export."
+                self.parent, "No markers", "There are no markers to export."
             )
             return
 
         is_csv = file_type == "csv"
         suffix = "csv" if is_csv else "xlsx"
         path, _ = QFileDialog.getSaveFileName(
-            self.window,
+            self.parent,
             "Export Markers as CSV" if is_csv else "Export Markers as Excel",
             f"{filename_stem}.{suffix}",
             "CSV Files (*.csv)" if is_csv else "Excel Files (*.xlsx)",
@@ -422,7 +445,7 @@ class ExportController:
 
         if not exports:
             QMessageBox.information(
-                self.window,
+                self.parent,
                 "No signal data",
                 "Please import LFP or 3-axis CSV data first.",
             )
@@ -434,7 +457,7 @@ class ExportController:
             items = [label for label, _ in exports]
 
             label, accepted = QInputDialog.getItem(
-                self.window,
+                self.parent,
                 "Export Check Results",
                 "Data:",
                 items,
@@ -450,7 +473,7 @@ class ExportController:
         filename = info.get("filename", label).rsplit(".", 1)[0]
 
         path, _ = QFileDialog.getSaveFileName(
-            self.window,
+            self.parent,
             "Export Check Results",
             f"{filename}_check_report.csv",
             "CSV Files (*.csv)",
@@ -466,14 +489,14 @@ class ExportController:
             )
         except Exception as error:
             QMessageBox.warning(
-                self.window,
+                self.parent,
                 "Export check results failed",
                 str(error),
             )
             return
 
         QMessageBox.information(
-            self.window,
+            self.parent,
             "Check Results Exported",
             f"Check results exported to:\n{output_path}",
         )
@@ -484,7 +507,7 @@ class ExportController:
         Args:
             None.
         """
-        window = self.window
+        window = self.parent
         if self.data_state.axis_info is None:
             QMessageBox.information(
                 window, "No 3-axis data", "Please import 3-axis CSV data first."
@@ -523,11 +546,11 @@ class ExportController:
         Args:
             None.
         """
-        panel = self.window.lfp_panel
+        panel = self.context.lfp_panel
         lfp_path = self.data_state.lfp_info.get("path") if self.data_state.lfp_info else None
         if not lfp_path:
             QMessageBox.information(
-                self.window, "No LFP data", "Please import LFP CSV data first."
+                self.parent, "No LFP data", "Please import LFP CSV data first."
             )
             return
 
@@ -539,10 +562,12 @@ class ExportController:
             dialog = LfpImageExportDialog(
                 panel,
                 default_directory,
-                parent=self.window,
+                parent=self.parent,
             )
         except (OSError, ValueError) as error:
-            QMessageBox.warning(self.window, "Cannot export LFP images", str(error))
+            QMessageBox.warning(
+                self.parent, "Cannot export LFP images", str(error)
+            )
             return
 
         if dialog.exec() != QDialog.DialogCode.Accepted:
@@ -564,7 +589,7 @@ class ExportController:
         if existing_paths:
             filenames = "\n".join(f"- {path.name}" for path in existing_paths)
             answer = QMessageBox.question(
-                self.window,
+                self.parent,
                 "Replace existing images?",
                 f"The following files already exist:\n{filenames}\n\nReplace them?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
@@ -638,7 +663,7 @@ class ExportController:
                 names = "\n".join(f"- {path.name}" for path in saved_paths)
                 saved_message = f"\n\nAlready exported:\n{names}"
             QMessageBox.warning(
-                self.window,
+                self.parent,
                 "Export LFP images failed",
                 f"{error}{saved_message}",
             )
@@ -649,7 +674,7 @@ class ExportController:
 
         filenames = "\n".join(f"- {path.name}" for path in saved_paths)
         QMessageBox.information(
-            self.window,
+            self.parent,
             "LFP Images Exported",
             f"Exported {len(saved_paths)} image(s) to:\n"
             f"{options.directory}\n\n{filenames}",
@@ -657,7 +682,7 @@ class ExportController:
 
     def _lfp_filename(self, channel, settings, suffix):
         # 將通道、處理模式與同步後的時間範圍編入預設檔名，方便辨識輸出內容。
-        panel = self.window.lfp_panel
+        panel = self.context.lfp_panel
         info = self.data_state.lfp_info
         filename = info.get("filename", "lfp") if info else "lfp"
         stem = filename.rsplit(".", 1)[0]

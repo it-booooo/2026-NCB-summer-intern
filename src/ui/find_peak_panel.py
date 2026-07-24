@@ -32,10 +32,6 @@ class FindPeakPanel(MarkerViewPanel):
     DISPLAY_HEADERS = ["marker type", "video time", "note"]
     video_time_selected = Signal(float)
     VIDEO_TIME_ROLE = Qt.UserRole + 1
-    LFP_PEAK_HEIGHT_SIGMA = 8.0
-    LFP_PEAK_PROMINENCE_SIGMA = 6.0
-    LFP_PEAK_MIN_DISTANCE_SEC = 0.01
-
     def __init__(
         self,
         marker_store,
@@ -43,12 +39,14 @@ class FindPeakPanel(MarkerViewPanel):
         sync_state,
         video_state,
         video_player,
+        analysis_settings,
     ):
         super().__init__(marker_store)
         self.lfp_service = lfp_service
         self.sync_state = sync_state
         self.video_state = video_state
         self.video_player = video_player
+        self.analysis_settings = analysis_settings
 
         self.find_peaks_button = QPushButton("Find Peak")
         self.delete_selected_button = QPushButton("Delete Selected")
@@ -253,13 +251,18 @@ class FindPeakPanel(MarkerViewPanel):
                     sigma = np.finfo(float).eps
                 local_peaks, _ = find_peaks(
                     visible,
-                    height=baseline + self.LFP_PEAK_HEIGHT_SIGMA * sigma,
-                    prominence=self.LFP_PEAK_PROMINENCE_SIGMA * sigma,
+                    height=(
+                        baseline
+                        + self.analysis_settings.lfp_peak_height_sigma * sigma
+                    ),
+                    prominence=(
+                        self.analysis_settings.lfp_peak_prominence_sigma * sigma
+                    ),
                     distance=max(
                         1,
                         round(
                             dataset.sample_rate_hz(channel)
-                            * self.LFP_PEAK_MIN_DISTANCE_SEC
+                            * self.analysis_settings.lfp_peak_min_distance_sec
                         ),
                     ),
                 )

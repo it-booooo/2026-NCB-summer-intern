@@ -34,8 +34,45 @@ def pair_event_intervals(markers, start_kind, end_kind, interval_type, offset_se
     return intervals
 
 
-class SyncControllerMixin:
+class SyncController:
     """TTL, event marker, and video-to-record-time synchronization logic."""
+
+    def __init__(
+        self,
+        *,
+        sync_state,
+        ttl_state,
+        led_state,
+        video_state,
+        marker_store,
+        video_player,
+        event_table,
+        lfp_panel,
+        ttl_panel,
+        find_peak_panel,
+        led_analysis_panel,
+    ):
+        self.sync_state = sync_state
+        self.ttl_state = ttl_state
+        self.led_state = led_state
+        self.video_state = video_state
+        self.marker_store = marker_store
+        self.video_player = video_player
+        self.event_table = event_table
+        self.lfp_panel = lfp_panel
+        self.ttl_panel = ttl_panel
+        self.find_peak_panel = find_peak_panel
+        self.led_analysis_panel = led_analysis_panel
+
+    def connect_signals(self):
+        """Connect synchronization-owned interactions."""
+        self.video_player.frame_changed.connect(self.update_waveform_current_time)
+        self.lfp_panel.time_selected.connect(self.seek_video_record_time)
+        self.event_table.events_changed.connect(self.update_time_offset)
+        self.event_table.video_time_selected.connect(self.seek_video_marker_time)
+        self.find_peak_panel.video_time_selected.connect(
+            self.seek_video_marker_time
+        )
 
     def reset_sync_state_for_new_video(self):
         """Reset sync state for new video.
