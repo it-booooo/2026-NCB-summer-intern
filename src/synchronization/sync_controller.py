@@ -231,11 +231,26 @@ class SyncController:
         Args:
             None.
         """
+        markers = self.marker_store.all()
+        record_intervals = []
+        for marker in markers:
+            if marker.kind != MarkerKind.TTL:
+                continue
+            record_time_sec = marker_record_time(marker, self.sync_state.time_offset_sec)
+            if record_time_sec is None:
+                continue
+            record_intervals.append(
+                {
+                    "event_type": "ttl",
+                    "record_time_sec": record_time_sec,
+                    "marker_id": marker.marker_id,
+                }
+            )
+
         if self.sync_state.time_offset_sec is None:
-            self.lfp_panel.set_event_intervals([])
+            self.lfp_panel.set_event_intervals(record_intervals)
             return
 
-        markers = self.marker_store.all()
         video_intervals = [
             *pair_event_intervals(
                 markers,
@@ -253,7 +268,6 @@ class SyncController:
             ),
         ]
 
-        record_intervals = []
         for interval in video_intervals:
             record_intervals.append(
                 {

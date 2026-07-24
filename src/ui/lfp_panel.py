@@ -819,6 +819,18 @@ class LfpPanel(LfpAnalysisMixin, QWidget):
             ax = fig.axes[0]
             for interval in self.sync_state.event_intervals:
                 event_type = interval.get("event_type", "behavior")
+                if event_type == "ttl":
+                    self.event_interval_artists.append(
+                        ax.axvline(
+                            float(interval["record_time_sec"]),
+                            color="#2eaf62",
+                            linestyle="-",
+                            linewidth=1.2,
+                            zorder=4,
+                        )
+                    )
+                    continue
+
                 if event_type == "seizure_like_event":
                     self.event_interval_artists.append(
                         ax.axvline(
