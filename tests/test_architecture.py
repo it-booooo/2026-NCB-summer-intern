@@ -42,7 +42,7 @@ class AnalysisSettingsTests(unittest.TestCase):
 
         self.assertEqual(state.analysis.lfp_peak_height_sigma, 8.0)
         self.assertEqual(state.analysis.lfp_peak_prominence_sigma, 6.0)
-        self.assertEqual(state.analysis.lfp_peak_min_distance_sec, 0.01)
+        self.assertEqual(state.analysis.lfp_peak_min_distance_sec, 1.0)
 
     def test_project_validation_accepts_valid_analysis_settings(self):
         state = {

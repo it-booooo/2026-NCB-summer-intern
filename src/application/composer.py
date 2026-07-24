@@ -112,6 +112,7 @@ class ApplicationComposer:
             event_table=event_table,
             lfp_panel=lfp_panel,
             ttl_panel=ttl_panel,
+            sync_panel=sync_panel,
             led_analysis_panel=led_analysis_panel,
             project_controller=project_controller,
             sync_controller=sync_controller,
@@ -121,6 +122,7 @@ class ApplicationComposer:
             parent=self.window,
             marker_store=marker_store,
             lfp_panel=lfp_panel,
+            led_analysis_panel=led_analysis_panel,
             led_controller=led_controller,
             project_controller=project_controller,
         )

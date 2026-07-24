@@ -18,7 +18,6 @@ from PySide6.QtWidgets import (
 from ..app_state import SyncState, VideoState
 from ..markers import (
     MarkerKind,
-    MarkerStore,
     VideoPosition,
 )
 from ..synchronization.time_conversion import relative_time
@@ -148,9 +147,9 @@ class MarkerTable(QTableWidget):
     MARKER_ID_ROLE = Qt.UserRole + 1
     VIDEO_TIME_ROLE = Qt.UserRole + 2
 
-    def __init__(self, marker_store=None, video_state=None, sync_state=None):
+    def __init__(self, marker_store, video_state=None, sync_state=None):
         super().__init__(0, len(self.DISPLAY_HEADERS))
-        self.marker_store = marker_store or MarkerStore()
+        self.marker_store = marker_store
         self.video_state = video_state or VideoState()
         self.sync_state = sync_state or SyncState()
         self._standalone_video_fps = None
@@ -249,8 +248,6 @@ class MarkerTable(QTableWidget):
         return f"{relative_time(video_time_sec, self.sync_state.video_time_origin_sec):.3f}"
 
     def handle_cell_clicked(self, row, column):
-        if column != 1:
-            return
         item = self.item(row, 1)
         if item is not None:
             self.video_time_selected.emit(float(item.data(self.VIDEO_TIME_ROLE)))
@@ -259,6 +256,9 @@ class MarkerTable(QTableWidget):
         for row in range(self.rowCount()):
             if self.cellWidget(row, 2) is editor:
                 self.selectRow(row)
+                item = self.item(row, 1)
+                if item is not None:
+                    self.video_time_selected.emit(float(item.data(self.VIDEO_TIME_ROLE)))
                 return
 
     def update_note(self, marker_id, note):

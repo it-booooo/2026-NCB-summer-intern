@@ -112,7 +112,7 @@ class AnalysisSettings:
 
     lfp_peak_height_sigma: float = 8.0
     lfp_peak_prominence_sigma: float = 6.0
-    lfp_peak_min_distance_sec: float = 0.01
+    lfp_peak_min_distance_sec: float = 1.0
 
 
 @dataclass

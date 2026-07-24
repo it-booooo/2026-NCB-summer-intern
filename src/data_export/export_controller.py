@@ -7,15 +7,14 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QApplication,
     QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
     QFormLayout,
     QInputDialog,
-    QLabel,
     QMessageBox,
-    QProgressBar,
     QVBoxLayout,
 )
 
@@ -38,11 +37,10 @@ from .file_writers import (
 
 @dataclass
 class ExportContext:
-    """Explicit UI and workflow dependencies used by exports."""
-
     parent: object
     marker_store: object
     lfp_panel: object
+    led_analysis_panel: object
     led_controller: object
     project_controller: object
 
@@ -85,46 +83,6 @@ class ExportController:
         if output_path.suffix.lower() != ".pigproj":
             output_path = output_path.with_suffix(".pigproj")
 
-        sources = {}
-        source_candidates = {
-            "video": (
-                self.video_state.metadata.path
-                if self.video_state.metadata is not None
-                else None
-            ),
-            "lfp": (
-                self.data_state.lfp_info.get("path")
-                if self.data_state.lfp_info
-                else None
-            ),
-            "axis": (
-                self.data_state.axis_info.get("path")
-                if self.data_state.axis_info
-                else None
-            ),
-            "ttl": (
-                self.ttl_state.metadata.get("path")
-                if self.ttl_state.metadata
-                else None
-            ),
-        }
-        for source_type, source_path in source_candidates.items():
-            if not source_path:
-                continue
-            file_path = Path(source_path)
-            if not file_path.is_file():
-                QMessageBox.warning(
-                    self.parent,
-                    "Cannot save project",
-                    f"Source file not found:\n{file_path}",
-                )
-                return False
-            sources[source_type] = {
-                "external_path": str(file_path.resolve()),
-                "filename": file_path.name,
-                "fingerprint": file_fingerprint(file_path),
-            }
-
         def record(value):
             if is_dataclass(value):
                 return asdict(value)
@@ -136,97 +94,119 @@ class ExportController:
                 return value.tolist()
             raise TypeError(f"Unsupported project value: {type(value).__name__}")
 
-        brightness_cache = []
-        for cache_key, points in self.led_state.brightness_cache.items():
-            (
-                _video_path,
-                roi,
-                rotation_degrees,
-                fps,
-                start_frame,
-                end_frame,
-                coarse_step,
-            ) = cache_key
-            if isinstance(rotation_degrees, bool):
-                rotation_degrees = 180 if rotation_degrees else 0
-            brightness_cache.append(
-                {
-                    "roi": roi,
-                    "rotation_degrees": rotation_degrees,
-                    "rotate_180": int(rotation_degrees) == 180,
-                    "fps": fps,
-                    "start_frame": start_frame,
-                    "end_frame": end_frame,
-                    "coarse_step": coarse_step,
-                    "points": points,
-                }
-            )
-
-        state = {
-            "video": {
-                "current_frame": self.video_state.current_frame,
-                "rotation_degrees": self.video_state.rotation_degrees,
-                "rotate_180_enabled": self.video_state.rotate_180_enabled,
-            },
-            "data": {
-                "lfp_step": self.data_state.lfp_step,
-                "axis_step": self.data_state.axis_step,
-                "line_noise_hz": self.data_state.line_noise_hz,
-                "timeline_xlim": self.data_state.timeline_xlim,
-                "selected_lfp_channel": self.data_state.selected_lfp_channel,
-                "lfp_filter_settings": self.data_state.lfp_filter_settings,
-                "follow_video_playback": self.data_state.follow_video_playback,
-            },
-            "analysis": {
-                "lfp_peak_height_sigma": (
-                    self.app_state.analysis.lfp_peak_height_sigma
-                ),
-                "lfp_peak_prominence_sigma": (
-                    self.app_state.analysis.lfp_peak_prominence_sigma
-                ),
-                "lfp_peak_min_distance_sec": (
-                    self.app_state.analysis.lfp_peak_min_distance_sec
-                ),
-            },
-            "sync": {
-                "time_offset_sec": self.sync_state.time_offset_sec,
-                "video_time_origin_sec": self.sync_state.video_time_origin_sec,
-                "record_time_origin_sec": self.sync_state.record_time_origin_sec,
-            },
-            "ttl": {"metadata": dict(self.ttl_state.metadata or {})},
-            "led": {
-                "roi": self.led_state.roi,
-                "analysis_points": self.led_state.analysis_points,
-                "analysis_threshold": self.led_state.analysis_threshold,
-                "analysis_stats": self.led_state.analysis_stats,
-                "analysis_status": self.led_state.analysis_status,
-                "brightness_cache": brightness_cache,
-            },
-            "markers": [marker_to_dict(marker) for marker in self.marker_store.all()],
-        }
-        manifest = {
-            "format": PROJECT_FORMAT,
-            "version": PROJECT_VERSION,
-            "sources": sources,
-        }
-
-        progress = QDialog(self.parent)
-        progress.setWindowTitle("Save Project")
-        progress.setWindowModality(Qt.WindowModality.WindowModal)
-        progress.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, False)
-        progress.setFixedSize(480, 140)
-        progress_label = QLabel("Preparing project...")
-        progress_bar = QProgressBar()
-        progress_bar.setRange(0, 100)
-        progress_bar.setValue(0)
-        progress_layout = QVBoxLayout(progress)
-        progress_layout.addWidget(progress_label)
-        progress_layout.addWidget(progress_bar)
-        progress.show()
-        progress.repaint()
-
+        error_message = None
         temporary_path = None
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        QApplication.processEvents()
         try:
+            sources = {}
+            source_candidates = {
+                "video": (
+                    self.video_state.metadata.path
+                    if self.video_state.metadata is not None
+                    else None
+                ),
+                "lfp": (
+                    self.data_state.lfp_info.get("path")
+                    if self.data_state.lfp_info
+                    else None
+                ),
+                "axis": (
+                    self.data_state.axis_info.get("path")
+                    if self.data_state.axis_info
+                    else None
+                ),
+                "ttl": (
+                    self.ttl_state.metadata.get("path")
+                    if self.ttl_state.metadata
+                    else None
+                ),
+            }
+            for source_type, source_path in source_candidates.items():
+                if not source_path:
+                    continue
+                file_path = Path(source_path)
+                if not file_path.is_file():
+                    raise ValueError(f"Source file not found:\n{file_path}")
+                sources[source_type] = {
+                    "external_path": str(file_path.resolve()),
+                    "filename": file_path.name,
+                    "fingerprint": file_fingerprint(file_path),
+                }
+
+            brightness_cache = []
+            for cache_key, points in self.led_state.brightness_cache.items():
+                (
+                    _video_path,
+                    roi,
+                    rotation_degrees,
+                    fps,
+                    start_frame,
+                    end_frame,
+                    coarse_step,
+                ) = cache_key
+                if isinstance(rotation_degrees, bool):
+                    rotation_degrees = 180 if rotation_degrees else 0
+                brightness_cache.append(
+                    {
+                        "roi": roi,
+                        "rotation_degrees": rotation_degrees,
+                        "rotate_180": int(rotation_degrees) == 180,
+                        "fps": fps,
+                        "start_frame": start_frame,
+                        "end_frame": end_frame,
+                        "coarse_step": coarse_step,
+                        "points": points,
+                    }
+                )
+
+            state = {
+                "video": {
+                    "current_frame": self.video_state.current_frame,
+                    "rotation_degrees": self.video_state.rotation_degrees,
+                    "rotate_180_enabled": self.video_state.rotate_180_enabled,
+                },
+                "data": {
+                    "lfp_step": self.data_state.lfp_step,
+                    "axis_step": self.data_state.axis_step,
+                    "line_noise_hz": self.data_state.line_noise_hz,
+                    "timeline_xlim": self.data_state.timeline_xlim,
+                    "selected_lfp_channel": self.data_state.selected_lfp_channel,
+                    "lfp_filter_settings": self.data_state.lfp_filter_settings,
+                    "follow_video_playback": self.data_state.follow_video_playback,
+                },
+                "analysis": {
+                    "lfp_peak_height_sigma": (
+                        self.app_state.analysis.lfp_peak_height_sigma
+                    ),
+                    "lfp_peak_prominence_sigma": (
+                        self.app_state.analysis.lfp_peak_prominence_sigma
+                    ),
+                    "lfp_peak_min_distance_sec": (
+                        self.app_state.analysis.lfp_peak_min_distance_sec
+                    ),
+                },
+                "sync": {
+                    "time_offset_sec": self.sync_state.time_offset_sec,
+                    "video_time_origin_sec": self.sync_state.video_time_origin_sec,
+                    "record_time_origin_sec": self.sync_state.record_time_origin_sec,
+                },
+                "ttl": {"metadata": dict(self.ttl_state.metadata or {})},
+                "led": {
+                    "roi": self.led_state.roi,
+                    "analysis_points": self.led_state.analysis_points,
+                    "analysis_threshold": self.led_state.analysis_threshold,
+                    "analysis_stats": self.led_state.analysis_stats,
+                    "analysis_status": self.led_state.analysis_status,
+                    "brightness_cache": brightness_cache,
+                },
+                "markers": [marker_to_dict(marker) for marker in self.marker_store.all()],
+            }
+            manifest = {
+                "format": PROJECT_FORMAT,
+                "version": PROJECT_VERSION,
+                "sources": sources,
+            }
             manifest_bytes = json.dumps(
                 manifest,
                 indent=2,
@@ -253,35 +233,23 @@ class ExportController:
                     manifest_bytes,
                     compress_type=ZIP_DEFLATED,
                 )
-                progress_label.setText("Writing project information...")
-                progress_bar.setValue(45)
-                progress_label.repaint()
-                progress_bar.repaint()
                 archive.writestr(
                     "state.json",
                     state_bytes,
                     compress_type=ZIP_DEFLATED,
                 )
-                progress_label.setText("Writing analysis state...")
-                progress_bar.setValue(95)
-                progress_label.repaint()
-                progress_bar.repaint()
             temporary_path.replace(output_path)
             temporary_path = None
-            progress_bar.setValue(100)
-            progress_bar.repaint()
         except Exception as error:
             if temporary_path is not None:
                 temporary_path.unlink(missing_ok=True)
-            progress.close()
-            QMessageBox.warning(
-                self.parent,
-                "Save project failed",
-                str(error),
-            )
-            return False
+            error_message = str(error)
         finally:
-            progress.close()
+            QApplication.restoreOverrideCursor()
+
+        if error_message is not None:
+            QMessageBox.warning(self.parent, "Save project failed", error_message)
+            return False
 
         QMessageBox.information(
             self.parent,
@@ -304,7 +272,7 @@ class ExportController:
             (
                 "Export Markers...",
                 self.export_markers,
-                "Choose TTL or video markers and export them as CSV or Excel.",
+                "Export TTL, video, or peak markers as CSV/Excel, or export the LED Analysis plot as an image.",
             ),
             (
                 "Export Check Results",
@@ -325,21 +293,33 @@ class ExportController:
 
     def export_markers(self):
         # UI 流程只負責選擇格式與路徑；實際寫檔由 writers 模組處理。
-        """Choose a marker source and file type, then export it."""
+        """Export one Sync Area page as table data or an analysis image."""
         dialog = QDialog(self.parent)
         dialog.setWindowTitle("Export Markers")
         dialog.setMinimumWidth(340)
 
         marker_selector = QComboBox()
-        marker_selector.addItem("Video markers", "video")
-        marker_selector.addItem("TTL markers", "ttl")
+        marker_selector.addItem("TTL", "ttl")
+        marker_selector.addItem("Video", "video")
+        marker_selector.addItem("Find Peak", "find_peak")
+        marker_selector.addItem("LED Analysis", "led_analysis")
 
         file_type_selector = QComboBox()
-        file_type_selector.addItem("CSV (.csv)", "csv")
-        file_type_selector.addItem("Excel (.xlsx)", "xlsx")
+
+        def refresh_file_types():
+            file_type_selector.clear()
+            if marker_selector.currentData() == "led_analysis":
+                file_type_selector.addItem("PNG (.png)", "png")
+                file_type_selector.addItem("JPG (.jpg)", "jpg")
+            else:
+                file_type_selector.addItem("CSV (.csv)", "csv")
+                file_type_selector.addItem("Excel (.xlsx)", "xlsx")
+
+        marker_selector.currentIndexChanged.connect(refresh_file_types)
+        refresh_file_types()
 
         form = QFormLayout()
-        form.addRow("Markers", marker_selector)
+        form.addRow("Sync Area", marker_selector)
         form.addRow("File type", file_type_selector)
 
         buttons = QDialogButtonBox(
@@ -360,42 +340,11 @@ class ExportController:
 
         marker_type = marker_selector.currentData()
         file_type = file_type_selector.currentData()
-        if marker_type == "video":
-            markers = []
-            for marker in self.marker_store.all():
-                if marker.kind == MarkerKind.TTL:
-                    continue
-                video_time = marker_video_time(marker, self.sync_state.time_offset_sec)
-                if video_time is None:
-                    continue
-                frame_index = (
-                    marker.position.frame_index
-                    if isinstance(marker.position, VideoPosition)
-                    else int(
-                        marker.payload.get(
-                            "frame_index",
-                            round(
-                                video_time
-                                * float(self.video_state.metadata.using_fps or 0.0)
-                            ),
-                        )
-                    )
-                )
-                markers.append(
-                    {
-                        "event_type": marker.kind.value,
-                        "video_time_sec": video_time,
-                        "frame_index": frame_index,
-                        "note": marker.note,
-                    }
-                )
-            filename_stem = "video_markers"
-            writer = (
-                export_events_csv
-                if file_type == "csv"
-                else export_events_excel
-            )
-        else:
+        if marker_type == "led_analysis":
+            self.export_led_analysis_image(file_type)
+            return
+
+        if marker_type == "ttl":
             markers = []
             for marker in self.marker_store.by_kind(MarkerKind.TTL):
                 record_time = int(
@@ -410,6 +359,20 @@ class ExportController:
                 if file_type == "csv"
                 else export_ttl_markers_excel
             )
+        elif marker_type == "find_peak":
+            markers = self.exportable_video_marker_rows(
+                self.marker_store.by_kind(MarkerKind.LFP_PEAK)
+            )
+            filename_stem = "find_peak_markers"
+            writer = export_events_csv if file_type == "csv" else export_events_excel
+        else:
+            markers = self.exportable_video_marker_rows(
+                marker
+                for marker in self.marker_store.all()
+                if marker.kind not in {MarkerKind.TTL, MarkerKind.LFP_PEAK}
+            )
+            filename_stem = "video_markers"
+            writer = export_events_csv if file_type == "csv" else export_events_excel
 
         if not markers:
             QMessageBox.information(
@@ -427,6 +390,57 @@ class ExportController:
         )
         if path:
             writer(path, markers)
+
+    def exportable_video_marker_rows(self, markers):
+        rows = []
+        fps = (
+            float(self.video_state.metadata.using_fps or 0.0)
+            if self.video_state.metadata
+            else 0.0
+        )
+        for marker in markers:
+            video_time = marker_video_time(marker, self.sync_state.time_offset_sec)
+            if video_time is None:
+                continue
+            frame_index = (
+                marker.position.frame_index
+                if isinstance(marker.position, VideoPosition)
+                else int(marker.payload.get("frame_index", round(video_time * fps)))
+            )
+            rows.append(
+                {
+                    "event_type": marker.kind.value,
+                    "video_time_sec": video_time,
+                    "frame_index": frame_index,
+                    "note": marker.note,
+                }
+            )
+        return rows
+
+    def export_led_analysis_image(self, file_type):
+        panel = self.context.led_analysis_panel
+        if panel.led_state.analysis_status is None:
+            QMessageBox.information(
+                self.parent,
+                "No LED analysis",
+                "Run LED analysis before exporting the LED Analysis image.",
+            )
+            return
+
+        suffix = "jpg" if file_type == "jpg" else "png"
+        path, _ = QFileDialog.getSaveFileName(
+            self.parent,
+            "Export LED Analysis Image",
+            f"led_analysis.{suffix}",
+            "JPEG Images (*.jpg)" if suffix == "jpg" else "PNG Images (*.png)",
+        )
+        if not path:
+            return
+        output_path = Path(path)
+        if output_path.suffix.lower() not in {".png", ".jpg", ".jpeg"}:
+            output_path = output_path.with_suffix(f".{suffix}")
+        save_format = "jpeg" if suffix == "jpg" else "png"
+        panel.analysis_figure.savefig(str(output_path), dpi=300, format=save_format)
 
 
     def export_check_results(self):

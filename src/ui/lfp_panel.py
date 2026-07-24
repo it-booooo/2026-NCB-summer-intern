@@ -527,7 +527,7 @@ class LfpPanel(LfpAnalysisMixin, QWidget):
         )
         self.time_selected.emit(record_time_sec)
 
-    def follow_current_time_marker(self):
+    def follow_current_time_marker(self, force=False):
         """Provide follow current time marker functionality.
 
         Args:
@@ -535,7 +535,7 @@ class LfpPanel(LfpAnalysisMixin, QWidget):
         """
         if (
             self.sync_state.current_record_time_sec is None
-            or not self.should_follow_video_playback()
+            or (not force and not self.should_follow_video_playback())
         ):
             return
 
@@ -555,10 +555,10 @@ class LfpPanel(LfpAnalysisMixin, QWidget):
 
         if current_width >= full_width * 0.98:
             target_width = default_width
-            force_recenter = target_width < current_width
+            force_recenter = force or target_width < current_width
         else:
             target_width = min(current_width, full_width)
-            force_recenter = False
+            force_recenter = force
 
         if target_width >= full_width:
             next_left, next_right = full_left, full_right
@@ -751,17 +751,23 @@ class LfpPanel(LfpAnalysisMixin, QWidget):
         self.update_event_interval_artists()
         self.update_current_time_marker()
 
-    def set_current_time_marker(self, record_time_sec, follow_playback=False):
+    def set_current_time_marker(
+        self,
+        record_time_sec,
+        follow_playback=False,
+        force_follow=False,
+    ):
         """Set current time marker.
 
         Args:
             record_time_sec: Input used by this operation.
             follow_playback: Input used by this operation.
+            force_follow: Recenter the visible waveform around this time.
         """
         self.sync_state.current_record_time_sec = record_time_sec
 
-        if follow_playback:
-            self.follow_current_time_marker()
+        if follow_playback or force_follow:
+            self.follow_current_time_marker(force=force_follow)
 
         self.update_current_time_marker()
 

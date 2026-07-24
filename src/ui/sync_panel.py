@@ -4,10 +4,12 @@ from PySide6.QtWidgets import QComboBox, QStackedWidget, QVBoxLayout, QWidget
 class SyncPanel(QWidget):
     """Container that switches between the independent marker panels."""
 
+    PANEL_NAMES = ["TTL", "Video", "Find Peak", "LED Analysis"]
+
     def __init__(self):
         super().__init__()
         self.marker_selector = QComboBox()
-        self.marker_selector.addItems(["TTL", "Video", "Find Peak", "LED Analysis"])
+        self.marker_selector.addItems(self.PANEL_NAMES)
         self.marker_selector.setFixedHeight(24)
         self.marker_stack = QStackedWidget()
         self.marker_selector.currentIndexChanged.connect(
@@ -38,3 +40,8 @@ class SyncPanel(QWidget):
         ):
             self.marker_stack.addWidget(panel)
         self.marker_selector.setCurrentIndex(1)
+
+    def show_panel(self, name):
+        index = self.marker_selector.findText(name)
+        if index >= 0:
+            self.marker_selector.setCurrentIndex(index)

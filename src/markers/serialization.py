@@ -66,7 +66,10 @@ def marker_from_dict(data: dict) -> Marker:
     return Marker(**marker_args)
 
 
-def marker_from_legacy_event(data: dict, offset_sec: float | None = None) -> Marker:
+def marker_from_legacy_event(
+    data: dict, offset_sec: float | None = None
+) -> Marker:
+    """Convert pre-v3 video event records to the unified marker model."""
     kind = marker_kind(data.get("event_type", ""))
     video_time_sec = float(data.get("video_time_sec", 0.0))
     position = VideoPosition(video_time_sec, int(data.get("frame_index", 0)))
@@ -74,7 +77,9 @@ def marker_from_legacy_event(data: dict, offset_sec: float | None = None) -> Mar
         position = RecordPosition(video_time_sec - float(offset_sec))
     return Marker(
         kind=kind,
-        source=marker_source(data.get("source", MarkerSource.MANUAL.value)),
+        source=marker_source(
+            data.get("source", MarkerSource.MANUAL.value)
+        ),
         position=position,
         note=str(data.get("note", "")),
         payload={"frame_index": int(data.get("frame_index", 0))},
