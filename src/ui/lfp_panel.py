@@ -2,14 +2,9 @@ import numpy as np
 
 from .. import charts as draw
 from .. import signal_data as signal_func
-from ..charts.chart_helpers import (
-    clamp_xlim,
-    format_time_tick,
-    resolve_plot_step,
-)
+from ..charts.chart_helpers import clamp_xlim, format_time_tick
 from ..app_state import DataState, SyncState
-from ..markers import MarkerKind, RecordPosition, marker_record_time
-from ..synchronization.time_conversion import relative_time
+from ..markers import MarkerKind, marker_record_time
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -198,11 +193,11 @@ class LfpPanel(LfpAnalysisMixin, QWidget):
         self.setLayout(layout)
 
         self.apply_project_state()
-        for control, signal in (
-            (self.bandpass_checkbox, self.bandpass_checkbox.stateChanged),
-            (self.bandpass_low_spin, self.bandpass_low_spin.valueChanged),
-            (self.bandpass_high_spin, self.bandpass_high_spin.valueChanged),
-            (self.notch_checkbox, self.notch_checkbox.stateChanged),
+        for signal in (
+            self.bandpass_checkbox.stateChanged,
+            self.bandpass_low_spin.valueChanged,
+            self.bandpass_high_spin.valueChanged,
+            self.notch_checkbox.stateChanged,
         ):
             try:
                 signal.disconnect(self.refresh_lfp_processing)

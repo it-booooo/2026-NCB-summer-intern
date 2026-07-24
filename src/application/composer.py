@@ -68,20 +68,6 @@ class ApplicationComposer:
         )
         workspace = WorkspaceView(lfp_panel, sync_panel, video_player)
 
-        components = ApplicationComponents(
-            marker_store=marker_store,
-            lfp_service=lfp_service,
-            video_player=video_player,
-            event_table=event_table,
-            lfp_panel=lfp_panel,
-            sync_panel=sync_panel,
-            led_analysis_panel=led_analysis_panel,
-            ttl_panel=ttl_panel,
-            marker_panel=marker_panel,
-            find_peak_panel=find_peak_panel,
-            workspace=workspace,
-        )
-
         project_controller = ProjectController(self.window, state.project)
         sync_controller = SyncController(
             sync_state=state.sync,
@@ -136,12 +122,25 @@ class ApplicationComposer:
             show_opencl_status=led_controller.show_opencl_status,
         )
 
-        components.sync_controller = sync_controller
-        components.led_controller = led_controller
-        components.project_controller = project_controller
-        components.settings_controller = settings_controller
-        components.import_controller = import_controller
-        components.export_controller = export_controller
+        components = ApplicationComponents(
+            marker_store=marker_store,
+            lfp_service=lfp_service,
+            video_player=video_player,
+            event_table=event_table,
+            lfp_panel=lfp_panel,
+            sync_panel=sync_panel,
+            led_analysis_panel=led_analysis_panel,
+            ttl_panel=ttl_panel,
+            marker_panel=marker_panel,
+            find_peak_panel=find_peak_panel,
+            workspace=workspace,
+            sync_controller=sync_controller,
+            led_controller=led_controller,
+            project_controller=project_controller,
+            settings_controller=settings_controller,
+            import_controller=import_controller,
+            export_controller=export_controller,
+        )
 
         project_controller.set_save_callback(export_controller.save_project)
         project_controller.connect_dirty_sources(

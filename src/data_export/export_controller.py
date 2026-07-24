@@ -696,7 +696,6 @@ class ExportController:
 
     def _lfp_filename(self, channel, settings, suffix):
         # 將通道、處理模式與同步後的時間範圍編入預設檔名，方便辨識輸出內容。
-        panel = self.context.lfp_panel
         info = self.data_state.lfp_info
         filename = info.get("filename", "lfp") if info else "lfp"
         stem = filename.rsplit(".", 1)[0]

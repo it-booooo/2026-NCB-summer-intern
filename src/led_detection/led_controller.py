@@ -119,7 +119,7 @@ class LedController(QObject):
             return
 
         try:
-            scan_start_sec, scan_end_sec, scan_start_frame, scan_end_frame = (
+            _, _, scan_start_frame, scan_end_frame = (
                 self.led_analysis_panel.led_scan_range_sec(
                     self.video_state.metadata.using_fps,
                     self.video_state.metadata.total_frames,
