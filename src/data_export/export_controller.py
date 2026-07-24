@@ -39,7 +39,7 @@ from .lfp_image_dialog import LfpImageExportDialog
 class ExportContext:
     parent: object
     marker_store: object
-    lfp_panel: object
+    wave_panel: object
     led_analysis_panel: object
     led_controller: object
     project_controller: object
@@ -566,7 +566,7 @@ class ExportController:
         Args:
             None.
         """
-        panel = self.context.lfp_panel
+        panel = self.context.wave_panel
         lfp_path = self.data_state.lfp_info.get("path") if self.data_state.lfp_info else None
         if not lfp_path:
             QMessageBox.information(

@@ -16,16 +16,16 @@ class ApplicationComponents:
     lfp_service: LfpAnalysisService
     video_player: object
     event_table: object
-    lfp_panel: object
+    wave_panel: object
     sync_panel: object
     led_analysis_panel: object
     ttl_panel: object
     marker_panel: object
     find_peak_panel: object
     workspace: object
-    sync_controller: object | None = None
-    led_controller: object | None = None
-    project_controller: object | None = None
-    settings_controller: object | None = None
-    import_controller: object | None = None
-    export_controller: object | None = None
+    sync_controller: object
+    led_controller: object
+    project_controller: object
+    settings_controller: object
+    import_controller: object
+    export_controller: object

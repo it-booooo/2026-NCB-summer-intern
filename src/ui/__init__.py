@@ -3,7 +3,7 @@
 from .event_table import EventTable, MarkerTable
 from .find_peak_panel import FindPeakPanel
 from .led_panel import LedAnalysisPanel
-from .lfp_panel import LfpPanel
+from .wave_panel import WavePanel
 from .marker_panel import MarkerPanel
 from .marker_view_panel import MarkerViewPanel
 from .style import APP_STYLE
@@ -15,7 +15,7 @@ __all__ = [
     "EventTable",
     "FindPeakPanel",
     "LedAnalysisPanel",
-    "LfpPanel",
+    "WavePanel",
     "MarkerPanel",
     "MarkerTable",
     "MarkerViewPanel",

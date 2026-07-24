@@ -7,7 +7,7 @@ from ..synchronization import SyncController
 from ..ui import (
     FindPeakPanel,
     LedAnalysisPanel,
-    LfpPanel,
+    WavePanel,
     MarkerPanel,
     MarkerTable,
     SyncPanel,
@@ -35,7 +35,7 @@ class ApplicationComposer:
 
         video_player = VideoPlayer(state.video, state.sync, state.led)
         event_table = MarkerTable(marker_store, state.video, state.sync)
-        lfp_panel = LfpPanel(state.data, state.sync, marker_store)
+        wave_panel = WavePanel(state.data, state.sync, marker_store)
         sync_panel = SyncPanel()
         led_analysis_panel = LedAnalysisPanel(
             state.led, video_player, marker_store
@@ -66,21 +66,9 @@ class ApplicationComposer:
             find_peak_panel,
             led_analysis_panel,
         )
-        workspace = WorkspaceView(lfp_panel, sync_panel, video_player)
+        workspace = WorkspaceView(wave_panel, sync_panel, video_player)
 
-        components = ApplicationComponents(
-            marker_store=marker_store,
-            lfp_service=lfp_service,
-            video_player=video_player,
-            event_table=event_table,
-            lfp_panel=lfp_panel,
-            sync_panel=sync_panel,
-            led_analysis_panel=led_analysis_panel,
-            ttl_panel=ttl_panel,
-            marker_panel=marker_panel,
-            find_peak_panel=find_peak_panel,
-            workspace=workspace,
-        )
+
 
         project_controller = ProjectController(self.window, state.project)
         sync_controller = SyncController(
@@ -91,7 +79,7 @@ class ApplicationComposer:
             marker_store=marker_store,
             video_player=video_player,
             event_table=event_table,
-            lfp_panel=lfp_panel,
+            wave_panel=wave_panel,
             ttl_panel=ttl_panel,
             find_peak_panel=find_peak_panel,
             led_analysis_panel=led_analysis_panel,
@@ -110,7 +98,7 @@ class ApplicationComposer:
             marker_store=marker_store,
             video_player=video_player,
             event_table=event_table,
-            lfp_panel=lfp_panel,
+            wave_panel=wave_panel,
             ttl_panel=ttl_panel,
             sync_panel=sync_panel,
             led_analysis_panel=led_analysis_panel,
@@ -121,7 +109,7 @@ class ApplicationComposer:
         export_context = ExportContext(
             parent=self.window,
             marker_store=marker_store,
-            lfp_panel=lfp_panel,
+            wave_panel=wave_panel,
             led_analysis_panel=led_analysis_panel,
             led_controller=led_controller,
             project_controller=project_controller,
@@ -133,27 +121,40 @@ class ApplicationComposer:
             parent=self.window,
             data_state=state.data,
             analysis_settings=state.analysis,
-            lfp_panel=lfp_panel,
+            wave_panel=wave_panel,
             show_opencl_status=led_controller.show_opencl_status,
         )
 
-        components.sync_controller = sync_controller
-        components.led_controller = led_controller
-        components.project_controller = project_controller
-        components.settings_controller = settings_controller
-        components.import_controller = import_controller
-        components.export_controller = export_controller
 
+        components = ApplicationComponents(
+            marker_store=marker_store,
+            lfp_service=lfp_service,
+            video_player=video_player,
+            event_table=event_table,
+            wave_panel=wave_panel,
+            sync_panel=sync_panel,
+            led_analysis_panel=led_analysis_panel,
+            ttl_panel=ttl_panel,
+            marker_panel=marker_panel,
+            find_peak_panel=find_peak_panel,
+            workspace=workspace,
+            sync_controller=sync_controller,
+            led_controller=led_controller,
+            project_controller=project_controller,
+            settings_controller=settings_controller,
+            import_controller=import_controller,
+            export_controller=export_controller
+        )
         project_controller.set_save_callback(export_controller.save_project)
         project_controller.connect_dirty_sources(
             video_player.roi_selected,
             video_player.project_changed,
             marker_store.changed,
-            lfp_panel.project_changed,
+            wave_panel.project_changed,
         )
         sync_controller.connect_signals()
         led_controller.connect_signals()
-        event_table.events_changed.connect(lfp_panel.update_lfp_peak_artist)
+        event_table.events_changed.connect(wave_panel.update_lfp_peak_artist)
 
         MenuBuilder(
             window=self.window,

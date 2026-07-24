@@ -1,4 +1,4 @@
-"""LFP analysis dialogs and figure creation used by ``LfpPanel``."""
+"""LFP analysis dialogs and figure creation used by ``WavePanel``."""
 
 import numpy as np
 from matplotlib.figure import Figure

@@ -29,7 +29,7 @@ from .lfp_analysis import LfpAnalysisMixin
 from .lfp_controls import PlaybackAwareComboBox, SharedTimelineSlider
 
 
-class LfpPanel(LfpAnalysisMixin, QWidget):
+class WavePanel(LfpAnalysisMixin, QWidget):
     time_selected = Signal(float)
     project_changed = Signal()
 
