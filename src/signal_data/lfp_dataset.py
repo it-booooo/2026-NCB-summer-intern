@@ -1,12 +1,10 @@
-"""Reusable, full-resolution LFP data loaded from one CSV file."""
+"""Reusable LFP data with lazy, per-channel CSV loading."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
 import numpy as np
-import pandas as pd
-
 from .lfp_processing import (
     LfpFilterSettings,
     LfpSegment,
@@ -14,15 +12,16 @@ from .lfp_processing import (
     prepare_lfp_signal,
     sample_rate_for_channel,
 )
-from .readers import read_signal_csv
+from .source import SignalDataSource, signal_data_source
 
 
 @dataclass
 class LfpDataset:
-    """Full-resolution LFP samples and reusable processed-signal cache."""
+    """Lazily loaded LFP samples and reusable processed-signal cache."""
 
     info: dict
-    data: pd.DataFrame
+    source: SignalDataSource
+    _active_channel: int | None = field(default=None, init=False, repr=False)
     _signal_cache: dict[tuple[int, LfpFilterSettings | None], np.ndarray] = field(
         default_factory=dict,
         init=False,
@@ -37,11 +36,22 @@ class LfpDataset:
         metadata = info.get("metadata")
         if not isinstance(metadata, dict):
             raise ValueError("LFP metadata not found in info dictionary.")
-        return cls(info=info, data=read_signal_csv(path, metadata=metadata))
+        return cls(info=info, source=signal_data_source(info))
+
+    def _channel_data(self, channel: int):
+        channel = int(channel)
+        self._active_channel = channel
+        return self.source.channel(channel)
 
     @property
     def time_us(self) -> np.ndarray:
-        return self.data["time_us"].to_numpy(dtype=float)
+        channel = self._active_channel
+        if channel is None:
+            configured = self.channels
+            if not configured:
+                return np.asarray([], dtype=float)
+            channel = configured[0]
+        return self._channel_data(channel)["time_us"].to_numpy(dtype=float)
 
     @property
     def record_time_s(self) -> np.ndarray:
@@ -53,9 +63,7 @@ class LfpDataset:
         if configured:
             return [int(channel) for channel in configured]
         return [
-            int(column.removeprefix("channel_"))
-            for column in self.data.columns
-            if column.startswith("channel_")
+            int(channel) for channel in self.info.get("metadata", {}).get("channels", [])
         ]
 
     def sample_rate_hz(self, channel: int) -> float:
@@ -69,13 +77,14 @@ class LfpDataset:
         """Return a full-resolution raw or processed channel signal."""
         channel = int(channel)
         column = f"channel_{channel}"
-        if column not in self.data:
+        data = self._channel_data(channel)
+        if column not in data:
             raise ValueError(f"LFP CSV does not include channel {channel}.")
 
         effective_settings = settings if settings and settings.show_filtered else None
         cache_key = (channel, effective_settings)
         if cache_key not in self._signal_cache:
-            raw_values = self.data[column].to_numpy(dtype=float)
+            raw_values = data[column].to_numpy(dtype=float)
             self._signal_cache[cache_key] = prepare_lfp_signal(
                 raw_values,
                 self.sample_rate_hz(channel),

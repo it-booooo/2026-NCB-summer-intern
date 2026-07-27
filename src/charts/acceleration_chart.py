@@ -5,7 +5,7 @@ from typing import cast
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 
-from ..signal_data import readers as read
+from ..signal_data import signal_data_source
 from .chart_helpers import format_signal_label, install_x_navigation, resolve_plot_step
 
 
@@ -48,7 +48,7 @@ def accelerator(
     if not input_file.is_file():
         raise FileNotFoundError(f"3-axis CSV file not found: {input_file}")
 
-    data = read.read_signal_csv(str(input_file), requested_channels=[260])
+    data = signal_data_source(info).channel(260)
 
 
     channel_name = "channel_260"

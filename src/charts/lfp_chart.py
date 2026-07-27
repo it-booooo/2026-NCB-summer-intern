@@ -21,7 +21,9 @@ class LfpFigure(Figure):
     reset_lfp_x_zoom: Callable[[], None]
     add_lfp_xlim_callback: Callable[[Callable[[tuple[float, float]], None]], None]
     lfp_full_xlim: tuple[float, float]
-    lfp_lines: dict[tuple[int, bool], Line2D]
+    current_channel: int
+    current_view: str
+    line: Line2D
     lfp_channel_numbers: list[int]
     lfp_plot_step: int
 
@@ -68,17 +70,6 @@ def LFP(
 
     if dataset is None:
         dataset = signal_func.LfpDataset.from_csv(info)
-    data = dataset.data
-
-    time_s = data["time_us"].to_numpy(dtype=float) / 1e6
-
-    plot_step = resolve_plot_step(len(data), step)
-    if plot_step == 0 or len(data) <= plot_step:
-        plot_index = slice(None)
-    else:
-        plot_index = slice(None, None, plot_step)
-    x = time_s[plot_index]
-
     channel_numbers = dataset.channels
 
     if channels is None:
@@ -93,6 +84,17 @@ def LFP(
     if selected_channel not in channel_numbers:
         raise ValueError(f"Invalid LFP channel: {selected_channel}")
 
+    show_filtered = bool(filter_settings and filter_settings.show_filtered)
+    initial_settings = _filter_settings_for_view(filter_settings, show_filtered)
+    initial_values = dataset.signal_values(selected_channel, initial_settings)
+    time_s = dataset.record_time_s
+    plot_step = resolve_plot_step(len(initial_values), step)
+    plot_index = (
+        slice(None)
+        if plot_step == 0 or len(initial_values) <= plot_step
+        else slice(None, None, plot_step)
+    )
+
     fig = cast(
         LfpFigure,
         plt.figure(
@@ -103,27 +105,9 @@ def LFP(
     )
     ax = fig.add_axes((0.08, 0.22, 0.90, 0.62))
 
-    lines: dict[tuple[int, bool], Line2D] = {}
-    base_line_data: dict[tuple[int, bool], tuple[np.ndarray, np.ndarray]] = {}
-    show_filtered = bool(filter_settings and filter_settings.show_filtered)
-
-    for channel in channel_numbers:
-        raw_values = dataset.signal_values(channel)
-        filtered_settings = _filter_settings_for_view(filter_settings, True)
-        filtered_values = dataset.signal_values(channel, filtered_settings)
-        for filtered, signal_values in ((False, raw_values), (True, filtered_values)):
-            line = ax.plot(
-                x,
-                signal_values[plot_index],
-                linewidth=0.5,
-                color="blue",
-                visible=(channel == selected_channel and filtered == show_filtered),
-            )[0]
-            lines[(channel, filtered)] = line
-            base_line_data[(channel, filtered)] = (
-                np.asarray(x, dtype=float),
-                np.asarray(signal_values[plot_index], dtype=float),
-            )
+    base_times = np.asarray(time_s[plot_index], dtype=float)
+    base_values = np.asarray(initial_values[plot_index], dtype=float)
+    line = ax.plot(base_times, base_values, linewidth=0.5, color="blue")[0]
 
     ax.set_xlabel("")
     ax.set_ylabel("")
@@ -160,6 +144,19 @@ def LFP(
 
     navigation = install_x_navigation(fig, ax, full_xlim)
 
+    def update_line() -> None:
+        nonlocal base_times, base_values
+        settings = _filter_settings_for_view(filter_settings, show_filtered)
+        values = dataset.signal_values(selected_channel, settings)
+        times = dataset.record_time_s
+        base_times = np.asarray(times[plot_index], dtype=float)
+        base_values = np.asarray(values[plot_index], dtype=float)
+        line.set_data(base_times, base_values)
+        fig.current_channel = selected_channel
+        fig.current_view = "filtered" if show_filtered else "raw"
+        ax.relim()
+        ax.autoscale_view(scalex=False, scaley=True)
+
     def set_lfp_channel(channel: int) -> None:
         """Set lfp channel.
 
@@ -174,14 +171,7 @@ def LFP(
             raise ValueError(f"Invalid LFP channel: {channel}")
 
         selected_channel = channel
-
-        for (item_channel, filtered), line in lines.items():
-            line.set_visible(
-                item_channel == selected_channel and filtered == show_filtered
-            )
-
-        ax.relim(visible_only=True)
-        ax.autoscale_view(scalex=False, scaley=True)
+        update_line()
         fig.canvas.draw_idle()
 
     def set_lfp_signal_view(filtered: bool) -> None:
@@ -192,14 +182,9 @@ def LFP(
         """
         nonlocal show_filtered
         show_filtered = bool(filtered)
-        for (item_channel, item_filtered), line in lines.items():
-            line.set_visible(
-                item_channel == selected_channel and item_filtered == show_filtered
-            )
+        update_line()
         label_settings = _filter_settings_for_view(filter_settings, show_filtered)
         filter_label.set_text(signal_func.filter_description(label_settings))
-        ax.relim(visible_only=True)
-        ax.autoscale_view(scalex=False, scaley=True)
         fig.canvas.draw_idle()
 
     def set_lfp_peak_samples(
@@ -209,11 +194,9 @@ def LFP(
         values: np.ndarray,
     ) -> None:
         """Merge exact peak-neighborhood samples into one displayed LFP line."""
-        key = (int(channel), bool(filtered))
-        if key not in lines:
+        if int(channel) != selected_channel or bool(filtered) != show_filtered:
             raise ValueError(f"Invalid LFP line: channel={channel}, filtered={filtered}")
 
-        base_times, base_values = base_line_data[key]
         extra_times = np.asarray(times, dtype=float).reshape(-1)
         extra_values = np.asarray(values, dtype=float).reshape(-1)
         if extra_times.shape != extra_values.shape:
@@ -235,10 +218,9 @@ def LFP(
             merged_times = base_times
             merged_values = base_values
 
-        lines[key].set_data(merged_times, merged_values)
-        if lines[key].get_visible():
-            ax.relim(visible_only=True)
-            ax.autoscale_view(scalex=False, scaley=True)
+        line.set_data(merged_times, merged_values)
+        ax.relim()
+        ax.autoscale_view(scalex=False, scaley=True)
         fig.canvas.draw_idle()
 
     set_lfp_channel(selected_channel)
@@ -250,7 +232,9 @@ def LFP(
     fig.reset_lfp_x_zoom = navigation.reset_x_zoom
     fig.add_lfp_xlim_callback = navigation.add_xlim_callback
     fig.lfp_full_xlim = full_xlim
-    fig.lfp_lines = lines
+    fig.line = line
+    fig.current_channel = selected_channel
+    fig.current_view = "filtered" if show_filtered else "raw"
     fig.lfp_channel_numbers = channel_numbers
     fig.lfp_plot_step = plot_step
 
