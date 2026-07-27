@@ -32,13 +32,6 @@ def sample_rate_for_channel(
     time_us,
     channel: int | None = None,
 ) -> float:
-    """Provide sample rate for channel functionality.
-
-    Args:
-        info: Metadata or state information to store or use.
-        time_us: Input used by this operation.
-        channel: LFP channel identifier.
-    """
     if info is not None:
         channels = [int(item) for item in info.get("channels", [])]
         sample_rates = [
@@ -57,11 +50,7 @@ def sample_rate_for_channel(
 
 
 def infer_sample_rate_hz(time_us) -> float:
-    """Infer sample rate hz.
-
-    Args:
-        time_us: Input used by this operation.
-    """
+    """Infer sample rate hz."""
     time_values = np.asarray(time_us, dtype=float)
     if time_values.size < 2:
         raise ValueError("Need at least two samples to infer sample rate.")
@@ -87,8 +76,6 @@ def prepare_lfp_signal(
 
     Args:
         values: Signal values to process.
-        sample_rate_hz: Input used by this operation.
-        settings: Configuration settings for this operation.
     """
     signal_values = _finite_signal(values)
     if settings is None or not settings.show_filtered:
@@ -124,7 +111,6 @@ def compute_power_spectrum(
 
     Args:
         values: Signal values to process.
-        sample_rate_hz: Input used by this operation.
     """
     _validate_sample_rate(sample_rate_hz)
     signal_values = _finite_signal(values)
@@ -160,7 +146,6 @@ def compute_time_frequency(
 
     Args:
         values: Signal values to process.
-        sample_rate_hz: Input used by this operation.
     """
     _validate_sample_rate(sample_rate_hz)
     signal_values = _finite_signal(values)
@@ -196,12 +181,9 @@ def prepare_lfp_segment(
     """Prepare lfp segment.
 
     Args:
-        time_us: Input used by this operation.
         values: Signal values to process.
-        sample_rate_hz: Input used by this operation.
         start_s: Start time of the selected range, in seconds.
         end_s: End time of the selected range, in seconds.
-        settings: Configuration settings for this operation.
     """
     start_s = float(start_s)
     end_s = float(end_s)
@@ -240,11 +222,6 @@ def prepare_lfp_segment(
 
 
 def filter_description(settings: LfpFilterSettings | None) -> str:
-    """Provide filter description functionality.
-
-    Args:
-        settings: Configuration settings for this operation.
-    """
     if settings is None or not settings.show_filtered:
         return "Raw"
 

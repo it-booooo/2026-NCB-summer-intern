@@ -161,11 +161,7 @@ class LfpImageExportDialog(QDialog):
         self.update_processing_controls()
 
     def update_processing_controls(self, *_args):
-        """Update processing controls.
-
-        Args:
-            *_args: Input used by this operation.
-        """
+        """Update processing controls."""
         processed = bool(self.signal_selector.currentData())
         self.bandpass_checkbox.setEnabled(processed)
         self.notch_checkbox.setEnabled(processed)
@@ -174,11 +170,6 @@ class LfpImageExportDialog(QDialog):
         self.high_spin.setEnabled(bandpass_enabled)
 
     def choose_destination(self):
-        """Provide choose destination functionality.
-
-        Args:
-            None.
-        """
         directory = QFileDialog.getExistingDirectory(
             self,
             "Select LFP Image Output Folder",
@@ -250,11 +241,6 @@ class LfpImageExportDialog(QDialog):
         self.accept()
 
     def options(self):
-        """Provide options functionality.
-
-        Args:
-            None.
-        """
         start = absolute_time(
             self.start_spin.value(), self.panel.sync_state.record_time_origin_sec
         )

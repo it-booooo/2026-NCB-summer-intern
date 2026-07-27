@@ -111,21 +111,11 @@ def check(info: dict, output_path: str | Path | None = None) -> Path:
 
 
 def default_output_path(file_path: Path) -> Path:
-    """Provide default output path functionality.
-
-    Args:
-        file_path: Input used by this operation.
-    """
     output_dir = file_path.parent.parent / "output_data"
     return output_dir / f"{file_path.stem}_check_report.csv"
 
 
 def first_sample_rate(info: dict) -> float:
-    """Provide first sample rate functionality.
-
-    Args:
-        info: Metadata or state information to store or use.
-    """
     sample_rate = info.get("sample_rates", [None])[0]
     if sample_rate is None:
         raise ValueError("Sample Rate not found")
@@ -133,13 +123,6 @@ def first_sample_rate(info: dict) -> float:
 
 
 def channel_label(column_index: int, channels: list[int], column_name: str) -> str:
-    """Provide channel label functionality.
-
-    Args:
-        column_index: Input used by this operation.
-        channels: Available LFP channel identifiers.
-        column_name: Input used by this operation.
-    """
     if column_index == 0:
         return "Time[us]"
 
@@ -151,11 +134,7 @@ def channel_label(column_index: int, channels: list[int], column_name: str) -> s
 
 
 def find_data_header(file_path: Path) -> tuple[int, int]:
-    """Find data header.
-
-    Args:
-        file_path: Input used by this operation.
-    """
+    """Find data header."""
     with file_path.open("r", encoding="utf-8-sig", newline="") as file:
         reader = csv.reader(file)
         for row_num, row in enumerate(reader):

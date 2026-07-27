@@ -40,7 +40,6 @@ def apply_roi(frame_bgr, roi=None):
     """Apply roi.
 
     Args:
-        frame_bgr: Input used by this operation.
         roi: LED region of interest as (x, y, width, height).
     """
     if roi is None:
@@ -51,12 +50,7 @@ def apply_roi(frame_bgr, roi=None):
 
 
 def resize_roi_by_scale(frame_bgr, scale=0.5):
-    """Resize roi by scale.
-
-    Args:
-        frame_bgr: Input used by this operation.
-        scale: Input used by this operation.
-    """
+    """Resize roi by scale."""
     if scale >= 1.0:
         return frame_bgr
 
@@ -72,12 +66,7 @@ def resize_roi_by_scale(frame_bgr, scale=0.5):
 
 
 def mean_brightness(frame_bgr, roi=None):
-    """Provide mean brightness functionality.
-
-    Args:
-        frame_bgr: Input used by this operation.
-        roi: LED region of interest as (x, y, width, height).
-    """
+    """Return mean brightness inside an ``(x, y, width, height)`` ROI."""
     frame_bgr = apply_roi(frame_bgr, roi)
 
     if frame_bgr.size == 0:
@@ -109,12 +98,10 @@ def compute_led_brightness_curve(
         rotate_180: Backward-compatible 180-degree rotation flag.
         rotation_degrees: Display/analysis rotation.
         using_fps: Frame rate used for time conversion.
-        frame_step: Input used by this operation.
         start_frame: First video frame to process.
         end_frame: Last video frame to process.
         should_stop: Callback that returns true when processing should stop.
         progress_callback: Callback receiving scan progress updates.
-        acceleration_info: Input used by this operation.
     """
     if acceleration_info is not None:
         acceleration_info.clear()
@@ -255,12 +242,7 @@ def compute_frame_deltas(points):
 
 
 def point_for_frame(points, frame_index):
-    """Provide point for frame functionality.
-
-    Args:
-        points: Brightness or analysis points used by the operation.
-        frame_index: Zero-based video frame index.
-    """
+    """Return the brightness point for a zero-based video frame index."""
     if not points:
         return None
 
@@ -276,13 +258,6 @@ def _overlaps_ranges(start_frame, end_frame, ranges):
 
 
 def event_pair_from_deltas(points, on_delta, off_delta):
-    """Provide event pair from deltas functionality.
-
-    Args:
-        points: Brightness or analysis points used by the operation.
-        on_delta: Input used by this operation.
-        off_delta: Input used by this operation.
-    """
     on_point = point_for_frame(points, on_delta.frame_index)
     off_point = point_for_frame(points, off_delta.frame_index)
 
@@ -340,12 +315,6 @@ def detect_led_event_pairs_from_frame_deltas(
     Args:
         points: Brightness or analysis points used by the operation.
         fps: Video frame rate in frames per second.
-        expected_duration_sec: Input used by this operation.
-        min_duration_sec: Input used by this operation.
-        max_duration_sec: Input used by this operation.
-        min_gap_sec: Input used by this operation.
-        max_events: Input used by this operation.
-        duration_weight: Input used by this operation.
     """
     deltas = compute_frame_deltas(points)
     if not deltas:
@@ -449,21 +418,10 @@ def refine_led_event_pairs_from_frame_deltas(
     Args:
         video_path: Path of the video being processed.
         roi: LED region of interest as (x, y, width, height).
-        coarse_events: Input used by this operation.
         rotate_180: Backward-compatible 180-degree rotation flag.
         rotation_degrees: Display/analysis rotation.
         using_fps: Frame rate used for time conversion.
-        window_sec: Input used by this operation.
-        scan_start_frame: Input used by this operation.
-        scan_end_frame: Input used by this operation.
         should_stop: Callback that returns true when processing should stop.
-        expected_duration_sec: Input used by this operation.
-        min_duration_sec: Input used by this operation.
-        max_duration_sec: Input used by this operation.
-        min_gap_sec: Input used by this operation.
-        max_events: Input used by this operation.
-        duration_weight: Input used by this operation.
-        acceleration_info: Input used by this operation.
     """
     max_events = max(int(max_events), 0)
     if not coarse_events or max_events == 0:

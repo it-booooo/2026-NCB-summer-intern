@@ -425,11 +425,6 @@ class ImportController:
         return path
 
     def import_video(self):
-        """Provide import video functionality.
-
-        Args:
-            None.
-        """
         context = self.context
         if not context.led_controller.stop_led_detection(wait=True):
             QMessageBox.information(
@@ -478,11 +473,6 @@ class ImportController:
         context.project_controller.mark_dirty()
 
     def import_time_marker(self):
-        """Provide import time marker functionality.
-
-        Args:
-            None.
-        """
         context = self.context
         path = self.open_csv_file("Import Time Marker (.csv)")
         if not path:

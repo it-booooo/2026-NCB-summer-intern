@@ -5,6 +5,8 @@ import math
 import string
 from pathlib import Path
 
+from .markers import VideoPosition
+
 PROJECT_FORMAT = "pig-analysis-project"
 PROJECT_VERSION = 3
 ALLOWED_SOURCE_TYPES = frozenset({"video", "lfp", "axis", "ttl"})
@@ -165,12 +167,28 @@ def validate_video_bounds(state, metadata):
     if metadata.total_frames <= 0 or frame >= metadata.total_frames:
         raise ValueError("Project current frame is outside the source video.")
     for marker in state.get("markers", []):
-        position = marker.get("position")
-        if position and position.get("domain") == "video":
-            if position.get("frame_index", 0) >= metadata.total_frames:
-                raise ValueError("A project video marker frame is outside the source video.")
-            if float(position.get("time_sec", 0.0)) > metadata.duration_sec:
-                raise ValueError("A project video marker time is outside the source video.")
+        position = (
+            marker.get("position")
+            if isinstance(marker, dict)
+            else marker.position
+        )
+        if isinstance(position, dict) and position.get("domain") == "video":
+            frame_index = position.get("frame_index", 0)
+            time_sec = float(position.get("time_sec", 0.0))
+        elif isinstance(position, VideoPosition):
+            frame_index = position.frame_index
+            time_sec = position.time_sec
+        else:
+            continue
+
+        if frame_index >= metadata.total_frames:
+            raise ValueError(
+                "A project video marker frame is outside the source video."
+            )
+        if time_sec > metadata.duration_sec:
+            raise ValueError(
+                "A project video marker time is outside the source video."
+            )
     roi = state.get("led", {}).get("roi")
     if roi is None:
         return
@@ -197,7 +215,7 @@ def _validate_marker(marker):
     position = marker.get("position")
     if not isinstance(position, dict) or position.get("domain") not in {"video", "record"}:
         raise ValueError("Project marker position is invalid.")
-    if not _finite_number(position.get("time_sec")) or position["time_sec"] < 0:
+    if not _finite_number(position.get("time_sec")):
         raise ValueError("Project marker time is invalid.")
     if position["domain"] == "video":
         frame = position.get("frame_index")

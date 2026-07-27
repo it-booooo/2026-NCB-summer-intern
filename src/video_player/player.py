@@ -248,20 +248,12 @@ class VideoPlayer(QWidget):
         )
 
     def format_display_time(self, seconds):
-        """Format display time.
-
-        Args:
-            seconds: Input used by this operation.
-        """
+        """Format display time."""
         sign = "-" if seconds < 0 else ""
         return f"{sign}{format_time(abs(seconds))}"
 
     def set_sync_time_origin(self, origin_sec):
-        """Set sync time origin.
-
-        Args:
-            origin_sec: Input used by this operation.
-        """
+        """Set sync time origin."""
         next_origin = None if origin_sec is None else max(float(origin_sec), 0.0)
         self.sync_state.video_time_origin_sec = next_origin
         self.update_time_display()
@@ -277,11 +269,7 @@ class VideoPlayer(QWidget):
             )
 
     def frame_to_time_sec(self, frame_index):
-        """Provide frame to time sec functionality.
-
-        Args:
-            frame_index: Zero-based video frame index.
-        """
+        """Convert a zero-based frame index to seconds using the video FPS."""
         fps = self.video_state.metadata.using_fps if self.video_state.metadata else None
         return frame_to_time_sec(frame_index, fps)
 
@@ -456,12 +444,7 @@ class VideoPlayer(QWidget):
         self.mark_seek_input_valid(self.frame_seek_input, True)
 
     def mark_seek_input_valid(self, widget, is_valid):
-        """Mark seek input valid.
-
-        Args:
-            widget: Input used by this operation.
-            is_valid: Input used by this operation.
-        """
+        """Mark seek input valid."""
         widget.setStyleSheet("" if is_valid else "border: 1px solid #c0392b;")
 
     def seek_to_input(self, input_type):
@@ -562,12 +545,7 @@ class VideoPlayer(QWidget):
         return success
 
     def display_frame(self, frame, frame_index):
-        """Provide display frame functionality.
-
-        Args:
-            frame: Input used by this operation.
-            frame_index: Zero-based video frame index.
-        """
+        """Display a frame and record its zero-based frame index."""
         import cv2
 
         frame = apply_frame_rotation(
@@ -714,10 +692,6 @@ class VideoPlayer(QWidget):
         QTimer.singleShot(0, refresh_display)
 
     def resizeEvent(self, event):
-        """Resize event.
-
-        Args:
-            event: Event record to process.
-        """
+        """Resize event."""
         super().resizeEvent(event)
         self.schedule_video_display_update()

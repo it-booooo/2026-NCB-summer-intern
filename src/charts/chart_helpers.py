@@ -7,23 +7,14 @@ TARGET_PLOT_POINTS = 5000
 
 
 def resolve_plot_step(data_length: int, step: int | None) -> int:
-    """Resolve plot step.
-
-    Args:
-        data_length: Input used by this operation.
-        step: Input used by this operation.
-    """
+    """Resolve plot step."""
     if step is None:
         return max(data_length // TARGET_PLOT_POINTS, 1)
     return max(int(step), 0)
 
 
 def format_signal_label(unit):
-    """Format signal label.
-
-    Args:
-        unit: Input used by this operation.
-    """
+    """Format signal label."""
     return f"Signal ({unit})" if unit else "Signal"
 
 
@@ -32,7 +23,6 @@ def format_time_tick(value, origin_sec=None):
 
     Args:
         value: New value to store or apply.
-        origin_sec: Input used by this operation.
     """
     value = relative_time(value, origin_sec)
     if abs(value) < 0.0005:
@@ -81,13 +71,7 @@ def install_x_navigation(fig, ax, full_xlim) -> XNavigation:
     xlim_callbacks: list[Callable[[tuple[float, float]], None]] = []
 
     def set_xlim(left: float, right: float, *, emit: bool = True) -> None:
-        """Set xlim.
-
-        Args:
-            left: Input used by this operation.
-            right: Input used by this operation.
-            emit: Input used by this operation.
-        """
+        """Set xlim."""
         next_xlim = clamp_xlim(left, right, full_xlim)
         ax.set_xlim(next_xlim)
 
@@ -114,11 +98,6 @@ def install_x_navigation(fig, ax, full_xlim) -> XNavigation:
         xlim_callbacks.append(callback)
 
     def event_xdata(event) -> float | None:
-        """Provide event xdata functionality.
-
-        Args:
-            event: Event record to process.
-        """
         if event.xdata is not None:
             return float(event.xdata)
         if event.x is None or event.y is None:
@@ -126,11 +105,6 @@ def install_x_navigation(fig, ax, full_xlim) -> XNavigation:
         return float(ax.transData.inverted().transform((event.x, event.y))[0])
 
     def zoom_x(event) -> None:
-        """Provide zoom x functionality.
-
-        Args:
-            event: Event record to process.
-        """
         if event.inaxes != ax:
             return
 
@@ -158,21 +132,13 @@ def install_x_navigation(fig, ax, full_xlim) -> XNavigation:
         set_xlim(next_left, next_right)
 
     def handle_double_click(event) -> None:
-        """Handle double click.
-
-        Args:
-            event: Event record to process.
-        """
+        """Handle double click."""
         if event.inaxes == ax and event.dblclick:
             reset_x_zoom()
             pan_state.clear()
 
     def start_x_pan(event) -> None:
-        """Start x pan.
-
-        Args:
-            event: Event record to process.
-        """
+        """Start x pan."""
         if event.inaxes != ax or event.button != 1 or event.dblclick:
             return
 
@@ -186,11 +152,6 @@ def install_x_navigation(fig, ax, full_xlim) -> XNavigation:
         pan_state["right"] = right
 
     def drag_x_pan(event) -> None:
-        """Provide drag x pan functionality.
-
-        Args:
-            event: Event record to process.
-        """
         if not pan_state:
             return
 
@@ -202,11 +163,7 @@ def install_x_navigation(fig, ax, full_xlim) -> XNavigation:
         set_xlim(pan_state["left"] - dx, pan_state["right"] - dx)
 
     def stop_x_pan(event) -> None:
-        """Stop x pan.
-
-        Args:
-            event: Event record to process.
-        """
+        """Stop x pan."""
         pan_state.clear()
 
     fig.canvas.mpl_connect("scroll_event", zoom_x)
