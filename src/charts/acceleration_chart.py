@@ -48,12 +48,8 @@ def accelerator(
     if not input_file.is_file():
         raise FileNotFoundError(f"3-axis CSV file not found: {input_file}")
 
-    data = signal_data_source(info).channel(260)
-
-
-    channel_name = "channel_260"
-    if channel_name not in data:
-        raise ValueError("3-axis CSV must include channel 260")
+    source = signal_data_source(info)
+    overview = source.overview(260)
 
     fig = cast(
         AcceleratorFigure,
@@ -69,17 +65,18 @@ def accelerator(
         ax = fig.add_subplot(111)
 
     # Convert microseconds to seconds for charts.
-    data["time_s"] = data["time_us"] / 1e6
-    plot_step = resolve_plot_step(len(data), step)
-    if plot_step == 0 or len(data) <= plot_step:
-        plot_data = data
+    time_s = overview.time_us / 1e6
+    values = overview.values
+    plot_step = resolve_plot_step(len(values), step)
+    if plot_step == 0 or len(values) <= plot_step:
+        plot_index = slice(None)
     else:
-        plot_data = data.iloc[::plot_step]
+        plot_index = slice(None, None, plot_step)
 
     label = None if compact else "Channel 260"
     ax.plot(
-        plot_data["time_s"],
-        plot_data[channel_name],
+        time_s[plot_index],
+        values[plot_index],
         label=label,
         linewidth=0.2,
     )
@@ -106,7 +103,8 @@ def accelerator(
     ax.tick_params(axis="both", labelsize=7, pad=1)
 
     ax.grid(True, linewidth=0.4, alpha=0.35)
-    full_xlim = (float(data["time_s"].iloc[0]), float(data["time_s"].iloc[-1]))
+    left_us, right_us = source.bounds(260)
+    full_xlim = (left_us / 1e6, right_us / 1e6)
     if full_xlim[0] == full_xlim[1]:
         full_xlim = (full_xlim[0] - 0.5, full_xlim[1] + 0.5)
 

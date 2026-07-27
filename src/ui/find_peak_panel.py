@@ -370,23 +370,20 @@ class FindPeakPanel(MarkerViewPanel):
         QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
             dataset = self.lfp_service.dataset()
-            values = dataset.signal_values(channel, self.lfp_service.filter_settings())
-            video_times = dataset.record_time_s + offset
-            valid_indices = np.flatnonzero(
-                (video_times >= 0.0) & (video_times <= duration)
+            segment = dataset.segment(
+                channel,
+                -offset,
+                duration - offset,
+                self.lfp_service.filter_settings(),
             )
-            peak_indices = np.array([], dtype=int)
-            if valid_indices.size:
-                first = int(valid_indices[0])
-                last = int(valid_indices[-1]) + 1
-                visible = values[first:last]
-                baseline = float(np.nanmedian(visible))
-                mad = float(np.nanmedian(np.abs(visible - baseline)))
-                sigma = 1.4826 * mad
-                if not np.isfinite(sigma) or sigma <= 0.0:
-                    sigma = float(np.nanstd(visible))
-                if not np.isfinite(sigma) or sigma <= 0.0:
-                    sigma = np.finfo(float).eps
+            visible = segment.values
+            baseline = float(np.nanmedian(visible))
+            mad = float(np.nanmedian(np.abs(visible - baseline)))
+            sigma = 1.4826 * mad
+            if not np.isfinite(sigma) or sigma <= 0.0:
+                sigma = float(np.nanstd(visible))
+            if not np.isfinite(sigma) or sigma <= 0.0:
+                sigma = np.finfo(float).eps
             distance = max(
                 1,
                 round(
@@ -412,20 +409,19 @@ class FindPeakPanel(MarkerViewPanel):
             )
 
             local_peaks = np.sort(np.concatenate((positive_peaks, negative_peaks)))
-            peak_indices = local_peaks + first
 
             markers = [
                 Marker(
                     kind=MarkerKind.LFP_PEAK,
                     source=MarkerSource.LFP_DETECTION,
-                    position=RecordPosition(float(dataset.record_time_s[index])),
+                    position=RecordPosition(float(segment.record_time_s[index])),
                     note=(
-                        f"channel={channel}, value={values[index]:.6g}, "
-                        f"{'negative' if values[index] < baseline else 'positive'} peak"
+                        f"channel={channel}, value={visible[index]:.6g}, "
+                        f"{'negative' if visible[index] < baseline else 'positive'} peak"
                     ),
-                    payload={"channel": channel, "value": float(values[index])},
+                    payload={"channel": channel, "value": float(visible[index])},
                 )
-                for index in peak_indices
+                for index in local_peaks
             ]
             retained = [
                 marker
@@ -445,5 +441,5 @@ class FindPeakPanel(MarkerViewPanel):
         QMessageBox.information(
             self,
             "LFP peaks",
-            f"Added {len(peak_indices)} peak markers from channel {channel}.",
+            f"Added {len(markers)} peak markers from channel {channel}.",
         )

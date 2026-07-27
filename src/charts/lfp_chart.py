@@ -8,7 +8,7 @@ from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 
 from .. import signal_data as signal_func
-from .chart_helpers import format_signal_label, install_x_navigation, resolve_plot_step
+from .chart_helpers import format_signal_label, install_x_navigation
 
 
 class LfpFigure(Figure):
@@ -86,14 +86,11 @@ def LFP(
 
     show_filtered = bool(filter_settings and filter_settings.show_filtered)
     initial_settings = _filter_settings_for_view(filter_settings, show_filtered)
-    initial_values = dataset.signal_values(selected_channel, initial_settings)
-    time_s = dataset.record_time_s
-    plot_step = resolve_plot_step(len(initial_values), step)
-    plot_index = (
-        slice(None)
-        if plot_step == 0 or len(initial_values) <= plot_step
-        else slice(None, None, plot_step)
+    initial_times, initial_values = dataset.overview_values(
+        selected_channel, initial_settings
     )
+    time_s = initial_times / 1_000_000.0
+    plot_step = 1
 
     fig = cast(
         LfpFigure,
@@ -105,8 +102,10 @@ def LFP(
     )
     ax = fig.add_axes((0.08, 0.22, 0.90, 0.62))
 
-    base_times = np.asarray(time_s[plot_index], dtype=float)
-    base_values = np.asarray(initial_values[plot_index], dtype=float)
+    coarse_times = np.asarray(time_s, dtype=float)
+    coarse_values = np.asarray(initial_values, dtype=float)
+    base_times = coarse_times
+    base_values = coarse_values
     line = ax.plot(base_times, base_values, linewidth=0.5, color="blue")[0]
 
     ax.set_xlabel("")
@@ -138,22 +137,29 @@ def LFP(
     ax.grid(True, linewidth=0.4, alpha=0.35)
     ax.tick_params(axis="both", labelsize=7, pad=1)
 
-    full_xlim = (float(time_s[0]), float(time_s[-1]))
+    full_xlim = dataset.record_bounds_s(selected_channel)
     if full_xlim[0] == full_xlim[1]:
         full_xlim = (full_xlim[0] - 0.5, full_xlim[1] + 0.5)
 
     navigation = install_x_navigation(fig, ax, full_xlim)
 
+    def load_coarse() -> None:
+        nonlocal coarse_times, coarse_values
+        settings = _filter_settings_for_view(filter_settings, show_filtered)
+        overview_times, overview_values = dataset.overview_values(
+            selected_channel, settings
+        )
+        coarse_times = np.asarray(overview_times / 1_000_000.0, dtype=float)
+        coarse_values = np.asarray(overview_values, dtype=float)
+
     def update_line() -> None:
         nonlocal base_times, base_values
-        settings = _filter_settings_for_view(filter_settings, show_filtered)
-        values = dataset.signal_values(selected_channel, settings)
-        times = dataset.record_time_s
-        base_times = np.asarray(times[plot_index], dtype=float)
-        base_values = np.asarray(values[plot_index], dtype=float)
+        base_times = coarse_times
+        base_values = coarse_values
         line.set_data(base_times, base_values)
         fig.current_channel = selected_channel
         fig.current_view = "filtered" if show_filtered else "raw"
+        fig.lfp_plot_step = 1
         ax.relim()
         ax.autoscale_view(scalex=False, scaley=True)
 
@@ -171,6 +177,7 @@ def LFP(
             raise ValueError(f"Invalid LFP channel: {channel}")
 
         selected_channel = channel
+        load_coarse()
         update_line()
         fig.canvas.draw_idle()
 
@@ -182,6 +189,7 @@ def LFP(
         """
         nonlocal show_filtered
         show_filtered = bool(filtered)
+        load_coarse()
         update_line()
         label_settings = _filter_settings_for_view(filter_settings, show_filtered)
         filter_label.set_text(signal_func.filter_description(label_settings))

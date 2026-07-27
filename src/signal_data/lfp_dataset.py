@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import dataclass, field
+import threading
 
 import numpy as np
 from .lfp_processing import (
@@ -12,7 +14,9 @@ from .lfp_processing import (
     prepare_lfp_signal,
     sample_rate_for_channel,
 )
-from .source import SignalDataSource, signal_data_source
+from .source import RawSignalSegment, SignalDataSource, signal_data_source
+
+SEGMENT_CACHE_MAX_BYTES = 128 * 1024 * 1024
 
 
 @dataclass
@@ -21,13 +25,13 @@ class LfpDataset:
 
     info: dict
     source: SignalDataSource
-    _active_channel: int | None = field(default=None, init=False, repr=False)
-    _signal_cache: dict[tuple[int, LfpFilterSettings | None], np.ndarray] = field(
-        default_factory=dict,
-        init=False,
-        repr=False,
+    _segment_cache: OrderedDict[
+        tuple[int, int, int], RawSignalSegment
+    ] = field(default_factory=OrderedDict, init=False, repr=False)
+    _segment_cache_bytes: int = field(default=0, init=False, repr=False)
+    _segment_lock: threading.RLock = field(
+        default_factory=threading.RLock, init=False, repr=False
     )
-
     @classmethod
     def from_csv(cls, info: dict) -> LfpDataset:
         path = info.get("path")
@@ -38,20 +42,13 @@ class LfpDataset:
             raise ValueError("LFP metadata not found in info dictionary.")
         return cls(info=info, source=signal_data_source(info))
 
-    def _channel_data(self, channel: int):
-        channel = int(channel)
-        self._active_channel = channel
-        return self.source.channel(channel)
-
     @property
     def time_us(self) -> np.ndarray:
-        channel = self._active_channel
-        if channel is None:
-            configured = self.channels
-            if not configured:
-                return np.asarray([], dtype=float)
-            channel = configured[0]
-        return self._channel_data(channel)["time_us"].to_numpy(dtype=float)
+        configured = self.channels
+        if not configured:
+            return np.asarray([], dtype=float)
+        left, right = self.source.bounds(configured[0])
+        return np.asarray([left, right], dtype=float)
 
     @property
     def record_time_s(self) -> np.ndarray:
@@ -67,30 +64,28 @@ class LfpDataset:
         ]
 
     def sample_rate_hz(self, channel: int) -> float:
-        return sample_rate_for_channel(self.info, self.time_us, int(channel))
+        return sample_rate_for_channel(
+            self.info,
+            np.asarray([], dtype=float),
+            int(channel),
+        )
 
-    def signal_values(
+    def overview_values(
         self,
         channel: int,
         settings: LfpFilterSettings | None = None,
-    ) -> np.ndarray:
-        """Return a full-resolution raw or processed channel signal."""
-        channel = int(channel)
-        column = f"channel_{channel}"
-        data = self._channel_data(channel)
-        if column not in data:
-            raise ValueError(f"LFP CSV does not include channel {channel}.")
+    ) -> tuple[np.ndarray, np.ndarray]:
+        overview = self.source.overview(int(channel))
+        values = prepare_lfp_signal(
+            overview.values,
+            self.sample_rate_hz(channel),
+            settings,
+        )
+        return np.asarray(overview.time_us), values
 
-        effective_settings = settings if settings and settings.show_filtered else None
-        cache_key = (channel, effective_settings)
-        if cache_key not in self._signal_cache:
-            raw_values = data[column].to_numpy(dtype=float)
-            self._signal_cache[cache_key] = prepare_lfp_signal(
-                raw_values,
-                self.sample_rate_hz(channel),
-                effective_settings,
-            )
-        return self._signal_cache[cache_key]
+    def record_bounds_s(self, channel: int) -> tuple[float, float]:
+        left, right = self.source.bounds(int(channel))
+        return left / 1_000_000.0, right / 1_000_000.0
 
     def segment(
         self,
@@ -101,12 +96,62 @@ class LfpDataset:
     ) -> LfpSegment:
         """Return a full-resolution time selection from a cached signal."""
         channel = int(channel)
-        values = self.signal_values(channel, settings)
+        start_s, end_s = sorted((float(start_s), float(end_s)))
+        raw = self._raw_segment(channel, start_s, end_s)
         return prepare_lfp_segment(
-            self.time_us,
-            values,
+            raw.time_us,
+            raw.values,
             self.sample_rate_hz(channel),
             start_s,
             end_s,
-            None,
+            settings,
         )
+
+    @staticmethod
+    def _segment_key(channel: int, start_s: float, end_s: float):
+        return (
+            int(channel),
+            int(round(start_s * 1_000_000.0)),
+            int(round(end_s * 1_000_000.0)),
+        )
+
+    def _raw_segment(
+        self,
+        channel: int,
+        start_s: float,
+        end_s: float,
+        cancel_event: threading.Event | None = None,
+    ) -> RawSignalSegment:
+        start_s, end_s = sorted((float(start_s), float(end_s)))
+        key = self._segment_key(channel, start_s, end_s)
+        with self._segment_lock:
+            cached = self._segment_cache.get(key)
+            if cached is not None:
+                self._segment_cache.move_to_end(key)
+                return cached
+
+        raw = self.source.segment(
+            int(channel),
+            key[1],
+            key[2],
+            cancel_event=cancel_event,
+        )
+        size = int(raw.time_us.nbytes + raw.values.nbytes)
+        if size > SEGMENT_CACHE_MAX_BYTES:
+            return raw
+        with self._segment_lock:
+            existing = self._segment_cache.get(key)
+            if existing is not None:
+                self._segment_cache.move_to_end(key)
+                return existing
+            self._segment_cache[key] = raw
+            self._segment_cache_bytes += size
+            while (
+                self._segment_cache
+                and self._segment_cache_bytes > SEGMENT_CACHE_MAX_BYTES
+            ):
+                _, removed = self._segment_cache.popitem(last=False)
+                self._segment_cache_bytes -= int(
+                    removed.time_us.nbytes + removed.values.nbytes
+                )
+        return raw

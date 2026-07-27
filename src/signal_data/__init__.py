@@ -19,11 +19,18 @@ from .lfp_processing import (
     sample_rate_for_channel,
 )
 from .lfp_service import LfpAnalysisService
-from .source import SignalDataSource, signal_data_source
+from .source import (
+    CacheBuildCancelled,
+    RawSignalSegment,
+    SignalDataSource,
+    SignalOverview,
+    signal_data_source,
+)
 
 __all__ = [
     "LfpAnalysisService", "LfpDataset", "LfpFilterSettings", "LfpSegment",
-    "SignalDataSource", "signal_data_source", "compute_power_spectrum",
+    "CacheBuildCancelled", "RawSignalSegment", "SignalDataSource",
+    "SignalOverview", "signal_data_source", "compute_power_spectrum",
     "compute_time_frequency", "filter_description", "parse_lfp_csv_info",
     "parse_signal_csv_metadata", "parse_signal_csv_units",
     "parse_time_marker_csv_info", "prepare_lfp_segment", "prepare_lfp_signal",

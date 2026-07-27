@@ -1014,11 +1014,6 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         filtered = bool(self.signal_view_selector.currentData())
         if channel is not None:
             dataset = self.ensure_lfp_dataset()
-            values = dataset.signal_values(
-                channel,
-                self.current_lfp_filter_settings(),
-            )
-            record_times = dataset.record_time_s
             local_times: list[float] = []
             local_values: list[float] = []
 
@@ -1034,14 +1029,14 @@ class WavePanel(LfpAnalysisMixin, QWidget):
                 )
                 if peak_record_time is None:
                     continue
-                first_sample = int(
-                    np.searchsorted(record_times, peak_record_time - 1.0, side="left")
+                segment = dataset.segment(
+                    channel,
+                    peak_record_time - 1.0,
+                    peak_record_time + 1.0,
+                    self.current_lfp_filter_settings(),
                 )
-                last_sample = int(
-                    np.searchsorted(record_times, peak_record_time + 1.0, side="right")
-                )
-                local_times.extend(record_times[first_sample:last_sample])
-                local_values.extend(values[first_sample:last_sample])
+                local_times.extend(segment.record_time_s)
+                local_values.extend(segment.values)
                 local_times.append(np.nan)
                 local_values.append(np.nan)
 

@@ -47,11 +47,10 @@ class LfpAnalysisMixin:
             raise ValueError("Please import LFP CSV data first.")
     
         dataset = self.ensure_lfp_dataset()
-        time_s = dataset.record_time_s
-        if time_s.size == 0:
+        channels = dataset.channels
+        if not channels:
             raise ValueError("LFP CSV does not contain samples.")
-    
-        return float(time_s[0]), float(time_s[-1])
+        return dataset.record_bounds_s(channels[0])
     
     def settings_from_processing_controls(
         self,
