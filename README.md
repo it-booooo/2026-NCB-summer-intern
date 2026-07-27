@@ -173,11 +173,13 @@ TTL CSV 建議包含：
 
 1. 匯入影片及 LFP。
 2. 完成影片與 TTL 同步。
-3. 在 Waveform Area 選定 LFP channel。
+3. 在「Find Peak」頁面選擇要分析的 LFP channel。
 4. 到「Settings > Set LFP peak thresholds」設定高度、prominence 與最小間距門檻。
 5. 切換至「Find Peak」，按「Find Peak」。
 
 程式只在與影片時間重疊的訊號範圍尋找正向峰值。再次執行會取代先前自動偵測出的 LFP peak；表格內可編輯 note、點選峰值跳轉影片，或刪除選定峰值。
+
+完成峰值偵測後，可按「Analyze Peaks」查看所選 channel 每分鐘的 LFP peak 數量長條圖。此功能必須先有完成同步的 LFP peak 才能使用。
 
 ## 匯出資料
 
@@ -208,6 +210,10 @@ TTL CSV 建議包含：
 - 圖片 DPI 與目的資料夾。
 
 輸出檔名會包含來源檔名、channel、raw／processed 及圖表類型。
+
+### Export Peak analyze Image
+
+將 LFP peak 數量分析圖匯出為 PNG。使用前必須先完成同步與峰值偵測；匯出時可選擇要輸出的 LFP channel。
 
 ## 儲存與開啟專案
 
