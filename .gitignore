@@ -23,6 +23,7 @@ output_data/
 # Generated media and tabular data
 *.png
 *.csv
+benchmark-results/
 *.mp4
 
 # Incomplete project files only. Keep completed .pigproj files visible so
