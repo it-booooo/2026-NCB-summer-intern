@@ -35,6 +35,9 @@ class VideoPlayer(QWidget):
     roi_selected = Signal(tuple)
     project_changed = Signal()
 
+    STATUS_UPDATE_INTERVAL_FRAMES = 5
+    FRAME_SIGNAL_INTERVAL_FRAMES = 3
+
     BUTTON_WIDTHS: ClassVar[dict[str, int]] = {
         "Play": 64,
         "Stop": 64,
