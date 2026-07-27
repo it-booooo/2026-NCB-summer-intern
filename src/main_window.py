@@ -26,10 +26,20 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         project = self.components.project_controller
+        importer = self.components.import_controller
         led = self.components.led_controller
         video_player = self.components.video_player
 
         if not project.confirm_unsaved_changes("close the application"):
+            event.ignore()
+            return
+
+        if not importer.stop_project_load(wait=True):
+            QMessageBox.information(
+                self,
+                "Project loading",
+                "The project is still loading. Please close the window again in a moment.",
+            )
             event.ignore()
             return
 

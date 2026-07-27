@@ -1,7 +1,5 @@
-import json
 from dataclasses import dataclass
 from pathlib import Path
-from zipfile import BadZipFile, ZipFile
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -18,18 +16,16 @@ from ..markers import (
     marker_from_legacy_ttl,
 )
 from ..project_format import (
-    MAX_MANIFEST_BYTES,
-    MAX_STATE_BYTES,
     file_fingerprint,
-    validate_manifest,
-    validate_state,
     validate_video_bounds,
 )
+from ..project_archive import load_project_archive
 from ..video_player.video_helpers import (
     normalize_rotation_degrees,
     parse_video_metadata,
     read_frame,
 )
+from .project_load_worker import ProjectLoadWorker
 
 
 @dataclass
@@ -71,10 +67,18 @@ class ImportController:
         self.ttl_state = self.app_state.ttl
         self.led_state = self.app_state.led
         self.marker_store = context.marker_store
+        self.project_load_worker = None
 
     def open_project(self):
         """Open a path-only project after every source has been validated."""
         context = self.context
+        if self.project_load_worker is not None:
+            QMessageBox.information(
+                self.parent,
+                "Open Project",
+                "A project is already being loaded.",
+            )
+            return
         if not context.project_controller.confirm_unsaved_changes(
             "open another project"
         ):
@@ -96,25 +100,39 @@ class ImportController:
         if not path:
             return
 
-        error_title = None
-        error_message = None
         QApplication.setOverrideCursor(Qt.WaitCursor)
         QApplication.processEvents()
-        try:
-            staged = self.prepare_project_restore(path)
-            self.apply_project_restore(path, staged)
-        except (BadZipFile, KeyError, OSError, ValueError, json.JSONDecodeError) as error:
-            error_title = "Open project failed"
-            error_message = str(error)
-        except Exception as error:
-            error_title = "Restore project failed"
-            error_message = str(error)
-        finally:
-            QApplication.restoreOverrideCursor()
+        worker = ProjectLoadWorker(path, self.parent)
+        self.project_load_worker = worker
+        worker.loaded.connect(
+            lambda archive_data, worker=worker, path=path: (
+                self.finish_project_load(worker, path, archive_data)
+            )
+        )
+        worker.failed.connect(
+            lambda title, message, worker=worker: (
+                self.fail_project_load(worker, title, message)
+            )
+        )
+        worker.finished.connect(worker.deleteLater)
+        worker.start()
 
-        if error_message is not None:
-            QMessageBox.warning(self.parent, error_title, error_message)
+    def finish_project_load(self, worker, path, archive_data):
+        """Resolve source files and apply background-loaded project data."""
+        if worker is not self.project_load_worker:
             return
+
+        try:
+            staged = self.prepare_project_restore(path, archive_data)
+            self.apply_project_restore(path, staged)
+        except (KeyError, OSError, ValueError) as error:
+            QMessageBox.warning(self.parent, "Open project failed", str(error))
+            return
+        except Exception as error:
+            QMessageBox.warning(self.parent, "Restore project failed", str(error))
+            return
+        finally:
+            self.complete_project_load(worker)
 
         QMessageBox.information(
             self.parent,
@@ -122,23 +140,34 @@ class ImportController:
             f"Project restored from:\n{path}",
         )
 
-    def read_project_json(self, archive, name, max_bytes):
-        info = archive.getinfo(name)
-        if info.file_size > max_bytes:
-            raise ValueError(f"Project {name} is too large.")
-        return json.loads(archive.read(name))
+    def fail_project_load(self, worker, title, message):
+        """Report an archive-loading failure on the GUI thread."""
+        if worker is not self.project_load_worker:
+            return
+        self.complete_project_load(worker)
+        QMessageBox.warning(self.parent, title, message)
 
-    def prepare_project_restore(self, path):
-        with ZipFile(path, "r") as archive:
-            manifest = self.read_project_json(
-                archive,
-                "manifest.json",
-                MAX_MANIFEST_BYTES,
-            )
-            state = self.read_project_json(archive, "state.json", MAX_STATE_BYTES)
+    def complete_project_load(self, worker):
+        """Release GUI loading state for the active project worker."""
+        if worker is not self.project_load_worker:
+            return
+        self.project_load_worker = None
+        QApplication.restoreOverrideCursor()
 
-        sources = validate_manifest(manifest)
-        state = validate_state(state)
+    def stop_project_load(self, wait=False):
+        """Return whether the project loader has stopped safely."""
+        worker = self.project_load_worker
+        if worker is None or not worker.isRunning():
+            return True
+        if wait:
+            worker.wait(3000)
+        return not worker.isRunning()
+
+    def prepare_project_restore(self, path, archive_data=None):
+        if archive_data is None:
+            archive_data = load_project_archive(path)
+        sources = archive_data["sources"]
+        state = archive_data["state"]
         source_paths = self.resolve_project_sources(sources)
 
         video_metadata = self.prepare_video_source(source_paths.get("video"))
