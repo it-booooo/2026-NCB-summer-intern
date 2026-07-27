@@ -64,7 +64,11 @@ def parse_signal_csv_metadata(path):
                 units = [value.strip() for value in row[1:] if value.strip()]
                 if units:
                     value_unit = units[0]
-                    break
+
+            # Metadata rows may place Unit before or after Time[us]. Stop as
+            # soon as both are known so large signal files are not scanned.
+            if header_row is not None and value_unit:
+                break
 
     return {
         "channels": channels,
