@@ -7,11 +7,11 @@ from ..synchronization import SyncController
 from ..ui import (
     FindPeakPanel,
     LedAnalysisPanel,
-    WavePanel,
     MarkerPanel,
     MarkerTable,
     SyncPanel,
     TtlPanel,
+    WavePanel,
 )
 from ..ui.workspace_view import WorkspaceView
 from ..video_player import VideoPlayer

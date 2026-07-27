@@ -80,6 +80,7 @@ def parse_lfp_csv_info(path):
     return {
         "path": path,
         "filename": Path(path).name,
+        "metadata": metadata,
         "channels": channels,
         "sample_rates": metadata["sample_rates"],
         "channel_count": len(channels),
