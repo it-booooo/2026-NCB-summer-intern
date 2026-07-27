@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 from pathlib import Path
+from typing import ClassVar
+from zipfile import BadZipFile, ZipFile
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -34,7 +36,7 @@ class ImportContext:
     marker_store: object
     video_player: object
     event_table: object
-    lfp_panel: object
+    wave_panel: object
     ttl_panel: object
     sync_panel: object
     led_analysis_panel: object
@@ -46,11 +48,11 @@ class ImportContext:
 class ImportController:
     """Own all file-selection and import workflows for the main window."""
 
-    SIGNAL_IMPORT_TITLES = {
+    SIGNAL_IMPORT_TITLES: ClassVar[dict[str, str]] = {
         "lfp": "Import LFP (.csv)",
         "axis": "Import 3-axis (.csv)",
     }
-    PROJECT_SOURCE_DIALOGS = {
+    PROJECT_SOURCE_DIALOGS: ClassVar[dict[str, tuple[str, str]]] = {
         "video": ("Locate Project Video", "Video Files (*.mp4);;All Files (*)"),
         "lfp": ("Locate Project LFP File", "CSV Files (*.csv);;All Files (*)"),
         "axis": ("Locate Project 3-axis File", "CSV Files (*.csv);;All Files (*)"),
@@ -304,15 +306,15 @@ class ImportController:
                     self.app_state.analysis.lfp_peak_min_distance_sec,
                 )
             )
-            context.lfp_panel.apply_project_state()
+            context.wave_panel.apply_project_state()
 
             if staged["lfp_info"]:
                 self.data_state.lfp_info = staged["lfp_info"]
-                context.lfp_panel.set_lfp_info(staged["lfp_info"])
+                context.wave_panel.set_lfp_info(staged["lfp_info"])
 
             if staged["axis_info"]:
                 self.data_state.axis_info = staged["axis_info"]
-                context.lfp_panel.set_axis_info(staged["axis_info"])
+                context.wave_panel.set_axis_info(staged["axis_info"])
 
             ttl_metadata = dict(staged["ttl_metadata"])
             if source_paths.get("ttl"):
@@ -355,7 +357,7 @@ class ImportController:
                 )
 
             if staged["timeline_xlim"] is not None:
-                context.lfp_panel.set_shared_xlim(
+                context.wave_panel.set_shared_xlim(
                     *staged["timeline_xlim"],
                     source="timeline",
                 )
@@ -473,10 +475,10 @@ class ImportController:
         info = signal_data.parse_lfp_csv_info(path)
         if signal_type == "lfp":
             self.data_state.lfp_info = info
-            context.lfp_panel.set_lfp_info(info)
+            context.wave_panel.set_lfp_info(info)
         else:
             self.data_state.axis_info = info
-            context.lfp_panel.set_axis_info(info)
+            context.wave_panel.set_axis_info(info)
 
         context.sync_controller.update_waveform_current_time()
         context.project_controller.mark_dirty()

@@ -3,10 +3,11 @@ import pandas as pd
 from .. import csv_loader as csv_func
 
 
-def read_signal_csv(file_path: str, requested_channels=None) -> pd.DataFrame:
+def read_signal_csv(file_path: str, requested_channels=None, metadata=None) -> pd.DataFrame:
     """Read normalized signal columns while preserving the project CSV format."""
     try:
-        metadata = csv_func.parse_signal_csv_metadata(file_path)
+        if metadata is None:
+            metadata = csv_func.parse_signal_csv_metadata(file_path)
         header_row = metadata["header_row"]
         available_channels = metadata["channels"]
         data_column_count = metadata["data_column_count"]
@@ -36,6 +37,7 @@ def read_signal_csv(file_path: str, requested_channels=None) -> pd.DataFrame:
             skiprows=header_row + 1,
             header=None,
             usecols=usecols,
+            dtype="float32",
             names=["time_us"]
             + [f"channel_{channel}" for channel in selected_channels],
         )

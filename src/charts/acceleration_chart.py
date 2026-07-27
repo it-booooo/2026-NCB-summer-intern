@@ -1,5 +1,6 @@
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, cast
+from typing import cast
 
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure

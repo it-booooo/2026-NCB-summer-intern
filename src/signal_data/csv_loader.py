@@ -4,8 +4,6 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-from pyqtgraph import units
-
 from ..synchronization.time_conversion import record_time_parts
 
 
@@ -40,6 +38,7 @@ def parse_signal_csv_metadata(path):
     sample_rates = []
     header_row = None
     data_column_count = None
+    value_unit = ""
 
     with open(path, "r", encoding="utf-8-sig", newline="") as csv_file:
         reader = csv.reader(csv_file)
@@ -59,13 +58,21 @@ def parse_signal_csv_metadata(path):
             elif row_name == "Time[us]":
                 header_row = row_num
                 data_column_count = sum(bool(value) for value in row_values)
-                break
+
+            row_name = row_values[0].lower()
+            if row_name in {"unit", "units"}:
+                units = [value.strip() for value in row[1:] if value.strip()]
+                if units:
+                    value_unit = units[0]
+                    break
 
     return {
         "channels": channels,
         "sample_rates": sample_rates,
         "header_row": header_row,
         "data_column_count": data_column_count,
+        "time_unit": "s",
+        "value_unit": normalize_unit(value_unit),
     }
 
 
@@ -76,19 +83,17 @@ def parse_lfp_csv_info(path):
         path: File path to read from or write to.
     """
     metadata = parse_signal_csv_metadata(path)
-    channels = metadata["channels"]
-    units = parse_signal_csv_units(path)
-
     return {
         "path": path,
         "filename": Path(path).name,
-        "channels": channels,
+        "metadata": metadata,
+        "channels": metadata["channels"],
         "sample_rates": metadata["sample_rates"],
-        "channel_count": len(channels),
+        "channel_count": len(metadata["channels"]),
         "header_row": metadata["header_row"],
         "data_column_count": metadata["data_column_count"],
-        "time_unit": units["time_unit"],
-        "value_unit": units["value_unit"],
+        "time_unit": metadata["time_unit"],
+        "value_unit": metadata["value_unit"],
     }
 
 

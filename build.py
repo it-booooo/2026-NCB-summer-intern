@@ -1,8 +1,8 @@
 # build.py
+import importlib.util
+import os
 import subprocess
 import sys
-import os
-import importlib.util
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent

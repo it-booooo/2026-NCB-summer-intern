@@ -1,10 +1,9 @@
-import os
 import ctypes
+import os
 import sys
 import warnings
 from functools import lru_cache
 from pathlib import Path
-
 
 DEFAULT_BATCH_FRAMES = 20_000
 DEFAULT_COARSE_BATCH_FRAMES = 100
@@ -316,8 +315,7 @@ def _opencl_runtime():
         device.get_info(cl.device_info.MAX_WORK_GROUP_SIZE) or 1
     )
     local_size = _power_of_two_at_most(min(max_work_group_size, 256))
-    if local_size < 1:
-        local_size = 1
+    local_size = max(local_size, 1)
 
     return {
         "cl": cl,
@@ -538,6 +536,7 @@ def compute_led_brightness_curve_opencl(
     """
     import cv2
     import numpy as np
+
     from ..video_player.video_helpers import open_video_capture
 
     runtime = _opencl_runtime()

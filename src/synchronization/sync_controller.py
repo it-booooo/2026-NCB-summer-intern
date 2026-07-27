@@ -47,7 +47,7 @@ class SyncController:
         marker_store,
         video_player,
         event_table,
-        lfp_panel,
+        wave_panel,
         ttl_panel,
         find_peak_panel,
         led_analysis_panel,
@@ -59,7 +59,7 @@ class SyncController:
         self.marker_store = marker_store
         self.video_player = video_player
         self.event_table = event_table
-        self.lfp_panel = lfp_panel
+        self.wave_panel = wave_panel
         self.ttl_panel = ttl_panel
         self.find_peak_panel = find_peak_panel
         self.led_analysis_panel = led_analysis_panel
@@ -67,7 +67,7 @@ class SyncController:
     def connect_signals(self):
         """Connect synchronization-owned interactions."""
         self.video_player.frame_changed.connect(self.update_waveform_current_time)
-        self.lfp_panel.time_selected.connect(self.seek_video_record_time)
+        self.wave_panel.time_selected.connect(self.seek_video_record_time)
         self.ttl_panel.record_time_selected.connect(
             self.seek_video_record_time
         )
@@ -90,13 +90,13 @@ class SyncController:
         self.ttl_panel.set_markers(None, emit=False)
         self.marker_store.clear(emit=False)
         self.event_table.refresh()
-        self.lfp_panel.update_lfp_peak_artist()
+        self.wave_panel.update_lfp_peak_artist()
         self.event_table.set_sync_time_origin(None)
         self.video_player.set_sync_time_origin(None)
-        self.lfp_panel.set_sync_time_origin(None)
+        self.wave_panel.set_sync_time_origin(None)
         self.find_peak_panel.refresh_table()
-        self.lfp_panel.clear_current_time_marker()
-        self.lfp_panel.set_event_intervals([])
+        self.wave_panel.clear_current_time_marker()
+        self.wave_panel.set_event_intervals([])
 
         self.video_player.update_time_offset_display()
         self.led_analysis_panel.led_roi_label.setText("LED ROI: Not selected")
@@ -121,7 +121,7 @@ class SyncController:
         self.video_player.seek_time_sec(video_time_sec)
         self.video_player.update_seek_inputs_from_current_frame()
         if self.sync_state.time_offset_sec is not None:
-            self.lfp_panel.set_current_time_marker(
+            self.wave_panel.set_current_time_marker(
                 float(video_time_sec) - self.sync_state.time_offset_sec,
                 force_follow=True,
             )
@@ -186,10 +186,10 @@ class SyncController:
         self.sync_state.time_offset_sec = None
         self.video_player.update_time_offset_display()
         self.video_player.set_sync_time_origin(None)
-        self.lfp_panel.set_sync_time_origin(None)
+        self.wave_panel.set_sync_time_origin(None)
         self.event_table.set_sync_time_origin(None)
         self.find_peak_panel.refresh_table()
-        self.lfp_panel.clear_current_time_marker()
+        self.wave_panel.clear_current_time_marker()
         self.update_event_intervals()
 
     def update_time_offset(self):
@@ -212,7 +212,7 @@ class SyncController:
         previous_video_origin_sec = self.sync_state.video_time_origin_sec
         self.sync_state.time_offset_sec = video_led_sec - ttl_marker_sec
         self.video_player.set_sync_time_origin(video_led_sec)
-        self.lfp_panel.set_sync_time_origin(ttl_marker_sec)
+        self.wave_panel.set_sync_time_origin(ttl_marker_sec)
         self.event_table.set_sync_time_origin(video_led_sec)
         self.find_peak_panel.refresh_table()
         self.video_player.update_time_offset_display()
@@ -248,7 +248,7 @@ class SyncController:
             )
 
         if self.sync_state.time_offset_sec is None:
-            self.lfp_panel.set_event_intervals(record_intervals)
+            self.wave_panel.set_event_intervals([])
             return
 
         video_intervals = [
@@ -299,7 +299,7 @@ class SyncController:
                 }
             )
 
-        self.lfp_panel.set_event_intervals(record_intervals)
+        self.wave_panel.set_event_intervals(record_intervals)
 
     def update_waveform_current_time(self):
         """Update waveform current time.
@@ -315,7 +315,7 @@ class SyncController:
             return
 
         record_time_sec = video_time_sec - self.sync_state.time_offset_sec
-        self.lfp_panel.set_current_time_marker(
+        self.wave_panel.set_current_time_marker(
             record_time_sec,
             follow_playback=self.video_state.is_playing,
         )

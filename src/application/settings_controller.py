@@ -17,13 +17,13 @@ class AnalysisSettingsController:
         parent,
         data_state,
         analysis_settings,
-        lfp_panel,
+        wave_panel,
         show_opencl_status,
     ):
         self.parent = parent
         self.data_state = data_state
         self.analysis_settings = analysis_settings
-        self.lfp_panel = lfp_panel
+        self.wave_panel = wave_panel
         self.show_opencl_status = show_opencl_status
 
     def set_plot_step(self, plot_name):
@@ -42,7 +42,7 @@ class AnalysisSettingsController:
             1,
         )
         if accepted:
-            self.lfp_panel.set_plot_step(
+            self.wave_panel.set_plot_step(
                 plot_name, None if step == -1 else step
             )
 
@@ -59,7 +59,7 @@ class AnalysisSettingsController:
             False,
         )
         if accepted:
-            self.lfp_panel.set_line_noise_hz(values[items.index(text)])
+            self.wave_panel.set_line_noise_hz(values[items.index(text)])
 
     def set_lfp_peak_thresholds(self):
         dialog = QDialog(self.parent)

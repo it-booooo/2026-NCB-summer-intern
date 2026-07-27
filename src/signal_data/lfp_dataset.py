@@ -34,7 +34,10 @@ class LfpDataset:
         path = info.get("path")
         if not path:
             raise ValueError("LFP path not found in info dictionary.")
-        return cls(info=info, data=read_signal_csv(path))
+        metadata = info.get("metadata")
+        if not isinstance(metadata, dict):
+            raise ValueError("LFP metadata not found in info dictionary.")
+        return cls(info=info, data=read_signal_csv(path, metadata=metadata))
 
     @property
     def time_us(self) -> np.ndarray:

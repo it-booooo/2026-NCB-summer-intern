@@ -12,6 +12,10 @@ class LfpAnalysisService:
         value = self.data_state.selected_lfp_channel
         return None if value is None else int(value)
 
+    def available_channels(self):
+        info = self.data_state.lfp_info or {}
+        return [int(channel) for channel in info.get("channels", [])]
+
     def filter_settings(self):
         return LfpFilterSettings(**dict(self.data_state.lfp_filter_settings))
 

@@ -3,6 +3,7 @@ from pathlib import Path
 
 from ..app_state import VideoMetadata
 
+
 def open_video_capture(cv2, video_path):
     """Open a capture with hardware decoding when supported, then fall back to CPU."""
     disabled = os.environ.get("PIG_LED_HW_DECODE", "1").strip().lower()
@@ -36,7 +37,7 @@ def open_video_capture(cv2, video_path):
 def normalize_rotation_degrees(degrees):
     """Return a supported display rotation."""
     try:
-        value = int(round(float(degrees or 0)))
+        value = round(float(degrees or 0))
     except (TypeError, ValueError):
         return 0
 
@@ -157,7 +158,7 @@ def time_sec_to_frame(time_sec, fps, total_frames=None):
     if not fps:
         return 0
 
-    frame_index = int(round(time_sec * fps))
+    frame_index = round(time_sec * fps)
 
     if total_frames is not None:
         frame_index = max(0, min(frame_index, total_frames - 1))
@@ -195,7 +196,7 @@ def format_time(seconds):
     Args:
         seconds: Input used by this operation.
     """
-    total_ms = int(round(seconds * 1000))
+    total_ms = round(seconds * 1000)
 
     minutes = total_ms // 60000
     remaining_ms = total_ms % 60000

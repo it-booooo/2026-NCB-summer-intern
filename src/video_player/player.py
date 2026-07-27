@@ -1,3 +1,5 @@
+from typing import ClassVar
+
 from PySide6.QtCore import QPoint, QRect, Qt, QTimer, Signal
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
@@ -33,10 +35,7 @@ class VideoPlayer(QWidget):
     roi_selected = Signal(tuple)
     project_changed = Signal()
 
-    STATUS_UPDATE_INTERVAL_FRAMES = 5
-    FRAME_SIGNAL_INTERVAL_FRAMES = 3
-
-    BUTTON_WIDTHS = {
+    BUTTON_WIDTHS: ClassVar[dict[str, int]] = {
         "Play": 64,
         "Stop": 64,
         "Prev Frame": 88,

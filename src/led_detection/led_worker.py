@@ -1,5 +1,6 @@
-from PySide6.QtCore import QThread, Signal
 from time import perf_counter
+
+from PySide6.QtCore import QThread, Signal
 
 
 def coarse_scan_step_for_fps(fps):
@@ -8,7 +9,7 @@ def coarse_scan_step_for_fps(fps):
     Args:
         fps: Video frame rate in frames per second.
     """
-    return max(int(round(float(fps or 30.0) * 2.0 / 3.0)), 1)
+    return max(round(float(fps or 30.0) * 2.0 / 3.0), 1)
 
 
 class LedDetectionWorker(QThread):

@@ -13,6 +13,7 @@ from .serialization import (
     marker_from_legacy_ttl,
     marker_to_dict,
 )
+from .store import MarkerStore
 
 __all__ = [
     "Marker",
@@ -28,11 +29,3 @@ __all__ = [
     "marker_to_dict",
     "marker_video_time",
 ]
-
-
-def __getattr__(name):
-    if name == "MarkerStore":
-        from .store import MarkerStore
-
-        return MarkerStore
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

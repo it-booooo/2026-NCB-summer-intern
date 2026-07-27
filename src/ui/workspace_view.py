@@ -13,11 +13,11 @@ class WorkspaceView(QWidget):
 
     WAVEFORM_AREA_HEIGHT = 320
 
-    def __init__(self, lfp_panel, sync_panel, video_player, parent=None):
+    def __init__(self, wave_panel, sync_panel, video_player, parent=None):
         super().__init__(parent)
         lfp_group = self._create_group(
             "Waveform Area",
-            lfp_panel,
+            wave_panel,
             margins=(6, 6, 6, 4),
         )
         lfp_group.setMinimumHeight(self.WAVEFORM_AREA_HEIGHT)

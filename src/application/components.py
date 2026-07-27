@@ -16,7 +16,7 @@ class ApplicationComponents:
     lfp_service: LfpAnalysisService
     video_player: object
     event_table: object
-    lfp_panel: object
+    wave_panel: object
     sync_panel: object
     led_analysis_panel: object
     ttl_panel: object

@@ -1,6 +1,7 @@
-"""LFP analysis dialogs and figure creation used by ``LfpPanel``."""
+"""LFP analysis dialogs and figure creation used by ``WavePanel``."""
 
 import numpy as np
+from matplotlib.figure import Figure
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog,
@@ -10,7 +11,6 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QVBoxLayout,
 )
-from matplotlib.figure import Figure
 
 from .. import signal_data as signal_func
 from ..charts.chart_helpers import format_signal_label, resolve_plot_step
@@ -193,6 +193,8 @@ class LfpAnalysisMixin:
     
         dialog = QDialog(self)
         dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+        dialog.setModal(False)
+        dialog.setWindowModality(Qt.WindowModality.NonModal)
         dialog.setWindowTitle(title)
         display_left = relative_time(left, self.sync_state.record_time_origin_sec)
         display_right = relative_time(right, self.sync_state.record_time_origin_sec)
@@ -226,10 +228,12 @@ class LfpAnalysisMixin:
         )
     
         self.spectrum_dialogs.append(dialog)
-        dialog.destroyed.connect(
-            lambda _obj=None, item=dialog: self.forget_spectrum_dialog(item)
+        dialog.finished.connect(
+            lambda _result, item=dialog: self.forget_spectrum_dialog(item)
         )
         dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
     
     def forget_spectrum_dialog(self, dialog):
         """Remove the reference to spectrum dialog.
