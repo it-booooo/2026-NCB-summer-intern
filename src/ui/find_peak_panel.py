@@ -6,10 +6,12 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QHBoxLayout,
     QHeaderView,
+    QLabel,
     QMessageBox,
     QPushButton,
     QScrollArea,
@@ -54,7 +56,11 @@ class FindPeakPanel(MarkerViewPanel):
         self.video_player = video_player
         self.analysis_settings = analysis_settings
         self._refreshing = False
+        self._analysis_dialogs = set()
 
+        self.channel_selector = QComboBox()
+        self.channel_selector.setMinimumContentsLength(12)
+        self.channel_selector.currentIndexChanged.connect(self.refresh_table)
         self.find_peaks_button = QPushButton("Find Peak")
         self.delete_selected_button = QPushButton("Delete Selected")
         self.analysis_button = QPushButton("Analyze Peaks")
@@ -85,6 +91,10 @@ class FindPeakPanel(MarkerViewPanel):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(3, 3, 3, 3)
+        channel_layout = QHBoxLayout()
+        channel_layout.addWidget(QLabel("Channel"))
+        channel_layout.addWidget(self.channel_selector, stretch=1)
+        layout.addLayout(channel_layout)
         button_layout = QHBoxLayout()
         button_layout.addWidget(self.find_peaks_button, stretch=1)
         button_layout.addWidget(self.delete_selected_button, stretch=1)
@@ -100,9 +110,34 @@ class FindPeakPanel(MarkerViewPanel):
         self.refresh_table()
 
     def peak_markers(self):
-        return self.markers()
+        channel = self.selected_channel()
+        return tuple(
+            marker
+            for marker in self.markers()
+            if channel is None or marker.payload.get("channel") == channel
+        )
+
+    def selected_channel(self):
+        channel = self.channel_selector.currentData()
+        return None if channel is None else int(channel)
+
+    def refresh_channels(self):
+        channels = self.lfp_service.available_channels()
+        selected = self.selected_channel()
+        preferred = (
+            selected if selected in channels else self.lfp_service.selected_channel()
+        )
+        self.channel_selector.blockSignals(True)
+        self.channel_selector.clear()
+        for channel in channels:
+            self.channel_selector.addItem(f"Channel {channel}", channel)
+        if preferred in channels:
+            self.channel_selector.setCurrentIndex(channels.index(preferred))
+        self.channel_selector.setEnabled(bool(channels))
+        self.channel_selector.blockSignals(False)
 
     def refresh_table(self):
+        self.refresh_channels()
         current_id = self.selected_marker_id()
         self._refreshing = True
         self.table.setRowCount(0)
@@ -192,9 +227,14 @@ class FindPeakPanel(MarkerViewPanel):
             if editor is not None:
                 editor.set_row_selected(row in selected_rows)
 
-    def create_peak_analysis_figure(self):
+    def create_peak_analysis_figure(self, channel=None):
         """Create the peak analysis figure without attaching it to a Qt canvas."""
-        peaks = self.marker_store.by_kind(MarkerKind.LFP_PEAK)
+        channel = self.selected_channel() if channel is None else int(channel)
+        peaks = (
+            marker
+            for marker in self.marker_store.by_kind(MarkerKind.LFP_PEAK)
+            if channel is None or marker.payload.get("channel") == channel
+        )
         peak_per_minute = {}
         for marker in peaks:
             video_time = marker_video_time(marker, self.sync_state.time_offset_sec)
@@ -236,7 +276,10 @@ class FindPeakPanel(MarkerViewPanel):
             color="#1f77b4",
             edgecolor="none",
         )
-        ax.set_title("LFP peak count over time")
+        title = "LFP peak count over time"
+        if channel is not None:
+            title += f" - Channel {channel}"
+        ax.set_title(title)
         ax.set_xlabel(time_label)
         ax.set_ylabel("Peaks per minute")
         ax.set_xlim(minutes[0] - 0.5, minutes[-1] + 0.5)
@@ -263,12 +306,13 @@ class FindPeakPanel(MarkerViewPanel):
 
         dialog = QDialog(self)
         dialog.setWindowTitle("LFP Peak Analysis")
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         canvas = FigureCanvas(figure)
         canvas.setMinimumSize(canvas_width, canvas_height)
         canvas.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
-        buttons.rejected.connect(dialog.reject)
+        buttons.rejected.connect(dialog.close)
 
         layout = QVBoxLayout(dialog)
         scroll_area = QScrollArea()
@@ -284,7 +328,13 @@ class FindPeakPanel(MarkerViewPanel):
             min(canvas_height + 80, round(available.height() * 0.9)),
         )
         canvas.draw()
-        dialog.exec()
+        self._analysis_dialogs.add(dialog)
+        dialog.finished.connect(
+            lambda _result, item=dialog: self._analysis_dialogs.discard(item)
+        )
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
 
     def delete_selected_peak(self):
         """Delete the selected peak through the canonical marker store."""
@@ -309,7 +359,7 @@ class FindPeakPanel(MarkerViewPanel):
                 "Please synchronize the video and LFP before finding peaks.",
             )
             return
-        channel = self.lfp_service.selected_channel()
+        channel = self.selected_channel()
         if channel is None:
             QMessageBox.warning(self, "No LFP channel", "Please select a channel.")
             return
@@ -377,7 +427,15 @@ class FindPeakPanel(MarkerViewPanel):
                 )
                 for index in peak_indices
             ]
-            self.marker_store.replace_by_source(MarkerSource.LFP_DETECTION, markers)
+            retained = [
+                marker
+                for marker in self.marker_store.all()
+                if not (
+                    marker.source == MarkerSource.LFP_DETECTION
+                    and marker.payload.get("channel") == channel
+                )
+            ]
+            self.marker_store.replace_all([*retained, *markers])
         except (KeyError, OSError, RuntimeError, TypeError, ValueError) as error:
             QMessageBox.warning(self, "Peak detection failed", str(error))
             return

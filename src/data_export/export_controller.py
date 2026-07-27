@@ -721,10 +721,31 @@ class ExportController:
             )
             return
 
+        channels = panel.lfp_service.available_channels()
+        if not channels:
+            QMessageBox.information(
+                self.parent, "No LFP channel", "Please import LFP data first."
+            )
+            return
+        current = panel.selected_channel()
+        default_index = channels.index(current) if current in channels else 0
+        labels = [f"Channel {channel}" for channel in channels]
+        label, accepted = QInputDialog.getItem(
+            self.parent,
+            "Export Find Peak Image",
+            "Channel",
+            labels,
+            default_index,
+            False,
+        )
+        if not accepted:
+            return
+        channel = channels[labels.index(label)]
+
         path, _ = QFileDialog.getSaveFileName(
             self.parent,
             "Export Find Peak Image",
-            "find_peak.png",
+            f"find_peak_channel_{channel}.png",
             "PNG Images (*.png);;All Files (*)",
         )
 
@@ -733,7 +754,7 @@ class ExportController:
 
         figure = None
         try:
-            figure_data = panel.create_peak_analysis_figure()
+            figure_data = panel.create_peak_analysis_figure(channel)
             if figure_data is None:
                 QMessageBox.information(
                     self.parent,
