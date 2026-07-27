@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
 from typing import ClassVar
-from zipfile import BadZipFile, ZipFile
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -11,10 +10,8 @@ from PySide6.QtWidgets import (
 )
 
 from .. import signal_data
-from ..led_detection import LedBrightnessPoint
 from ..markers import (
     MarkerSource,
-    marker_from_dict,
     marker_from_legacy_ttl,
 )
 from ..project_format import (
@@ -27,7 +24,7 @@ from ..video_player.video_helpers import (
     parse_video_metadata,
     read_frame,
 )
-from .project_load_worker import ProjectLoadWorker
+from .project_load_worker import ProjectLoadWorker, prepare_project_objects
 
 
 @dataclass
@@ -168,6 +165,7 @@ class ImportController:
     def prepare_project_restore(self, path, archive_data=None):
         if archive_data is None:
             archive_data = load_project_archive(path)
+        prepare_project_objects(archive_data)
         sources = archive_data["sources"]
         state = archive_data["state"]
         source_paths = self.resolve_project_sources(sources)
@@ -196,14 +194,11 @@ class ImportController:
             ),
             "lfp_info": lfp_info,
             "axis_info": axis_info,
-            "markers": [marker_from_dict(item) for item in state.get("markers", [])],
+            "markers": list(state.get("markers", [])),
             "ttl_metadata": dict(state.get("ttl", {}).get("metadata") or {}),
             "led": led,
             "roi": tuple(int(value) for value in roi) if roi is not None else None,
-            "analysis_points": [
-                LedBrightnessPoint(**point)
-                for point in led.get("analysis_points") or []
-            ],
+            "analysis_points": list(led.get("analysis_points") or []),
             "video": state.get("video", {}),
         }
 
@@ -385,10 +380,9 @@ class ImportController:
                 int(cache.get("end_frame", 0)),
                 int(cache.get("coarse_step", 1)),
             )
-            self.led_state.brightness_cache[cache_key] = [
-                LedBrightnessPoint(**point)
-                for point in cache.get("points", [])
-            ]
+            self.led_state.brightness_cache[cache_key] = list(
+                cache.get("points", [])
+            )
 
     def actions(self):
         """Create and return the actions exposed by this controller.

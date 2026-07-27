@@ -5,6 +5,15 @@ from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from src.app_state import AppState
+from src.data_import.project_load_worker import prepare_project_objects
+from src.led_detection import LedBrightnessPoint
+from src.markers import (
+    Marker,
+    MarkerKind,
+    MarkerSource,
+    RecordPosition,
+    marker_to_dict,
+)
 from src.project_archive import load_project_archive
 from src.project_format import PROJECT_FORMAT, PROJECT_VERSION
 from src.project_format import validate_state
@@ -72,6 +81,41 @@ class ProjectArchiveTests(unittest.TestCase):
 
             with self.assertRaises(ValueError):
                 load_project_archive(path)
+
+    def test_project_runtime_objects_are_prepared_once(self):
+        marker = Marker(
+            kind=MarkerKind.TTL,
+            source=MarkerSource.TTL_IMPORT,
+            position=RecordPosition(1.25),
+        )
+        point = {
+            "frame_index": 10,
+            "video_time_sec": 0.5,
+            "brightness": 42.0,
+        }
+        archive_data = {
+            "state": {
+                "markers": [marker_to_dict(marker)],
+                "led": {
+                    "analysis_points": [dict(point)],
+                    "brightness_cache": [{"points": [dict(point)]}],
+                },
+            }
+        }
+
+        prepared = prepare_project_objects(archive_data)
+        prepared_again = prepare_project_objects(prepared)
+
+        self.assertIs(prepared_again, prepared)
+        self.assertEqual(prepared["state"]["markers"], [marker])
+        self.assertIsInstance(
+            prepared["state"]["led"]["analysis_points"][0],
+            LedBrightnessPoint,
+        )
+        self.assertIsInstance(
+            prepared["state"]["led"]["brightness_cache"][0]["points"][0],
+            LedBrightnessPoint,
+        )
 
 
 if __name__ == "__main__":
