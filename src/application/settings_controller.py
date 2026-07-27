@@ -18,13 +18,11 @@ class AnalysisSettingsController:
         data_state,
         analysis_settings,
         wave_panel,
-        show_opencl_status,
     ):
         self.parent = parent
         self.data_state = data_state
         self.analysis_settings = analysis_settings
         self.wave_panel = wave_panel
-        self.show_opencl_status = show_opencl_status
 
     def set_plot_step(self, plot_name):
         title, step_attribute = {

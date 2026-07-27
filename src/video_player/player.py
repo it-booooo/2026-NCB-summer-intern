@@ -226,47 +226,22 @@ class VideoPlayer(QWidget):
             seek_input.setEnabled(enabled)
 
     def has_video(self):
-        """Provide has video functionality.
-
-        Args:
-            None.
-        """
         return self.cap is not None and self.cap.isOpened()
 
     def current_time_sec(self):
-        """Provide current time sec functionality.
-
-        Args:
-            None.
-        """
         fps = self.video_state.metadata.using_fps if self.video_state.metadata else None
         return frame_to_time_sec(self.video_state.current_frame, fps)
 
     def total_time_sec(self):
-        """Provide total time sec functionality.
-
-        Args:
-            None.
-        """
         metadata = self.video_state.metadata
         return metadata.total_frames / metadata.using_fps if metadata and metadata.using_fps else 0.0
 
     def current_display_time_sec(self):
-        """Provide current display time sec functionality.
-
-        Args:
-            None.
-        """
         return relative_time(
             self.current_time_sec(), self.sync_state.video_time_origin_sec
         )
 
     def display_total_time_sec(self):
-        """Provide display total time sec functionality.
-
-        Args:
-            None.
-        """
         total_sec = self.total_time_sec()
         return max(
             relative_time(total_sec, self.sync_state.video_time_origin_sec), 0.0
@@ -403,11 +378,6 @@ class VideoPlayer(QWidget):
         self.timer.start(max(interval_ms, 1))
 
     def pause(self):
-        """Provide pause functionality.
-
-        Args:
-            None.
-        """
         was_playing = self.video_state.is_playing
         self.video_state.is_playing = False
         self.timer.stop()
@@ -421,11 +391,6 @@ class VideoPlayer(QWidget):
             self.emit_frame_changed()
 
     def stop(self):
-        """Provide stop functionality.
-
-        Args:
-            None.
-        """
         if self.has_video():
             self.pause()
             if self.sync_state.video_time_origin_sec is None:

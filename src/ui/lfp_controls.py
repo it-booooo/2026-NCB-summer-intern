@@ -1,4 +1,4 @@
-"""Reusable controls for the LFP panel."""
+"""Reusable LFP controls used by ``WavePanel``."""
 
 from matplotlib.patches import Rectangle
 from matplotlib.ticker import FuncFormatter
