@@ -189,6 +189,9 @@ def prepare_lfp_segment(
     start_s: float,
     end_s: float,
     settings: LfpFilterSettings | None,
+    *,
+    record_time_s=None,
+    values_prepared: bool = False,
 ) -> LfpSegment:
     """Prepare lfp segment.
 
@@ -209,17 +212,28 @@ def prepare_lfp_segment(
     if start_s > end_s:
         start_s, end_s = end_s, start_s
 
-    time_us_values = np.asarray(time_us, dtype=float)
-    record_time_s = time_us_values / 1_000_000.0
-    signal_values = prepare_lfp_signal(values, sample_rate_hz, settings)
-    mask = (record_time_s >= start_s) & (record_time_s <= end_s)
+    time_us_values = np.asarray(time_us, dtype=np.float64)
+    if record_time_s is None:
+        record_time_values = time_us_values / 1_000_000.0
+    else:
+        record_time_values = np.asarray(record_time_s, dtype=np.float64)
+        if record_time_values.shape != time_us_values.shape:
+            raise ValueError("Record-time and timestamp arrays must have equal length.")
+    signal_values = (
+        np.asarray(values)
+        if values_prepared
+        else prepare_lfp_signal(values, sample_rate_hz, settings)
+    )
+    if signal_values.shape != time_us_values.shape:
+        raise ValueError("Signal and timestamp arrays must have equal length.")
+    mask = (record_time_values >= start_s) & (record_time_values <= end_s)
 
     if int(mask.sum()) < 2:
         raise ValueError("Selected time range is too short for analysis.")
 
     return LfpSegment(
         time_us=time_us_values[mask],
-        record_time_s=record_time_s[mask],
+        record_time_s=record_time_values[mask],
         values=signal_values[mask],
         sample_rate_hz=float(sample_rate_hz),
     )
@@ -252,7 +266,9 @@ def filter_description(settings: LfpFilterSettings | None) -> str:
 
 
 def _finite_signal(values) -> np.ndarray:
-    signal_values = np.asarray(values, dtype=float)
+    signal_values = np.asarray(values)
+    if not np.issubdtype(signal_values.dtype, np.floating):
+        signal_values = signal_values.astype(float)
     if signal_values.ndim != 1:
         signal_values = signal_values.reshape(-1)
 
@@ -264,10 +280,15 @@ def _finite_signal(values) -> np.ndarray:
         return signal_values.copy()
 
     if not finite_mask.any():
-        return np.zeros(signal_values.shape, dtype=float)
+        return np.zeros(signal_values.shape, dtype=signal_values.dtype)
 
     indices = np.arange(signal_values.size)
-    return np.interp(indices, indices[finite_mask], signal_values[finite_mask])
+    interpolated = np.interp(
+        indices,
+        indices[finite_mask],
+        signal_values[finite_mask],
+    )
+    return interpolated.astype(signal_values.dtype, copy=False)
 
 
 def _validate_sample_rate(sample_rate_hz: float) -> None:

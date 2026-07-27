@@ -32,14 +32,21 @@ def read_signal_csv(file_path: str, requested_channels=None, metadata=None) -> p
                 for channel in selected_channels
             ]
 
+        column_names = ["time_us"] + [
+            f"channel_{channel}" for channel in selected_channels
+        ]
+        column_dtypes = {
+            "time_us": "float64",
+            **{name: "float32" for name in column_names[1:]},
+        }
+
         return pd.read_csv(
             file_path,
             skiprows=header_row + 1,
             header=None,
             usecols=usecols,
-            dtype="float32",
-            names=["time_us"]
-            + [f"channel_{channel}" for channel in selected_channels],
+            dtype=column_dtypes,
+            names=column_names,
         )
     except FileNotFoundError as error:
         raise FileNotFoundError(f"fail to read file: {file_path}") from error

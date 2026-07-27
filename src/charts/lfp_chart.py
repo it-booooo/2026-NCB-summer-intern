@@ -70,7 +70,7 @@ def LFP(
         dataset = signal_func.LfpDataset.from_csv(info)
     data = dataset.data
 
-    time_s = data["time_us"].to_numpy(dtype=float) / 1e6
+    time_s = dataset.record_time_s
 
     plot_step = resolve_plot_step(len(data), step)
     if plot_step == 0 or len(data) <= plot_step:
@@ -121,8 +121,8 @@ def LFP(
             )[0]
             lines[(channel, filtered)] = line
             base_line_data[(channel, filtered)] = (
-                np.asarray(x, dtype=float),
-                np.asarray(signal_values[plot_index], dtype=float),
+                np.asarray(x),
+                np.asarray(signal_values[plot_index]),
             )
 
     ax.set_xlabel("")

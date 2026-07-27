@@ -28,6 +28,18 @@ class LfpDataset:
         init=False,
         repr=False,
     )
+    _time_us_cache: np.ndarray = field(init=False, repr=False)
+    _record_time_s_cache: np.ndarray = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        """Cache precise, read-only time arrays once per loaded dataset."""
+        self._time_us_cache = self.data["time_us"].to_numpy(
+            dtype=np.float64,
+            copy=False,
+        )
+        self._record_time_s_cache = self._time_us_cache / 1_000_000.0
+        self._time_us_cache.setflags(write=False)
+        self._record_time_s_cache.setflags(write=False)
 
     @classmethod
     def from_csv(cls, info: dict) -> LfpDataset:
@@ -41,11 +53,11 @@ class LfpDataset:
 
     @property
     def time_us(self) -> np.ndarray:
-        return self.data["time_us"].to_numpy(dtype=float)
+        return self._time_us_cache
 
     @property
     def record_time_s(self) -> np.ndarray:
-        return self.time_us / 1_000_000.0
+        return self._record_time_s_cache
 
     @property
     def channels(self) -> list[int]:
@@ -75,7 +87,7 @@ class LfpDataset:
         effective_settings = settings if settings and settings.show_filtered else None
         cache_key = (channel, effective_settings)
         if cache_key not in self._signal_cache:
-            raw_values = self.data[column].to_numpy(dtype=float)
+            raw_values = self.data[column].to_numpy(copy=False)
             self._signal_cache[cache_key] = prepare_lfp_signal(
                 raw_values,
                 self.sample_rate_hz(channel),
@@ -100,4 +112,6 @@ class LfpDataset:
             start_s,
             end_s,
             None,
+            record_time_s=self.record_time_s,
+            values_prepared=True,
         )
