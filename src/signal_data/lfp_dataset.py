@@ -51,10 +51,6 @@ class LfpDataset:
         return np.asarray([left, right], dtype=float)
 
     @property
-    def record_time_s(self) -> np.ndarray:
-        return self.time_us / 1_000_000.0
-
-    @property
     def channels(self) -> list[int]:
         configured = self.info.get("channels") or []
         if configured:

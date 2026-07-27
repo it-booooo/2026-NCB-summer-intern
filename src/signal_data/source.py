@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-CACHE_FORMAT_VERSION = 1
+CACHE_FORMAT_VERSION = 2
 OVERVIEW_ALGORITHM_VERSION = 2
 DEFAULT_CHUNK_ROWS = 250_000
 DEFAULT_OVERVIEW_MAX_POINTS = 5_000
@@ -95,11 +95,11 @@ class SignalDataSource:
                 and metadata.get("timestamps_monotonic") is True
                 and (path / "COMPLETE").is_file()
                 and (path / "time_us.bin").stat().st_size == count * 8
-                and (path / "values.bin").stat().st_size == count * 8
+                and (path / "values.bin").stat().st_size == count * 4
                 and (path / "overview_time_us.bin").stat().st_size
                 == overview_count * 8
                 and (path / "overview_values.bin").stat().st_size
-                == overview_count * 8
+                == overview_count * 4
             )
         except (KeyError, OSError, ValueError, json.JSONDecodeError):
             return False
@@ -195,13 +195,13 @@ class SignalDataSource:
                 skiprows=int(header_row) + 1,
                 header=None,
                 usecols=[0, channel_column],
-                dtype="float64",
+                dtype={0: "float64", channel_column: "float32"},
                 chunksize=self.chunk_rows,
             ) as chunks:
                 for chunk in chunks:
                     self._check_cancel(cancel_event)
                     times = chunk.iloc[:, 0].to_numpy(dtype="<f8", copy=False)
-                    values = chunk.iloc[:, 1].to_numpy(dtype="<f8", copy=False)
+                    values = chunk.iloc[:, 1].to_numpy(dtype="<f4", copy=False)
                     if times.size:
                         if not np.isfinite(times).all():
                             raise ValueError("Signal timestamps must be finite.")
@@ -232,7 +232,7 @@ class SignalDataSource:
             directory / "time_us.bin", dtype="<f8", mode="r", shape=(sample_count,)
         )
         values = np.memmap(
-            directory / "values.bin", dtype="<f8", mode="r", shape=(sample_count,)
+            directory / "values.bin", dtype="<f4", mode="r", shape=(sample_count,)
         )
         # Match the original chart behavior: take every nth raw sample rather
         # than connecting each bucket's minimum and maximum as a dense zigzag.
@@ -257,7 +257,7 @@ class SignalDataSource:
                         dtype=int,
                     )
                     selected_times = np.asarray(times[indices], dtype="<f8")
-                    selected_values = np.asarray(values[indices], dtype="<f8")
+                    selected_values = np.asarray(values[indices], dtype="<f4")
                     time_file.write(selected_times.tobytes())
                     value_file.write(selected_values.tobytes())
                     overview_count += int(indices.size)
@@ -298,7 +298,7 @@ class SignalDataSource:
             path / "overview_time_us.bin", dtype="<f8", mode="r", shape=(count,)
         )
         mapped_values = np.memmap(
-            path / "overview_values.bin", dtype="<f8", mode="r", shape=(count,)
+            path / "overview_values.bin", dtype="<f4", mode="r", shape=(count,)
         )
         try:
             return SignalOverview(
@@ -321,7 +321,7 @@ class SignalDataSource:
         path, metadata = self._cache_metadata(channel_id, cancel_event)
         count = int(metadata["sample_count"])
         times = np.memmap(path / "time_us.bin", dtype="<f8", mode="r", shape=(count,))
-        values = np.memmap(path / "values.bin", dtype="<f8", mode="r", shape=(count,))
+        values = np.memmap(path / "values.bin", dtype="<f4", mode="r", shape=(count,))
         left_index = int(np.searchsorted(times, start_us, side="left"))
         right_index = int(np.searchsorted(times, end_us, side="right"))
         self._check_cancel(cancel_event)

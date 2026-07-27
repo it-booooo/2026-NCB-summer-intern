@@ -60,7 +60,6 @@ def parse_video_metadata(cap, path, using_fps=None):
     """Parse video metadata.
 
     Args:
-        cap: Input used by this operation.
         path: File path to read from or write to.
         using_fps: Frame rate used for time conversion.
     """
@@ -103,11 +102,6 @@ def parse_video_metadata(cap, path, using_fps=None):
 
 
 def fourcc_to_string(fourcc_value):
-    """Provide fourcc to string functionality.
-
-    Args:
-        fourcc_value: Input used by this operation.
-    """
     if not fourcc_value:
         return "unknown"
 
@@ -122,7 +116,6 @@ def read_frame(cap, frame_index):
     """Read frame.
 
     Args:
-        cap: Input used by this operation.
         frame_index: Zero-based video frame index.
     """
     import cv2
@@ -135,12 +128,7 @@ def read_frame(cap, frame_index):
 
 
 def frame_to_time_sec(frame_index, fps):
-    """Provide frame to time sec functionality.
-
-    Args:
-        frame_index: Zero-based video frame index.
-        fps: Video frame rate in frames per second.
-    """
+    """Convert a zero-based frame index to seconds using the given FPS."""
     if not fps:
         return 0.0
 
@@ -153,7 +141,6 @@ def time_sec_to_frame(time_sec, fps, total_frames=None):
     Args:
         time_sec: Time value in seconds.
         fps: Video frame rate in frames per second.
-        total_frames: Input used by this operation.
     """
     if not fps:
         return 0
@@ -191,11 +178,7 @@ def parse_time_input(text):
 
 
 def format_time(seconds):
-    """Format time.
-
-    Args:
-        seconds: Input used by this operation.
-    """
+    """Format time."""
     total_ms = round(seconds * 1000)
 
     minutes = total_ms // 60000

@@ -4,11 +4,7 @@ from PySide6.QtCore import QThread, Signal
 
 
 def coarse_scan_step_for_fps(fps):
-    """Provide coarse scan step for fps functionality.
-
-    Args:
-        fps: Video frame rate in frames per second.
-    """
+    """Return the coarse scan interval for a frame rate in frames per second."""
     return max(round(float(fps or 30.0) * 2.0 / 3.0), 1)
 
 
@@ -45,11 +41,6 @@ class LedDetectionWorker(QThread):
         self.cached_points = cached_points
 
     def run(self):
-        """Provide run functionality.
-
-        Args:
-            None.
-        """
         try:
             from .led_detector import (
                 compute_led_brightness_curve,

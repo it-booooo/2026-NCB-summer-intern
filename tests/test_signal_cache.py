@@ -76,7 +76,7 @@ class SignalCacheTests(unittest.TestCase):
         source = self.source()
         cache = source.ensure_cache(2)
         metadata = json.loads((cache / "metadata.json").read_text("utf-8"))
-        expected_size = metadata["sample_count"] * 8
+        expected_size = metadata["sample_count"] * 4
 
         with (cache / "values.bin").open("r+b") as stream:
             stream.truncate(8)

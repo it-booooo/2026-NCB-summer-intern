@@ -32,13 +32,6 @@ def sample_rate_for_channel(
     time_us,
     channel: int | None = None,
 ) -> float:
-    """Provide sample rate for channel functionality.
-
-    Args:
-        info: Metadata or state information to store or use.
-        time_us: Input used by this operation.
-        channel: LFP channel identifier.
-    """
     if info is not None:
         channels = [int(item) for item in info.get("channels", [])]
         sample_rates = [
@@ -57,11 +50,7 @@ def sample_rate_for_channel(
 
 
 def infer_sample_rate_hz(time_us) -> float:
-    """Infer sample rate hz.
-
-    Args:
-        time_us: Input used by this operation.
-    """
+    """Infer sample rate hz."""
     time_values = np.asarray(time_us, dtype=float)
     if time_values.size < 2:
         raise ValueError("Need at least two samples to infer sample rate.")
@@ -87,8 +76,6 @@ def prepare_lfp_signal(
 
     Args:
         values: Signal values to process.
-        sample_rate_hz: Input used by this operation.
-        settings: Configuration settings for this operation.
     """
     signal_values = _finite_signal(values)
     if settings is None or not settings.show_filtered:
@@ -124,7 +111,6 @@ def compute_power_spectrum(
 
     Args:
         values: Signal values to process.
-        sample_rate_hz: Input used by this operation.
     """
     _validate_sample_rate(sample_rate_hz)
     signal_values = _finite_signal(values)
@@ -160,7 +146,6 @@ def compute_time_frequency(
 
     Args:
         values: Signal values to process.
-        sample_rate_hz: Input used by this operation.
     """
     _validate_sample_rate(sample_rate_hz)
     signal_values = _finite_signal(values)
@@ -189,16 +174,16 @@ def prepare_lfp_segment(
     start_s: float,
     end_s: float,
     settings: LfpFilterSettings | None,
+    *,
+    record_time_s=None,
+    values_prepared: bool = False,
 ) -> LfpSegment:
     """Prepare lfp segment.
 
     Args:
-        time_us: Input used by this operation.
         values: Signal values to process.
-        sample_rate_hz: Input used by this operation.
         start_s: Start time of the selected range, in seconds.
         end_s: End time of the selected range, in seconds.
-        settings: Configuration settings for this operation.
     """
     start_s = float(start_s)
     end_s = float(end_s)
@@ -209,28 +194,34 @@ def prepare_lfp_segment(
     if start_s > end_s:
         start_s, end_s = end_s, start_s
 
-    time_us_values = np.asarray(time_us, dtype=float)
-    record_time_s = time_us_values / 1_000_000.0
-    signal_values = prepare_lfp_signal(values, sample_rate_hz, settings)
-    mask = (record_time_s >= start_s) & (record_time_s <= end_s)
+    time_us_values = np.asarray(time_us, dtype=np.float64)
+    if record_time_s is None:
+        record_time_values = time_us_values / 1_000_000.0
+    else:
+        record_time_values = np.asarray(record_time_s, dtype=np.float64)
+        if record_time_values.shape != time_us_values.shape:
+            raise ValueError("Record-time and timestamp arrays must have equal length.")
+    signal_values = (
+        np.asarray(values)
+        if values_prepared
+        else prepare_lfp_signal(values, sample_rate_hz, settings)
+    )
+    if signal_values.shape != time_us_values.shape:
+        raise ValueError("Signal and timestamp arrays must have equal length.")
+    mask = (record_time_values >= start_s) & (record_time_values <= end_s)
 
     if int(mask.sum()) < 2:
         raise ValueError("Selected time range is too short for analysis.")
 
     return LfpSegment(
         time_us=time_us_values[mask],
-        record_time_s=record_time_s[mask],
+        record_time_s=record_time_values[mask],
         values=signal_values[mask],
         sample_rate_hz=float(sample_rate_hz),
     )
 
 
 def filter_description(settings: LfpFilterSettings | None) -> str:
-    """Provide filter description functionality.
-
-    Args:
-        settings: Configuration settings for this operation.
-    """
     if settings is None or not settings.show_filtered:
         return "Raw"
 
@@ -252,7 +243,9 @@ def filter_description(settings: LfpFilterSettings | None) -> str:
 
 
 def _finite_signal(values) -> np.ndarray:
-    signal_values = np.asarray(values, dtype=float)
+    signal_values = np.asarray(values)
+    if not np.issubdtype(signal_values.dtype, np.floating):
+        signal_values = signal_values.astype(float)
     if signal_values.ndim != 1:
         signal_values = signal_values.reshape(-1)
 
@@ -264,10 +257,15 @@ def _finite_signal(values) -> np.ndarray:
         return signal_values.copy()
 
     if not finite_mask.any():
-        return np.zeros(signal_values.shape, dtype=float)
+        return np.zeros(signal_values.shape, dtype=signal_values.dtype)
 
     indices = np.arange(signal_values.size)
-    return np.interp(indices, indices[finite_mask], signal_values[finite_mask])
+    interpolated = np.interp(
+        indices,
+        indices[finite_mask],
+        signal_values[finite_mask],
+    )
+    return interpolated.astype(signal_values.dtype, copy=False)
 
 
 def _validate_sample_rate(sample_rate_hz: float) -> None:

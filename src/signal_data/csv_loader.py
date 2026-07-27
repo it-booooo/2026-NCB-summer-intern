@@ -12,7 +12,6 @@ def read_csv_preview(path, max_rows=8):
 
     Args:
         path: File path to read from or write to.
-        max_rows: Input used by this operation.
     """
     rows = []
 
@@ -128,11 +127,7 @@ def parse_signal_csv_units(path):
 
 
 def normalize_unit(unit):
-    """Normalize unit.
-
-    Args:
-        unit: Input used by this operation.
-    """
+    """Normalize unit."""
     unit = unit.strip()
     if not unit:
         return ""

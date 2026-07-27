@@ -11,11 +11,13 @@ class MenuBuilder:
         import_controller,
         export_controller,
         settings_controller,
+        show_opencl_status,
     ):
         self.window = window
         self.import_controller = import_controller
         self.export_controller = export_controller
         self.settings_controller = settings_controller
+        self.show_opencl_status = show_opencl_status
 
     def build(self):
         menu_bar = self.window.menuBar()
@@ -66,7 +68,7 @@ class MenuBuilder:
         self._add_action(
             settings_menu,
             "Check OpenCL GPU",
-            self.settings_controller.show_opencl_status,
+            self.show_opencl_status,
         )
 
     def _add_action(self, menu, text, callback, description=""):

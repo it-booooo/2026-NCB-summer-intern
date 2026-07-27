@@ -320,13 +320,7 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         return frame
 
     def set_figure(self, frame, canvas_attr, fig):
-        """Set figure.
-
-        Args:
-            frame: Input used by this operation.
-            canvas_attr: Input used by this operation.
-            fig: Input used by this operation.
-        """
+        """Set figure."""
         from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 
         old_canvas = getattr(self, canvas_attr)
@@ -370,13 +364,7 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         return min(limit[0] for limit in limits), max(limit[1] for limit in limits)
 
     def set_shared_xlim(self, left, right, source=None):
-        """Set shared xlim.
-
-        Args:
-            left: Input used by this operation.
-            right: Input used by this operation.
-            source: Input used by this operation.
-        """
+        """Set shared xlim."""
         if self.updating_timeline:
             return
 
@@ -397,12 +385,6 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self.updating_timeline = False
 
     def on_plot_xlim_changed(self, value, source):
-        """Provide on plot xlim changed functionality.
-
-        Args:
-            value: New value to store or apply.
-            source: Input used by this operation.
-        """
         if self.updating_timeline:
             return
 
@@ -410,19 +392,10 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self.set_shared_xlim(float(left), float(right), source=source)
 
     def should_follow_video_playback(self):
-        """Provide should follow video playback functionality.
-
-        Args:
-            None.
-        """
         return self.follow_video_checkbox.isChecked()
 
     def set_sync_time_origin(self, origin_sec):
-        """Set sync time origin.
-
-        Args:
-            origin_sec: Input used by this operation.
-        """
+        """Set sync time origin."""
         next_origin = None if origin_sec is None else float(origin_sec)
         if self.sync_state.record_time_origin_sec == next_origin:
             return
@@ -474,11 +447,6 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         )
 
     def on_canvas_press(self, event):
-        """Provide on canvas press functionality.
-
-        Args:
-            event: Event record to process.
-        """
         if (
             event.button != 1
             or event.inaxes is None
@@ -498,11 +466,6 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         }
 
     def on_canvas_release(self, event):
-        """Provide on canvas release functionality.
-
-        Args:
-            event: Event record to process.
-        """
         state = self.click_seek_state
         self.click_seek_state = None
         if state is None:
@@ -526,11 +489,6 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self.time_selected.emit(record_time_sec)
 
     def follow_current_time_marker(self, force=False):
-        """Provide follow current time marker functionality.
-
-        Args:
-            None.
-        """
         if (
             self.sync_state.current_record_time_sec is None
             or (not force and not self.should_follow_video_playback())
@@ -588,11 +546,6 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self.set_shared_xlim(next_left, next_right, source="playback")
 
     def figure_items(self):
-        """Provide figure items functionality.
-
-        Args:
-            None.
-        """
         return [
             ("lfp", self.lfp_fig, self.lfp_canvas),
             ("axis", self.axis_fig, self.axis_canvas),
@@ -600,11 +553,7 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         ]
 
     def invalidate_current_time_backgrounds(self, key=None):
-        """Invalidate current time backgrounds.
-
-        Args:
-            key: Input used by this operation.
-        """
+        """Invalidate current time backgrounds."""
         if key is None:
             self.current_time_backgrounds = {}
             return
@@ -612,12 +561,6 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self.current_time_backgrounds.pop(key, None)
 
     def background_signature(self, canvas, ax):
-        """Provide background signature functionality.
-
-        Args:
-            canvas: Matplotlib canvas to configure.
-            ax: Matplotlib axes to draw on.
-        """
         return (
             canvas.get_width_height(),
             tuple(round(value, 6) for value in ax.bbox.bounds),
@@ -626,22 +569,12 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         )
 
     def supports_marker_blit(self, canvas):
-        """Provide supports marker blit functionality.
-
-        Args:
-            canvas: Matplotlib canvas to configure.
-        """
         return all(
             hasattr(canvas, name)
             for name in ("copy_from_bbox", "restore_region", "blit")
         )
 
     def on_canvas_draw(self, event):
-        """Provide on canvas draw functionality.
-
-        Args:
-            event: Event record to process.
-        """
         for key, fig, canvas in self.figure_items():
             if canvas is not event.canvas:
                 continue
@@ -669,10 +602,8 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         """Draw marker line.
 
         Args:
-            key: Input used by this operation.
             canvas: Matplotlib canvas to configure.
             ax: Matplotlib axes to draw on.
-            line: Input used by this operation.
         """
         if not self.supports_marker_blit(canvas):
             canvas.draw_idle()
@@ -758,8 +689,6 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         """Set current time marker.
 
         Args:
-            record_time_sec: Input used by this operation.
-            follow_playback: Input used by this operation.
             force_follow: Recenter the visible waveform around this time.
         """
         self.sync_state.current_record_time_sec = record_time_sec
@@ -786,11 +715,7 @@ class WavePanel(LfpAnalysisMixin, QWidget):
                 canvas.draw_idle()
 
     def set_event_intervals(self, intervals):
-        """Set event intervals.
-
-        Args:
-            intervals: Input used by this operation.
-        """
+        """Set event intervals."""
         self.sync_state.event_intervals = [dict(interval) for interval in intervals]
         self.update_event_interval_artists()
 
@@ -904,11 +829,7 @@ class WavePanel(LfpAnalysisMixin, QWidget):
             self.draw_marker_line(key, canvas, ax, line)
 
     def selected_channel(self, selector):
-        """Select ed channel.
-
-        Args:
-            selector: Input used by this operation.
-        """
+        """Select ed channel."""
         channel = selector.currentData()
         if channel is None:
             return None
@@ -919,19 +840,9 @@ class WavePanel(LfpAnalysisMixin, QWidget):
             return None
 
     def current_lfp_filter_settings(self):
-        """Provide current lfp filter settings functionality.
-
-        Args:
-            None.
-        """
         return self._applied_lfp_filter_settings
 
     def pending_lfp_filter_settings(self):
-        """Provide pending lfp filter settings functionality.
-
-        Args:
-            None.
-        """
         return self.settings_from_processing_controls(
             self.signal_view_selector,
             self.bandpass_checkbox,
@@ -941,11 +852,7 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         )
 
     def mark_lfp_filter_settings_pending(self, *_args):
-        """Mark lfp filter settings pending.
-
-        Args:
-            *_args: Input used by this operation.
-        """
+        """Mark lfp filter settings pending."""
         self.apply_filter_button.setEnabled(
             self.pending_lfp_filter_settings() != self._applied_lfp_filter_settings
         )
@@ -978,11 +885,7 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self.refresh_lfp_processing()
 
     def switch_lfp_signal_view(self, *_args):
-        """Switch lfp signal view.
-
-        Args:
-            *_args: Input used by this operation.
-        """
+        """Switch lfp signal view."""
         current = self._applied_lfp_filter_settings
         show_filtered = bool(self.signal_view_selector.currentData())
         self._applied_lfp_filter_settings = signal_func.LfpFilterSettings(
@@ -1051,11 +954,7 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         canvas.draw_idle()
 
     def set_line_noise_hz(self, line_noise_hz):
-        """Set line noise hz.
-
-        Args:
-            line_noise_hz: Input used by this operation.
-        """
+        """Set line noise hz."""
         next_value = 60.0 if line_noise_hz is None else float(line_noise_hz)
         if self.data_state.line_noise_hz == next_value:
             return
@@ -1077,11 +976,7 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self.mark_lfp_filter_settings_pending()
 
     def refresh_lfp_processing(self, *_args):
-        """Refresh lfp processing.
-
-        Args:
-            *_args: Input used by this operation.
-        """
+        """Refresh lfp processing."""
         if not (self.data_state.lfp_info and self.data_state.lfp_info.get("path")):
             return
 
@@ -1095,11 +990,6 @@ class WavePanel(LfpAnalysisMixin, QWidget):
             self.set_shared_xlim(*current_xlim, source="timeline")
 
     def current_lfp_record_xlim(self):
-        """Provide current lfp record xlim functionality.
-
-        Args:
-            None.
-        """
         selected_xlim = self.data_state.timeline_xlim
         if selected_xlim is None and self.lfp_fig is not None:
             selected_xlim = self.lfp_fig.lfp_full_xlim
@@ -1111,11 +1001,6 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         return left, right
 
     def available_lfp_channels(self):
-        """Provide available lfp channels functionality.
-
-        Args:
-            None.
-        """
         channels = self.data_state.lfp_info.get("channels", []) if self.data_state.lfp_info else []
         return [int(channel) for channel in channels]
 
@@ -1124,9 +1009,6 @@ class WavePanel(LfpAnalysisMixin, QWidget):
 
         Args:
             channel: LFP channel identifier.
-            left: Input used by this operation.
-            right: Input used by this operation.
-            settings: Configuration settings for this operation.
         """
         return self.ensure_lfp_dataset().segment(channel, left, right, settings)
 
@@ -1216,11 +1098,7 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self.update_current_time_marker()
 
     def set_lfp_info(self, info):
-        """Set lfp info.
-
-        Args:
-            info: Metadata or state information to store or use.
-        """
+        """Set lfp info."""
         self.data_state.lfp_info = info
         self.data_state.lfp_dataset = None
         self.lfp_fig = None
@@ -1255,11 +1133,7 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self.plot_lfp()
 
     def set_axis_info(self, info):
-        """Set axis info.
-
-        Args:
-            info: Metadata or state information to store or use.
-        """
+        """Set axis info."""
         self.data_state.axis_info = info
         self.axis_fig = None
         self.axis_callback_connected = False
@@ -1267,12 +1141,7 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self.plot_axis()
 
     def set_plot_step(self, plot_name, step):
-        """Set plot step.
-
-        Args:
-            plot_name: Input used by this operation.
-            step: Input used by this operation.
-        """
+        """Set plot step."""
         step_attribute, info_attribute, figure_attribute, callback_attribute, plot = {
             "lfp": (
                 "lfp_step",

@@ -72,12 +72,7 @@ class RoiVideoLabel(QLabel):
         self.request_paint_update()
 
     def set_display_geometry(self, display_rect, frame_size):
-        """Set display geometry.
-
-        Args:
-            display_rect: Input used by this operation.
-            frame_size: Input used by this operation.
-        """
+        """Set display geometry."""
         self.display_rect = display_rect
         self.frame_size = frame_size
 
@@ -87,11 +82,6 @@ class RoiVideoLabel(QLabel):
         self.request_paint_update()
 
     def mousePressEvent(self, event):
-        """Provide mouse press event functionality.
-
-        Args:
-            event: Event record to process.
-        """
         if self.selecting_roi and self.display_rect.contains(event.position().toPoint()):
             self.drag_start = event.position().toPoint()
             self.drag_end = self.drag_start
@@ -100,11 +90,6 @@ class RoiVideoLabel(QLabel):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
-        """Provide mouse move event functionality.
-
-        Args:
-            event: Event record to process.
-        """
         if self.selecting_roi and self.drag_start is None:
             self.hover_pos = event.position().toPoint()
             self.request_paint_update()
@@ -118,11 +103,6 @@ class RoiVideoLabel(QLabel):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
-        """Provide mouse release event functionality.
-
-        Args:
-            event: Event record to process.
-        """
         if self.selecting_roi and self.drag_start is not None:
             self.drag_end = event.position().toPoint()
             roi = self.current_roi()
@@ -137,11 +117,6 @@ class RoiVideoLabel(QLabel):
         super().mouseReleaseEvent(event)
 
     def current_roi(self):
-        """Provide current roi functionality.
-
-        Args:
-            None.
-        """
         if not self.frame_size or self.drag_start is None or self.drag_end is None:
             return None
 
@@ -163,11 +138,7 @@ class RoiVideoLabel(QLabel):
         return (x, y, width, height)
 
     def roi_to_display_rect(self, roi):
-        """Provide roi to display rect functionality.
-
-        Args:
-            roi: LED region of interest as (x, y, width, height).
-        """
+        """Convert an ``(x, y, width, height)`` ROI to display coordinates."""
         if roi is None or not self.frame_size or self.display_rect.isNull():
             return None
 

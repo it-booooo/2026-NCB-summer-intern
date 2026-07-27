@@ -12,7 +12,7 @@ Pig Behavior Sync 是一套用於動物行為實驗的 Windows 桌面工具，�
 - 在影片上建立 LED On、LED Off、Action Start、Action End 與 Seizure-like 標記。
 - 選取影片中的 LED ROI，自動分析亮度變化並建立 LED 事件。
 - 使用第一個 LED On 與第一個 TTL 自動計算影片／記錄時間差。
-- 在同步後的 LFP 訊號中尋找正向峰值。
+- 在同步後的 LFP 訊號中尋找正向與負向峰值。
 - 將標記、檢查結果與各類分析圖匯出成 CSV、Excel 或圖片。
 - 將工作狀態儲存為 .pigproj，稍後繼續分析。
 
@@ -173,11 +173,13 @@ TTL CSV 建議包含：
 
 1. 匯入影片及 LFP。
 2. 完成影片與 TTL 同步。
-3. 在 Waveform Area 選定 LFP channel。
+3. 在「Find Peak」頁面選擇要分析的 LFP channel。
 4. 到「Settings > Set LFP peak thresholds」設定高度、prominence 與最小間距門檻。
 5. 切換至「Find Peak」，按「Find Peak」。
 
-程式只在與影片時間重疊的訊號範圍尋找正向峰值。再次執行會取代先前自動偵測出的 LFP peak；表格內可編輯 note、點選峰值跳轉影片，或刪除選定峰值。
+程式只在與影片時間重疊的訊號範圍尋找峰值，並以訊號基準線區分正向峰值與負向峰值。正向與負向峰值都會加入表格，note 中會標示 positive peak 或 negative peak。再次對同一個 channel 執行會取代該 channel 先前自動偵測出的 LFP peak；其他 channel 的峰值會保留。表格內可編輯 note、點選峰值跳轉影片，或刪除選定峰值。
+
+完成峰值偵測後，可按「Analyze Peaks」查看所選 channel 每分鐘的 LFP peak 數量長條圖。圖表會合併統計正向與負向峰值，不會分開顯示。此功能必須先有完成同步的 LFP peak 才能使用。
 
 ## 匯出資料
 
@@ -208,6 +210,10 @@ TTL CSV 建議包含：
 - 圖片 DPI 與目的資料夾。
 
 輸出檔名會包含來源檔名、channel、raw／processed 及圖表類型。
+
+### Export Peak analyze Image
+
+將 LFP peak 數量分析圖匯出為 PNG。使用前必須先完成同步與峰值偵測；匯出時可選擇要輸出的 LFP channel。
 
 ## 儲存與開啟專案
 

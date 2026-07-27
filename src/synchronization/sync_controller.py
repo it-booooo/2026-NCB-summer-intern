@@ -106,11 +106,7 @@ class SyncController:
         )
 
     def seek_video_marker_time(self, video_time_sec):
-        """Seek video marker time.
-
-        Args:
-            video_time_sec: Input used by this operation.
-        """
+        """Seek video marker time."""
         if not self.video_player.has_video():
             return
 
@@ -127,11 +123,7 @@ class SyncController:
             )
 
     def seek_video_record_time(self, record_time_sec):
-        """Seek video record time.
-
-        Args:
-            record_time_sec: Input used by this operation.
-        """
+        """Seek video record time."""
         if (
             not self.video_player.has_video()
             or self.sync_state.time_offset_sec is None
@@ -142,11 +134,7 @@ class SyncController:
         self._seek_video_time(video_time_sec)
 
     def add_led_events(self, led_events):
-        """Add led events.
-
-        Args:
-            led_events: Input used by this operation.
-        """
+        """Add led events."""
         markers = [
             Marker(
                 kind=MarkerKind(event.event_type),
@@ -161,11 +149,6 @@ class SyncController:
         return markers
 
     def first_video_led_time_sec(self):
-        """Provide first video led time sec functionality.
-
-        Args:
-            None.
-        """
         led_events = self.marker_store.by_kind(MarkerKind.LED_ON)
         if not led_events:
             return None

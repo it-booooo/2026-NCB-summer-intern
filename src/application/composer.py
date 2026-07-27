@@ -68,7 +68,6 @@ class ApplicationComposer:
         )
         workspace = WorkspaceView(wave_panel, sync_panel, video_player)
 
-
         project_controller = ProjectController(self.window, state.project)
         sync_controller = SyncController(
             sync_state=state.sync,
@@ -121,9 +120,7 @@ class ApplicationComposer:
             data_state=state.data,
             analysis_settings=state.analysis,
             wave_panel=wave_panel,
-            show_opencl_status=led_controller.show_opencl_status,
         )
-
 
         components = ApplicationComponents(
             marker_store=marker_store,
@@ -142,7 +139,7 @@ class ApplicationComposer:
             project_controller=project_controller,
             settings_controller=settings_controller,
             import_controller=import_controller,
-            export_controller=export_controller
+            export_controller=export_controller,
         )
         project_controller.set_save_callback(export_controller.save_project)
         project_controller.connect_dirty_sources(
@@ -160,5 +157,6 @@ class ApplicationComposer:
             import_controller=import_controller,
             export_controller=export_controller,
             settings_controller=settings_controller,
+            show_opencl_status=led_controller.show_opencl_status,
         ).build()
         return components

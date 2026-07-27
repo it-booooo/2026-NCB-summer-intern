@@ -1,4 +1,4 @@
-"""Reusable controls for the LFP panel."""
+"""Reusable LFP controls used by ``WavePanel``."""
 
 from matplotlib.patches import Rectangle
 from matplotlib.ticker import FuncFormatter
@@ -96,19 +96,10 @@ class SharedTimelineSlider:
         canvas.mpl_connect("button_release_event", self.on_release)
 
     def on_changed(self, callback):
-        """Provide on changed functionality.
-
-        Args:
-            callback: Function invoked when the operation completes or changes.
-        """
         self.callbacks.append(callback)
 
     def set_time_origin(self, origin_sec):
-        """Set time origin.
-
-        Args:
-            origin_sec: Input used by this operation.
-        """
+        """Set time origin."""
         self.time_origin_sec = None if origin_sec is None else float(origin_sec)
         self.ax.xaxis.set_major_formatter(
             FuncFormatter(
@@ -124,7 +115,6 @@ class SharedTimelineSlider:
 
         Args:
             value: New value to store or apply.
-            emit: Input used by this operation.
         """
         left, right = clamp_xlim(float(value[0]), float(value[1]), self.full_xlim)
         if right - left < self.min_width:
@@ -155,11 +145,6 @@ class SharedTimelineSlider:
         self.valtext.set_text(f"({display_left:.2f} s, {display_right:.2f} s)")
 
     def on_press(self, event):
-        """Provide on press functionality.
-
-        Args:
-            event: Event record to process.
-        """
         if event.inaxes != self.ax or event.button != 1 or event.xdata is None:
             return
 
@@ -184,11 +169,6 @@ class SharedTimelineSlider:
         }
 
     def on_motion(self, event):
-        """Provide on motion functionality.
-
-        Args:
-            event: Event record to process.
-        """
         if self.drag_state is None or event.xdata is None:
             return
 
@@ -208,10 +188,5 @@ class SharedTimelineSlider:
             self.set_val((left + dx, right + dx))
 
     def on_release(self, event):
-        """Provide on release functionality.
-
-        Args:
-            event: Event record to process.
-        """
         self.drag_state = None
 

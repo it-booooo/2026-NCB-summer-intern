@@ -20,11 +20,9 @@ from ..synchronization.time_conversion import relative_time
 class LfpAnalysisMixin:
     def create_time_spinbox(self, value, minimum, maximum):
         """Create time spinbox.
-    
+
         Args:
             value: New value to store or apply.
-            minimum: Input used by this operation.
-            maximum: Input used by this operation.
         """
         spinbox = QDoubleSpinBox()
         spinbox.setDecimals(4)
@@ -35,11 +33,6 @@ class LfpAnalysisMixin:
         return spinbox
     
     def full_lfp_record_xlim(self):
-        """Provide full lfp record xlim functionality.
-    
-        Args:
-            None.
-        """
         if self.lfp_fig is not None:
             return self.lfp_fig.lfp_full_xlim
     
@@ -60,15 +53,7 @@ class LfpAnalysisMixin:
         high_spin,
         notch_checkbox,
     ):
-        """Set tings from processing controls.
-    
-        Args:
-            signal_selector: Input used by this operation.
-            bandpass_checkbox: Input used by this operation.
-            low_spin: Input used by this operation.
-            high_spin: Input used by this operation.
-            notch_checkbox: Input used by this operation.
-        """
+        """Set tings from processing controls."""
         line_noise_hz = self.data_state.line_noise_hz if notch_checkbox.isChecked() else None
         if line_noise_hz is not None:
             line_noise_hz = float(line_noise_hz)
@@ -177,16 +162,11 @@ class LfpAnalysisMixin:
         size,
     ):
         """Open lfp analysis dialog.
-    
+
         Args:
             title: Dialog title displayed to the user.
             channel: LFP channel identifier.
-            left: Input used by this operation.
-            right: Input used by this operation.
-            segment: Input used by this operation.
-            settings: Configuration settings for this operation.
             figure: Matplotlib figure to use or update.
-            size: Input used by this operation.
         """
         from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
     
@@ -235,21 +215,15 @@ class LfpAnalysisMixin:
         dialog.activateWindow()
     
     def forget_spectrum_dialog(self, dialog):
-        """Remove the reference to spectrum dialog.
-    
-        Args:
-            dialog: Input used by this operation.
-        """
+        """Remove the reference to spectrum dialog."""
         if dialog in self.spectrum_dialogs:
             self.spectrum_dialogs.remove(dialog)
     
     def create_power_spectrum_figure(self, channel, frequencies, power):
         """Create power spectrum figure.
-    
+
         Args:
             channel: LFP channel identifier.
-            frequencies: Input used by this operation.
-            power: Input used by this operation.
         """
         figure = Figure(figsize=(7.6, 4.4), constrained_layout=True)
         ax = figure.add_subplot(111)
@@ -263,13 +237,9 @@ class LfpAnalysisMixin:
     
     def create_lfp_waveform_figure(self, channel, segment, settings, time_mode,info):
         """Create lfp waveform figure.
-    
+
         Args:
             channel: LFP channel identifier.
-            segment: Input used by this operation.
-            settings: Configuration settings for this operation.
-            time_mode: Input used by this operation.
-            info: Metadata or state information to store or use.
         """
         duration_sec = abs(
             float(segment.record_time_s[-1]) - float(segment.record_time_s[0])
@@ -302,14 +272,6 @@ class LfpAnalysisMixin:
         return figure
     
     def annotate_lfp_figure(self, figure, channel, segment, settings):
-        """Provide annotate lfp figure functionality.
-    
-        Args:
-            figure: Matplotlib figure to use or update.
-            channel: LFP channel identifier.
-            segment: Input used by this operation.
-            settings: Configuration settings for this operation.
-        """
         filename = self.data_state.lfp_info.get("filename", "LFP") if self.data_state.lfp_info else "LFP"
         time_mode = "Sync time" if self.sync_state.record_time_origin_sec is not None else "Time"
         display_left = relative_time(
@@ -335,14 +297,9 @@ class LfpAnalysisMixin:
         time_mode,
     ):
         """Create spectrogram figure.
-    
+
         Args:
             channel: LFP channel identifier.
-            segment: Input used by this operation.
-            frequencies: Input used by this operation.
-            times: Input used by this operation.
-            power: Input used by this operation.
-            time_mode: Input used by this operation.
         """
         duration_sec = abs(
             float(segment.record_time_s[-1]) - float(segment.record_time_s[0])

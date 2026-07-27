@@ -525,14 +525,11 @@ def compute_led_brightness_curve_opencl(
     Args:
         video_path: Path of the video being processed.
         roi: LED region of interest as (x, y, width, height).
-        rotate_180: Input used by this operation.
         using_fps: Frame rate used for time conversion.
-        frame_step: Input used by this operation.
         start_frame: First video frame to process.
         end_frame: Last video frame to process.
         should_stop: Callback that returns true when processing should stop.
         progress_callback: Callback receiving scan progress updates.
-        acceleration_info: Input used by this operation.
     """
     import cv2
     import numpy as np

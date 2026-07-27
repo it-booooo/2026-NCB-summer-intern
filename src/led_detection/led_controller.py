@@ -222,12 +222,6 @@ class LedController(QObject):
         self.led_worker.start()
 
     def led_cache_key(self, scan_start_frame, scan_end_frame):
-        """Provide led cache key functionality.
-
-        Args:
-            scan_start_frame: Input used by this operation.
-            scan_end_frame: Input used by this operation.
-        """
         return (
             self.video_state.metadata.path,
             tuple(self.led_state.roi) if self.led_state.roi is not None else None,
@@ -239,11 +233,7 @@ class LedController(QObject):
         )
 
     def stop_led_detection(self, wait=False):
-        """Stop led detection.
-
-        Args:
-            wait: Input used by this operation.
-        """
+        """Stop led detection."""
         if self.led_worker is None:
             return True
 
@@ -266,12 +256,8 @@ class LedController(QObject):
         """Finish led detection.
 
         Args:
-            worker: Input used by this operation.
             points: Brightness or analysis points used by the operation.
-            threshold: Input used by this operation.
             events: Event records to display, analyze, or export.
-            stats: Input used by this operation.
-            cache_key: Input used by this operation.
         """
         if self.led_worker is not None and worker is not self.led_worker:
             return
@@ -309,13 +295,7 @@ class LedController(QObject):
             )
 
     def update_led_detection_progress(self, worker, current_frame, total_frames):
-        """Update led detection progress.
-
-        Args:
-            worker: Input used by this operation.
-            current_frame: Input used by this operation.
-            total_frames: Input used by this operation.
-        """
+        """Update led detection progress."""
         if self.led_worker is not None and worker is not self.led_worker:
             return
 
@@ -325,7 +305,6 @@ class LedController(QObject):
         """Update led detection stage.
 
         Args:
-            worker: Input used by this operation.
             text: Text displayed to the user.
         """
         if self.led_worker is not None and worker is not self.led_worker:
@@ -334,12 +313,7 @@ class LedController(QObject):
         self.led_analysis_panel.set_led_detection_stage(text)
 
     def fail_led_detection(self, worker, message):
-        """Report failure for led detection.
-
-        Args:
-            worker: Input used by this operation.
-            message: Input used by this operation.
-        """
+        """Report failure for led detection."""
         if self.led_worker is not None and worker is not self.led_worker:
             return
 
@@ -350,11 +324,6 @@ class LedController(QObject):
         )
 
     def cleanup_led_worker(self):
-        """Provide cleanup led worker functionality.
-
-        Args:
-            None.
-        """
         worker = self.sender()
         if worker is not None:
             worker.deleteLater()

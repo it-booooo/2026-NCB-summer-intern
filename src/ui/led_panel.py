@@ -245,11 +245,7 @@ class LedAnalysisPanel(MarkerViewPanel):
         )
 
     def format_scan_input(self, widget):
-        """Format scan input.
-
-        Args:
-            widget: Input used by this operation.
-        """
+        """Format scan input."""
         text = widget.text().strip()
         if not text:
             widget.setStyleSheet("")
@@ -276,22 +272,13 @@ class LedAnalysisPanel(MarkerViewPanel):
             self.mark_scan_range_valid(True)
 
     def mark_scan_range_valid(self, is_valid):
-        """Mark scan range valid.
-
-        Args:
-            is_valid: Input used by this operation.
-        """
+        """Mark scan range valid."""
         style = "" if is_valid else "border: 1px solid #c0392b;"
         self.led_scan_start_input.setStyleSheet(style)
         self.led_scan_end_input.setStyleSheet(style)
 
     def led_scan_range_sec(self, fps, total_frames):
-        """Provide led scan range sec functionality.
-
-        Args:
-            fps: Video frame rate in frames per second.
-            total_frames: Input used by this operation.
-        """
+        """Return the selected scan range using FPS and total frame count."""
         start_text = self.led_scan_start_input.text().strip()
         end_text = self.led_scan_end_input.text().strip()
 
@@ -356,10 +343,7 @@ class LedAnalysisPanel(MarkerViewPanel):
 
         Args:
             points: Brightness or analysis points used by the operation.
-            threshold: Input used by this operation.
             events: Event records to display, analyze, or export.
-            stats: Input used by this operation.
-            status: Input used by this operation.
         """
         self.led_state.analysis_points = list(points or [])
         self.led_state.analysis_threshold = float(threshold or 0.0)
@@ -491,12 +475,7 @@ class LedAnalysisPanel(MarkerViewPanel):
         self.led_progress_label.setText("Analyzing LED ROI: 0%")
 
     def update_led_detection_progress(self, current_frame, total_frames):
-        """Update led detection progress.
-
-        Args:
-            current_frame: Input used by this operation.
-            total_frames: Input used by this operation.
-        """
+        """Update led detection progress."""
         if total_frames <= 0:
             self.led_progress_bar.setRange(0, 0)
             self.led_progress_label.setText(
@@ -512,11 +491,7 @@ class LedAnalysisPanel(MarkerViewPanel):
         )
 
     def finish_led_detection_progress(self, has_events=True):
-        """Finish led detection progress.
-
-        Args:
-            has_events: Input used by this operation.
-        """
+        """Finish led detection progress."""
         self.led_progress_bar.setRange(0, 100)
         self.led_progress_bar.setValue(100)
         self.led_progress_label.setText(

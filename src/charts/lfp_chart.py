@@ -53,9 +53,6 @@ def LFP(
 
     Args:
         channels: Available LFP channel identifiers.
-        step: Input used by this operation.
-        info: Metadata or state information to store or use.
-        filter_settings: Input used by this operation.
     """
     if info is None:
         raise ValueError("Please provide LFP data information.")
@@ -182,11 +179,7 @@ def LFP(
         fig.canvas.draw_idle()
 
     def set_lfp_signal_view(filtered: bool) -> None:
-        """Set lfp signal view.
-
-        Args:
-            filtered: Input used by this operation.
-        """
+        """Set lfp signal view."""
         nonlocal show_filtered
         show_filtered = bool(filtered)
         load_coarse()

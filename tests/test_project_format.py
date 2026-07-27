@@ -2,12 +2,23 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from src.app_state import AppState
+from src.data_import.project_load_worker import prepare_project_objects
+from src.led_detection import LedBrightnessPoint
+from src.markers import (
+    Marker,
+    MarkerKind,
+    MarkerSource,
+    RecordPosition,
+    VideoPosition,
+    marker_to_dict,
+)
 from src.project_archive import load_project_archive
 from src.project_format import PROJECT_FORMAT, PROJECT_VERSION
-from src.project_format import validate_state
+from src.project_format import validate_state, validate_video_bounds
 
 
 class AnalysisSettingsTests(unittest.TestCase):
@@ -34,6 +45,23 @@ class AnalysisSettingsTests(unittest.TestCase):
             validate_state(
                 {"analysis": {"lfp_peak_min_distance_sec": 0.0}}
             )
+
+    def test_project_validation_accepts_negative_marker_times(self):
+        markers = [
+            Marker(
+                kind=MarkerKind.TTL,
+                source=MarkerSource.TTL_IMPORT,
+                position=RecordPosition(-1.25),
+            ),
+            Marker(
+                kind=MarkerKind.LED_ON,
+                source=MarkerSource.LED_DETECTION,
+                position=VideoPosition(time_sec=-0.5, frame_index=0),
+            ),
+        ]
+        state = {"markers": [marker_to_dict(marker) for marker in markers]}
+
+        self.assertIs(validate_state(state), state)
 
 
 class ProjectArchiveTests(unittest.TestCase):
@@ -72,6 +100,57 @@ class ProjectArchiveTests(unittest.TestCase):
 
             with self.assertRaises(ValueError):
                 load_project_archive(path)
+
+    def test_project_runtime_objects_are_prepared_once(self):
+        marker = Marker(
+            kind=MarkerKind.TTL,
+            source=MarkerSource.TTL_IMPORT,
+            position=RecordPosition(1.25),
+        )
+        point = {
+            "frame_index": 10,
+            "video_time_sec": 0.5,
+            "brightness": 42.0,
+        }
+        archive_data = {
+            "state": {
+                "markers": [marker_to_dict(marker)],
+                "led": {
+                    "analysis_points": [dict(point)],
+                    "brightness_cache": [{"points": [dict(point)]}],
+                },
+            }
+        }
+
+        prepared = prepare_project_objects(archive_data)
+        prepared_again = prepare_project_objects(prepared)
+
+        self.assertIs(prepared_again, prepared)
+        self.assertEqual(prepared["state"]["markers"], [marker])
+        self.assertIsInstance(
+            prepared["state"]["led"]["analysis_points"][0],
+            LedBrightnessPoint,
+        )
+        self.assertIsInstance(
+            prepared["state"]["led"]["brightness_cache"][0]["points"][0],
+            LedBrightnessPoint,
+        )
+
+    def test_video_bounds_accept_prepared_marker_objects(self):
+        marker = Marker(
+            kind=MarkerKind.LED_ON,
+            source=MarkerSource.LED_DETECTION,
+            position=VideoPosition(time_sec=-0.5, frame_index=10),
+        )
+        state = {"video": {"current_frame": 0}, "markers": [marker]}
+        metadata = SimpleNamespace(
+            total_frames=100,
+            duration_sec=5.0,
+            width=640,
+            height=480,
+        )
+
+        validate_video_bounds(state, metadata)
 
 
 if __name__ == "__main__":
