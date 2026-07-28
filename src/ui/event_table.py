@@ -42,7 +42,7 @@ class EventEditDialog(QDialog):
 
         self.video_time_input = QDoubleSpinBox()
         self.video_time_input.setDecimals(6)
-        self.video_time_input.setRange(0.0, 1_000_000_000.0)
+        self.video_time_input.setRange(-1_000_000_000.0, 1_000_000_000.0)
         self.video_time_input.setSuffix(" s")
         self.video_time_input.setValue(float(position.time_sec))
 
@@ -86,7 +86,8 @@ class EventEditDialog(QDialog):
                 min(frame_index, self.frame_input.maximum()),
             )
             self.frame_input.setValue(frame_index)
-            self.video_time_input.setValue(frame_index / self.fps)
+            if video_time_sec >= 0:
+                self.video_time_input.setValue(frame_index / self.fps)
         finally:
             self.updating_video_position = False
 
