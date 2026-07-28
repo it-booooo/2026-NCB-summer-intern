@@ -14,12 +14,28 @@ from .marker_view_panel import MarkerViewPanel
 
 def behavior_interval_warning(markers):
     pending_start = None
+    pending_led_on = None
     video_number = 0
     for marker in markers:
         if not isinstance(marker.position, VideoPosition):
             continue
         video_number += 1
-        if marker.kind == MarkerKind.BEHAVIOR_START:
+        if marker.kind == MarkerKind.LED_ON:
+            pending_led_on = (video_number, marker)
+        elif marker.kind == MarkerKind.LED_OFF:
+            if pending_led_on is None:
+                return (
+                    f"Event #{video_number} LED Off has no preceding LED On; "
+                    "add or move an LED On before it."
+                )
+            led_on_number, led_on_marker = pending_led_on
+            if marker.position.time_sec <= led_on_marker.position.time_sec:
+                return (
+                    f"Event #{video_number} LED Off time must be later than "
+                    f"Event #{led_on_number} LED On time."
+                )
+            pending_led_on = None
+        elif marker.kind == MarkerKind.BEHAVIOR_START:
             if pending_start is not None:
                 return (
                     f"Event #{pending_start[0]} Action Start has no matching "
