@@ -8,6 +8,7 @@ import os
 import shutil
 import tempfile
 import threading
+import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,6 +20,78 @@ CACHE_FORMAT_VERSION = 2
 OVERVIEW_ALGORITHM_VERSION = 2
 DEFAULT_CHUNK_ROWS = 250_000
 DEFAULT_OVERVIEW_MAX_POINTS = 5_000
+DEFAULT_CACHE_MAX_BYTES = 20 * 1024**3
+DEFAULT_CACHE_MAX_AGE_DAYS = 30
+DAY_SECONDS = 24 * 60 * 60
+
+_CACHE_CLEANUP_LOCK = threading.Lock()
+_CLEANED_CACHE_ROOTS: set[str] = set()
+
+
+def _remove_cache_directory(path: Path) -> bool:
+    claimed = path.with_name(f".{path.name}.{uuid.uuid4().hex}.stale")
+    try:
+        path.rename(claimed)
+    except OSError:
+        return False
+    shutil.rmtree(claimed, ignore_errors=True)
+    return not claimed.exists()
+
+
+def cleanup_signal_cache(
+    cache_root: str | Path,
+    *,
+    max_bytes: int = DEFAULT_CACHE_MAX_BYTES,
+    max_age_days: int = DEFAULT_CACHE_MAX_AGE_DAYS,
+    protected_paths: tuple[Path, ...] = (),
+    now: float | None = None,
+) -> None:
+    """Remove abandoned, expired, and oldest excess signal caches."""
+    root = Path(cache_root)
+    if not root.is_dir():
+        return
+
+    current_time = time.time() if now is None else float(now)
+    protected = {str(path.resolve()) for path in protected_paths}
+    age_cutoff = current_time - max(int(max_age_days), 0) * DAY_SECONDS
+
+    try:
+        children = list(root.iterdir())
+    except OSError:
+        return
+
+    caches = []
+    for path in children:
+        if not path.is_dir():
+            continue
+        try:
+            if path.name.startswith(".") and path.name.endswith((".tmp", ".stale")):
+                if path.stat().st_mtime <= current_time - DAY_SECONDS:
+                    shutil.rmtree(path, ignore_errors=True)
+                continue
+            if not path.name.startswith("signal-"):
+                continue
+
+            is_protected = str(path.resolve()) in protected
+            access_time = (path / "COMPLETE").stat().st_mtime
+            size = sum(
+                item.stat().st_size for item in path.iterdir() if item.is_file()
+            )
+        except OSError:
+            continue
+        if not is_protected and access_time <= age_cutoff:
+            _remove_cache_directory(path)
+            continue
+        caches.append((access_time, size, path, is_protected))
+
+    total_bytes = sum(size for _access_time, size, _path, _protected in caches)
+    byte_limit = max(int(max_bytes), 0)
+    removable = [item for item in caches if not item[3]]
+    for _access_time, size, path, _protected in sorted(removable):
+        if total_bytes <= byte_limit:
+            break
+        if _remove_cache_directory(path):
+            total_bytes -= size
 
 
 class CacheBuildCancelled(RuntimeError):
@@ -63,7 +136,6 @@ class SignalDataSource:
             / "PigBehaviorSync"
             / "signal-cache"
         )
-        self._cache_dirs: dict[int, Path] = {}
         self._cache_locks: dict[int, threading.RLock] = {}
         self._cache_locks_guard = threading.Lock()
 
@@ -122,8 +194,19 @@ class SignalDataSource:
     ) -> Path:
         identity = self._identity(channel_id)
         final_path = self._cache_path(identity)
+        cleanup_key = str(self.cache_root.resolve())
+        with _CACHE_CLEANUP_LOCK:
+            if cleanup_key not in _CLEANED_CACHE_ROOTS:
+                cleanup_signal_cache(
+                    self.cache_root,
+                    protected_paths=(final_path,),
+                )
+                _CLEANED_CACHE_ROOTS.add(cleanup_key)
         if self._valid_cache(final_path, identity):
-            self._cache_dirs[channel_id] = final_path
+            try:
+                (final_path / "COMPLETE").touch()
+            except OSError:
+                pass
             return final_path
 
         self.cache_root.mkdir(parents=True, exist_ok=True)
@@ -167,7 +250,6 @@ class SignalDataSource:
             shutil.rmtree(temporary, ignore_errors=True)
             raise
 
-        self._cache_dirs[channel_id] = final_path
         return final_path
 
     def _convert_csv(

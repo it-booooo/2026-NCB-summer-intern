@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import threading
 import unittest
@@ -9,7 +10,11 @@ import numpy as np
 from benchmarks.signal_csv_fixture import SignalFixtureConfig, generate_signal_csv
 from src.signal_data import parse_lfp_csv_info
 from src.signal_data.readers import read_signal_csv
-from src.signal_data.source import CacheBuildCancelled, SignalDataSource
+from src.signal_data.source import (
+    CacheBuildCancelled,
+    SignalDataSource,
+    cleanup_signal_cache,
+)
 
 
 class SignalCacheTests(unittest.TestCase):
@@ -141,6 +146,68 @@ class SignalCacheTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(ValueError, "backwards"):
             source.ensure_cache(2)
+
+    def test_cleanup_removes_abandoned_and_oldest_excess_caches(self):
+        now = 2_000_000_000.0
+        self.cache_root.mkdir()
+        recent_temporary = self.cache_root / ".recent.tmp"
+        old_temporary = self.cache_root / ".old.tmp"
+        recent_temporary.mkdir()
+        old_temporary.mkdir()
+        os.utime(recent_temporary, (now, now))
+        os.utime(old_temporary, (now - 2 * 24 * 60 * 60,) * 2)
+
+        oldest = self._fake_cache("signal-oldest", 40, now - 300)
+        newer = self._fake_cache("signal-newer", 40, now - 200)
+        protected = self._fake_cache("signal-protected", 40, now - 400)
+        expired = self._fake_cache(
+            "signal-expired",
+            10,
+            now - 31 * 24 * 60 * 60,
+        )
+
+        cleanup_signal_cache(
+            self.cache_root,
+            max_bytes=40,
+            max_age_days=30,
+            protected_paths=(protected,),
+            now=now,
+        )
+
+        self.assertTrue(recent_temporary.exists())
+        self.assertFalse(old_temporary.exists())
+        self.assertFalse(oldest.exists())
+        self.assertFalse(newer.exists())
+        self.assertTrue(protected.exists())
+        self.assertFalse(expired.exists())
+
+    def test_expired_cache_rebuild_preserves_source_and_segment(self):
+        source = self.source()
+        before = source.segment(2, 200_000, 600_000)
+        cache = source.ensure_cache(2)
+        old_time = 1_000_000_000.0
+        os.utime(cache / "COMPLETE", (old_time, old_time))
+
+        cleanup_signal_cache(
+            self.cache_root,
+            max_age_days=30,
+            now=old_time + 31 * 24 * 60 * 60,
+        )
+
+        self.assertTrue(self.path.exists())
+        self.assertFalse(cache.exists())
+        after = source.segment(2, 200_000, 600_000)
+        np.testing.assert_array_equal(after.time_us, before.time_us)
+        np.testing.assert_array_equal(after.values, before.values)
+
+    def _fake_cache(self, name, size, access_time):
+        path = self.cache_root / name
+        path.mkdir()
+        (path / "values.bin").write_bytes(b"x" * size)
+        complete = path / "COMPLETE"
+        complete.write_text("complete\n", encoding="ascii")
+        os.utime(complete, (access_time, access_time))
+        return path
 
 
 if __name__ == "__main__":
