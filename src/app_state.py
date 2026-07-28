@@ -77,6 +77,8 @@ class DataState:
         from .signal_data import LfpDataset
 
         dataset = LfpDataset.from_csv(info)
+        if self.lfp_dataset is not None and self.lfp_dataset is not dataset:
+            self.lfp_dataset.close(wait=True)
         self.lfp_dataset = dataset
         return dataset
 

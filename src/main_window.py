@@ -43,6 +43,15 @@ class MainWindow(QMainWindow):
             event.ignore()
             return
 
+        if not importer.stop_signal_import(wait=True):
+            QMessageBox.information(
+                self,
+                "Signal import",
+                "The signal cache is still closing file handles. Please close the window again in a moment.",
+            )
+            event.ignore()
+            return
+
         if not led.stop_led_detection(wait=True):
             QMessageBox.information(
                 self,
@@ -56,5 +65,7 @@ class MainWindow(QMainWindow):
         if video_player.cap is not None:
             video_player.cap.release()
             video_player.cap = None
+        if self.app_state.data.lfp_dataset is not None:
+            self.app_state.data.lfp_dataset.close(wait=True)
         project.cleanup()
         event.accept()

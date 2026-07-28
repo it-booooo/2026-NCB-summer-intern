@@ -8,7 +8,11 @@ from unittest.mock import patch
 import numpy as np
 
 from benchmarks.signal_csv_fixture import SignalFixtureConfig, generate_signal_csv
-from src.signal_data import parse_lfp_csv_info
+from src.signal_data import (
+    LfpFilterSettings,
+    parse_lfp_csv_info,
+    prepare_lfp_signal,
+)
 from src.signal_data.readers import read_signal_csv
 from src.signal_data.source import CacheBuildCancelled, SignalDataSource
 
@@ -56,6 +60,87 @@ class SignalCacheTests(unittest.TestCase):
         )
         self.assertLess(len(overview.values), len(raw))
 
+    def test_one_source_cache_contains_shared_time_and_every_channel(self):
+        source = self.source()
+        cache = source.ensure_cache(260)
+        metadata = json.loads((cache / "metadata.json").read_text("utf-8"))
+        count = int(metadata["sample_count"])
+
+        self.assertEqual((cache / "time_us.bin").stat().st_size, count * 8)
+        for channel in (2, 5, 260):
+            self.assertEqual(
+                (cache / source._value_name(channel)).stat().st_size,
+                count * 4,
+            )
+
+    def test_raw_and_filtered_coarse_share_the_same_global_step(self):
+        source = self.source()
+        step = 7
+        settings = LfpFilterSettings(
+            show_filtered=True,
+            bandpass_enabled=True,
+            bandpass_low_hz=5.0,
+            bandpass_high_hz=40.0,
+            line_noise_hz=None,
+        )
+        raw = source.coarse(5, step)
+        filtered = source.coarse(5, step, settings)
+        legacy = read_signal_csv(
+            self.path, [5], metadata=self.info["metadata"]
+        )
+        full_filtered = prepare_lfp_signal(
+            legacy["channel_5"].to_numpy(),
+            self.config.sample_rate_hz,
+            settings,
+        )
+
+        np.testing.assert_array_equal(raw.time_us, filtered.time_us)
+        np.testing.assert_array_equal(
+            raw.time_us,
+            legacy["time_us"].to_numpy()[::step],
+        )
+        np.testing.assert_allclose(
+            filtered.values[5:-5],
+            full_filtered[::step][5:-5],
+            rtol=3e-2,
+            atol=3e-2,
+        )
+        self.assertEqual(
+            len(filtered.values),
+            len(range(0, self.config.sample_count, step)),
+        )
+
+    def test_cancelled_coarse_build_removes_temporary_directory(self):
+        source = self.source()
+        source.ensure_cache(2)
+        cancel = threading.Event()
+
+        def cancel_after_first_channel(_progress):
+            cancel.set()
+
+        with self.assertRaises(CacheBuildCancelled):
+            source.coarse(
+                2,
+                3,
+                cancel_event=cancel,
+                progress_callback=cancel_after_first_channel,
+            )
+
+        self.assertFalse(any(self.cache_root.glob("coarse-*")))
+        self.assertFalse(any(self.cache_root.glob("*.tmp")))
+
+    def test_clear_cache_closes_handles_and_removes_source_entries(self):
+        source = self.source()
+        source.ensure_cache(260)
+        source.coarse(260, 4)
+        self.assertTrue(any(self.cache_root.iterdir()))
+
+        source.clear_cache()
+
+        self.assertFalse(any(self.cache_root.iterdir()))
+        self.path.unlink()
+        self.assertFalse(self.path.exists())
+
     def test_segment_searchsorted_matches_legacy_inclusive_mask(self):
         source = self.source()
         start_us = 310_000
@@ -99,10 +184,14 @@ class SignalCacheTests(unittest.TestCase):
         metadata = json.loads((cache / "metadata.json").read_text("utf-8"))
         expected_size = metadata["sample_count"] * 4
 
-        with (cache / "values.bin").open("r+b") as stream:
+        values_path = cache / source._value_name(2)
+        with values_path.open("r+b") as stream:
             stream.truncate(8)
         rebuilt = self.source().ensure_cache(2)
-        self.assertEqual((rebuilt / "values.bin").stat().st_size, expected_size)
+        self.assertEqual(
+            (rebuilt / source._value_name(2)).stat().st_size,
+            expected_size,
+        )
 
         metadata_path = rebuilt / "metadata.json"
         metadata = json.loads(metadata_path.read_text("utf-8"))

@@ -383,6 +383,13 @@ class WavePanel(LfpAnalysisMixin, QWidget):
 
         self.invalidate_current_time_backgrounds()
         self.updating_timeline = False
+        dataset = self.data_state.lfp_dataset
+        if dataset is not None:
+            dataset.update_visible_range(
+                left,
+                right,
+                self.current_lfp_filter_settings(),
+            )
 
     def on_plot_xlim_changed(self, value, source):
         if self.updating_timeline:
@@ -801,6 +808,23 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         if self.sync_state.current_record_time_sec is None:
             return
 
+        dataset = self.data_state.lfp_dataset
+        if dataset is not None:
+            visible = self.data_state.timeline_xlim
+            visible_preloaded = (
+                visible is not None
+                and dataset.update_visible_range(
+                    visible[0],
+                    visible[1],
+                    self.current_lfp_filter_settings(),
+                )
+            )
+            if not visible_preloaded:
+                dataset.update_playback_window(
+                    self.sync_state.current_record_time_sec,
+                    self.current_lfp_filter_settings(),
+                )
+
         for key, fig, canvas in self.figure_items():
             if fig is None or canvas is None or not fig.axes:
                 continue
@@ -902,6 +926,7 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         if self.lfp_fig is None:
             return
         self.lfp_fig.set_lfp_signal_view(show_filtered)
+        self.update_current_time_marker()
         self.update_lfp_peak_artist()
         self.invalidate_current_time_backgrounds("lfp")
 
@@ -1104,6 +1129,9 @@ class WavePanel(LfpAnalysisMixin, QWidget):
 
     def set_lfp_dataset(self, dataset):
         """Atomically install a prepared LFP dataset and refresh its controls."""
+        previous_dataset = self.data_state.lfp_dataset
+        if previous_dataset is not None and previous_dataset is not dataset:
+            previous_dataset.close(wait=True)
         self.data_state.lfp_dataset = dataset
         self.lfp_fig = None
         self.lfp_callback_connected = False

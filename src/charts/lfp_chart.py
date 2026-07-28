@@ -8,7 +8,11 @@ from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 
 from .. import signal_data as signal_func
-from .chart_helpers import format_signal_label, install_x_navigation
+from .chart_helpers import (
+    format_signal_label,
+    install_x_navigation,
+    resolve_plot_step,
+)
 
 
 class LfpFigure(Figure):
@@ -135,12 +139,6 @@ def LFP(
     navigation = install_x_navigation(fig, ax, full_xlim)
     resolved_auto_stride: int | None = None
 
-    def plot_width_px() -> float:
-        width = float(ax.bbox.width)
-        if width <= 1:
-            width = float(fig.get_figwidth() * fig.dpi * 0.9)
-        return max(width, 1.0)
-
     def refresh_lfp_plot(*, recalculate_auto: bool = False) -> None:
         """Rebuild the fixed full-range plot data with the configured step."""
         nonlocal base_times, base_values, resolved_auto_stride
@@ -148,22 +146,14 @@ def LFP(
         effective_step = step
         if step is None and resolved_auto_stride is not None and not recalculate_auto:
             effective_step = resolved_auto_stride
-        if settings.show_filtered:
-            # Navigation preview only: never filter the complete raw recording.
-            overview_times, values = dataset.overview_values(
-                selected_channel, settings
-            )
-            times = overview_times / 1_000_000.0
-            actual_stride = 1
-        else:
-            times, values, actual_stride = dataset.plot_segment(
-                selected_channel,
-                full_xlim[0],
-                full_xlim[1],
-                effective_step,
-                plot_width_px(),
-                settings,
-            )
+        sample_count = dataset.source.sample_count(selected_channel)
+        actual_stride = max(resolve_plot_step(sample_count, effective_step), 1)
+        coarse_times, values = dataset.coarse_values(
+            selected_channel,
+            actual_stride,
+            settings,
+        )
+        times = coarse_times / 1_000_000.0
         if step is None:
             resolved_auto_stride = actual_stride
         base_times = np.asarray(times, dtype=float)

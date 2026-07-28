@@ -13,7 +13,8 @@ from pathlib import Path
 
 from benchmarks.signal_csv_fixture import SignalFixtureConfig, generate_signal_csv
 from src.signal_data.csv_loader import parse_lfp_csv_info
-from src.signal_data.readers import read_signal_csv
+from src.signal_data.lfp_dataset import LfpDataset
+from src.signal_data.source import CacheBuildCancelled, SignalDataSource
 
 
 def _elapsed(operation):
@@ -64,38 +65,64 @@ def _peak_memory_bytes() -> int:
 def run(path: Path, config: SignalFixtureConfig) -> dict:
     generated_rows = generate_signal_csv(path, config)
     info, metadata_s = _elapsed(lambda: parse_lfp_csv_info(path))
-    first, first_display_s = _elapsed(
-        lambda: read_signal_csv(path, [config.channels[0]], info["metadata"])
-    )
-    _, channel_switch_s = _elapsed(
-        lambda: read_signal_csv(path, [config.channels[1]], info["metadata"])
-    )
+    with tempfile.TemporaryDirectory(prefix="pig-signal-cache-") as cache_directory:
+        info["_signal_cache_root"] = cache_directory
+        dataset = LfpDataset.from_csv(info)
+        step = max(config.sample_count // 5_000, 1)
+        (first_times, first_values), first_display_s = _elapsed(
+            lambda: dataset.coarse_values(config.channels[0], step)
+        )
+        _, channel_switch_s = _elapsed(
+            lambda: dataset.coarse_values(config.channels[1], step)
+        )
+        start_s, end_s = dataset.record_bounds_s(config.channels[0])
+        segment_end_s = min(start_s + 10.0, end_s)
+        segment, segment_s = _elapsed(
+            lambda: dataset.segment(
+                config.channels[0],
+                start_s,
+                segment_end_s,
+                None,
+            )
+        )
+        dataset.close(wait=True)
 
-    def ten_second_segment():
-        data = read_signal_csv(path, [config.channels[0]], info["metadata"])
-        return data[data["time_us"] < data["time_us"].iloc[0] + 10_000_000]
-
-    segment, segment_s = _elapsed(ten_second_segment)
-
-    cancel_path = path.with_name(path.stem + ".cancelled.csv")
     cancel = threading.Event()
-    long_config = SignalFixtureConfig(
-        sample_rate_hz=config.sample_rate_hz,
-        duration_s=max(config.duration_s, 3_600),
-        channels=config.channels,
-    )
-    worker = threading.Thread(
-        target=generate_signal_csv, args=(cancel_path, long_config, cancel), daemon=True
-    )
-    worker.start()
-    time.sleep(0.02)
-    cancel_started = time.perf_counter()
-    cancel.set()
-    worker.join(timeout=10)
-    cancellation_s = time.perf_counter() - cancel_started
-    if worker.is_alive():
-        raise RuntimeError("Fixture generation did not stop within 10 seconds")
-    cancel_path.unlink()
+    cancel_observed = threading.Event()
+    cancel_errors = []
+    with tempfile.TemporaryDirectory(
+        prefix="pig-signal-cancel-"
+    ) as cancel_cache:
+        cancel_source = SignalDataSource(
+            str(path),
+            info["metadata"],
+            chunk_rows=1,
+            cache_root=cancel_cache,
+        )
+
+        def build_cancelable_cache():
+            try:
+                cancel_source.ensure_cache(config.channels[0], cancel)
+            except CacheBuildCancelled:
+                cancel_observed.set()
+            except Exception as error:
+                cancel_errors.append(error)
+
+        worker = threading.Thread(
+            target=build_cancelable_cache,
+            name="benchmark-cache-cancel",
+            daemon=True,
+        )
+        worker.start()
+        time.sleep(0.02)
+        cancel_started = time.perf_counter()
+        cancel.set()
+        worker.join(timeout=10)
+        cancellation_s = time.perf_counter() - cancel_started
+        if worker.is_alive():
+            raise RuntimeError("Cache conversion did not stop within 10 seconds")
+        if cancel_errors:
+            raise cancel_errors[0]
 
     return {
         "fixture": {
@@ -115,8 +142,12 @@ def run(path: Path, config: SignalFixtureConfig) -> dict:
             "background_cancel_s": cancellation_s,
         },
         "observations": {
-            "first_display_rows": len(first),
-            "segment_10s_rows": len(segment),
+            "first_display_rows": len(first_values),
+            "first_display_first_time_us": (
+                None if len(first_times) == 0 else float(first_times[0])
+            ),
+            "segment_10s_rows": segment.sample_count,
+            "background_cancel_observed": cancel_observed.is_set(),
         },
     }
 

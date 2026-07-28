@@ -10,8 +10,8 @@ matplotlib.use("Agg")
 
 from benchmarks.signal_csv_fixture import SignalFixtureConfig, generate_signal_csv
 from src.charts.acceleration_chart import accelerator
-from src.charts.chart_helpers import resolve_visible_plot_step
 from src.charts.lfp_chart import LFP
+from src.plot_steps import resolve_visible_plot_step
 from src.signal_data import (
     LfpDataset,
     LfpFilterSettings,
@@ -91,14 +91,25 @@ class SignalDataSourceTests(unittest.TestCase):
         np.testing.assert_allclose(values, full.values[::5])
         self.assertEqual(stride, 5)
 
-    def test_dataset_reads_only_selected_channel_and_reuses_it(self):
+    def test_dataset_scans_once_and_reuses_all_channel_memmaps(self):
         calls = []
         original = SignalDataSource._convert_csv
 
-        def recording_convert(source, directory, channel, *, cancel_event):
+        def recording_convert(
+            source,
+            directory,
+            channel,
+            *,
+            cancel_event,
+            progress_callback=None,
+        ):
             calls.append(channel)
             return original(
-                source, directory, channel, cancel_event=cancel_event
+                source,
+                directory,
+                channel,
+                cancel_event=cancel_event,
+                progress_callback=progress_callback,
             )
 
         with patch.object(SignalDataSource, "_convert_csv", recording_convert):
@@ -109,16 +120,27 @@ class SignalDataSourceTests(unittest.TestCase):
             dataset.overview_values(5)
             dataset.overview_values(260)
 
-        self.assertEqual(calls, [260, 5])
+        self.assertEqual(calls, [260])
 
     def test_lfp_figure_keeps_one_line_when_channel_and_view_change(self):
         calls = []
         original = SignalDataSource._convert_csv
 
-        def recording_convert(source, directory, channel, *, cancel_event):
+        def recording_convert(
+            source,
+            directory,
+            channel,
+            *,
+            cancel_event,
+            progress_callback=None,
+        ):
             calls.append(channel)
             return original(
-                source, directory, channel, cancel_event=cancel_event
+                source,
+                directory,
+                channel,
+                cancel_event=cancel_event,
+                progress_callback=progress_callback,
             )
 
         with patch.object(SignalDataSource, "_convert_csv", recording_convert):
@@ -150,8 +172,8 @@ class SignalDataSourceTests(unittest.TestCase):
             self.assertEqual(figure.current_channel, 5)
             self.assertEqual(len(figure.axes[0].lines), 1)
             self.assertIn(260, calls)
-            self.assertIn(5, calls)
-            self.assertEqual(len(calls), len(set(calls)))
+            self.assertNotIn(5, calls)
+            self.assertEqual(calls, [260])
 
             figure.set_lfp_xlim(*figure.lfp_full_xlim, emit=False)
             callback.assert_not_called()
@@ -166,8 +188,7 @@ class SignalDataSourceTests(unittest.TestCase):
             # Rebuilding only to change plot step must reuse parsed channel data.
             stepped = LFP(info=self.info, channels=5, step=2, dataset=dataset)
             self.assertEqual(stepped.lfp_plot_step, 2)
-            self.assertIn(260, calls)
-            self.assertIn(5, calls)
+            self.assertEqual(calls, [260])
 
     def test_xlim_change_does_not_reload_or_recalculate_step(self):
         dataset = LfpDataset.from_csv(self.info)
@@ -175,11 +196,11 @@ class SignalDataSourceTests(unittest.TestCase):
         original_step = figure.lfp_plot_step
         original_times = figure.line.get_xdata().copy()
         with patch.object(
-            dataset, "plot_segment", wraps=dataset.plot_segment
-        ) as plot_segment:
+            dataset, "coarse_values", wraps=dataset.coarse_values
+        ) as coarse_values:
             figure.set_lfp_xlim(0.2, 0.8)
             figure.set_lfp_xlim(0.3, 0.6)
-            plot_segment.assert_not_called()
+            coarse_values.assert_not_called()
         self.assertEqual(figure.lfp_plot_step, original_step)
         np.testing.assert_array_equal(figure.line.get_xdata(), original_times)
 
@@ -188,12 +209,30 @@ class SignalDataSourceTests(unittest.TestCase):
         figure = LFP(channels=5, step=None, dataset=dataset)
         fixed_stride = figure.lfp_plot_step
         with patch.object(
-            dataset, "plot_segment", wraps=dataset.plot_segment
-        ) as plot_segment:
+            dataset, "coarse_values", wraps=dataset.coarse_values
+        ) as coarse_values:
             figure.set_lfp_channel(8)
 
         self.assertEqual(figure.lfp_plot_step, fixed_stride)
-        self.assertEqual(plot_segment.call_args.args[3], fixed_stride)
+        self.assertEqual(coarse_values.call_args.args[1], fixed_stride)
+
+    def test_lfp_auto_step_targets_5000_points_for_the_full_recording(self):
+        dataset = LfpDataset.from_csv(self.info)
+        with (
+            patch.object(dataset.source, "sample_count", return_value=1_000_000),
+            patch.object(
+                dataset,
+                "coarse_values",
+                return_value=(
+                    np.asarray([0.0, 1_000_000.0]),
+                    np.asarray([0.0, 1.0]),
+                ),
+            ) as coarse_values,
+        ):
+            figure = LFP(channels=5, step=None, dataset=dataset)
+
+        self.assertEqual(figure.lfp_plot_step, 200)
+        self.assertEqual(coarse_values.call_args.args[1], 200)
 
     def test_segment_lru_stays_within_byte_budget(self):
         dataset = LfpDataset.from_csv(self.info)
@@ -209,10 +248,21 @@ class SignalDataSourceTests(unittest.TestCase):
         calls = []
         original = SignalDataSource._convert_csv
 
-        def recording_convert(source, directory, channel, *, cancel_event):
+        def recording_convert(
+            source,
+            directory,
+            channel,
+            *,
+            cancel_event,
+            progress_callback=None,
+        ):
             calls.append(channel)
             return original(
-                source, directory, channel, cancel_event=cancel_event
+                source,
+                directory,
+                channel,
+                cancel_event=cancel_event,
+                progress_callback=progress_callback,
             )
 
         with patch.object(SignalDataSource, "_convert_csv", recording_convert):

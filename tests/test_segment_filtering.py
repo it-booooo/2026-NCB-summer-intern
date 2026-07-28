@@ -73,7 +73,9 @@ class SegmentFilteringTests(unittest.TestCase):
         ) as indexed:
             segment = self.dataset.segment(2, 5.0, 10.0, settings)
 
-        indexed.assert_called_once_with(2, left - padding, right + padding)
+        indexed.assert_called_once_with(
+            2, left - padding, right + padding, None
+        )
         self.assertEqual(segment.sample_count, right - left)
         self.assertEqual(segment.time_us[0], 5_000_000)
         self.assertEqual(segment.time_us[-1], 10_000_000)
@@ -110,6 +112,67 @@ class SegmentFilteringTests(unittest.TestCase):
         self.assertIs(cached, repeated)
         self.assertIsNot(cached, changed)
         self.assertEqual(filtering.call_count, 2)
+
+    def test_playback_preload_covers_all_channels_and_reuses_fine_data(self):
+        settings = self.settings()
+        self.dataset.update_playback_window(10.0, settings)
+        self.assertTrue(self.dataset.wait_for_playback_cache())
+
+        self.assertEqual(
+            {key[0] for key in self.dataset._segment_cache},
+            {2, 5, 260},
+        )
+        self.assertEqual(
+            {key[1] for key in self.dataset._filtered_segment_cache},
+            {2, 5, 260},
+        )
+        with (
+            patch.object(
+                self.dataset.source,
+                "segment",
+                wraps=self.dataset.source.segment,
+            ) as raw_read,
+            patch.object(
+                self.dataset.source,
+                "indexed_segment",
+                wraps=self.dataset.source.indexed_segment,
+            ) as indexed_read,
+        ):
+            raw = self.dataset.segment(5, 5.0, 10.0, None)
+            filtered = self.dataset.segment(5, 5.0, 10.0, settings)
+
+        raw_read.assert_not_called()
+        indexed_read.assert_not_called()
+        self.assertEqual(raw.sample_count, filtered.sample_count)
+
+    def test_playback_advance_evicts_the_previous_fine_window(self):
+        self.dataset.update_playback_window(10.0, None)
+        self.assertTrue(self.dataset.wait_for_playback_cache())
+        self.assertTrue(self.dataset._segment_cache)
+
+        self.dataset.update_playback_window(100.0, None)
+        self.assertTrue(self.dataset.wait_for_playback_cache())
+
+        self.assertFalse(
+            any(key[1] == 0 for key in self.dataset._segment_cache)
+        )
+
+    def test_visible_range_preloads_manual_zoom_but_skips_large_ranges(self):
+        settings = self.settings()
+        self.assertTrue(
+            self.dataset.update_visible_range(5.0, 10.0, settings)
+        )
+        self.assertTrue(self.dataset.wait_for_playback_cache())
+        self.assertEqual(
+            {key[0] for key in self.dataset._segment_cache},
+            {2, 5, 260},
+        )
+        prepared_range = self.dataset._fine_range_s
+
+        self.assertFalse(
+            self.dataset.update_visible_range(0.0, 10_000.0, settings)
+        )
+        self.assertEqual(self.dataset._fine_range_s, prepared_range)
 
     def test_filtered_segment_lru_has_entry_and_byte_limits(self):
         settings = self.settings()

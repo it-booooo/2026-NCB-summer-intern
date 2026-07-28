@@ -70,6 +70,11 @@ class MenuBuilder:
             "Check OpenCL GPU",
             self.show_opencl_status,
         )
+        self._add_action(
+            settings_menu,
+            "Clear signal cache",
+            self.settings_controller.clear_signal_cache,
+        )
 
     def _add_action(self, menu, text, callback, description=""):
         action = QAction(text, self.window)

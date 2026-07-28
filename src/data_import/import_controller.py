@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
     QMessageBox,
+    QProgressDialog,
 )
 
 from .. import signal_data
@@ -27,6 +28,7 @@ from ..video_player.video_helpers import (
     read_frame,
 )
 from .project_load_worker import ProjectLoadWorker, prepare_project_objects
+from .signal_cache_worker import SignalCacheWorker
 
 if TYPE_CHECKING:
     from src.app_state import AppState
@@ -82,6 +84,8 @@ class ImportController:
         self.led_state = self.app_state.led
         self.marker_store = context.marker_store
         self.project_load_worker = None
+        self._signal_cache_worker = None
+        self._signal_cache_progress = None
 
     def open_project(self):
         """Open a path-only project after every source has been validated."""
@@ -175,6 +179,16 @@ class ImportController:
             return True
         if wait:
             worker.wait(3000)
+        return not worker.isRunning()
+
+    def stop_signal_import(self, wait=False):
+        """Cancel an active CSV conversion and report whether it has stopped."""
+        worker = self._signal_cache_worker
+        if worker is None or not worker.isRunning():
+            return True
+        worker.cancel()
+        if wait:
+            worker.wait(10_000)
         return not worker.isRunning()
 
     def prepare_project_restore(self, path, archive_data=None):
@@ -475,21 +489,67 @@ class ImportController:
     def import_signal(self, signal_type):
         """Import an LFP or 3-axis CSV through the shared signal workflow."""
         context = self.context
+        if (
+            self._signal_cache_worker is not None
+            and self._signal_cache_worker.isRunning()
+        ):
+            QMessageBox.information(
+                self.parent,
+                "Import signal",
+                "A signal file is already being imported.",
+            )
+            return
         path = self.open_csv_file(self.SIGNAL_IMPORT_TITLES[signal_type])
         if not path:
             return
 
-        if signal_type == "lfp":
-            info = signal_data.parse_lfp_csv_info(path)
-            dataset = signal_data.LfpDataset.from_csv(info)
-            context.wave_panel.set_lfp_dataset(dataset)
-        else:
-            info = signal_data.parse_lfp_csv_info(path)
-            dataset = signal_data.SignalDataset.from_csv(info)
-            context.wave_panel.set_axis_dataset(dataset)
+        info = signal_data.parse_lfp_csv_info(path)
+        dataset = (
+            signal_data.LfpDataset.from_csv(info)
+            if signal_type == "lfp"
+            else signal_data.SignalDataset.from_csv(info)
+        )
+        progress = QProgressDialog(
+            "Building signal cache…",
+            "Cancel",
+            0,
+            100,
+            self.parent,
+        )
+        progress.setWindowTitle("Import signal")
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setAutoClose(False)
+        worker = SignalCacheWorker(dataset, self.parent)
+        self._signal_cache_worker = worker
+        self._signal_cache_progress = progress
 
-        context.sync_controller.update_waveform_current_time()
-        context.project_controller.mark_dirty()
+        def install(prepared_dataset):
+            progress.close()
+            if signal_type == "lfp":
+                context.wave_panel.set_lfp_dataset(prepared_dataset)
+            else:
+                context.wave_panel.set_axis_dataset(prepared_dataset)
+            context.sync_controller.update_waveform_current_time()
+            context.project_controller.mark_dirty()
+
+        def fail(message):
+            progress.close()
+            QMessageBox.warning(self.parent, "Signal import failed", message)
+
+        def complete():
+            if self._signal_cache_worker is worker:
+                self._signal_cache_worker = None
+                self._signal_cache_progress = None
+
+        worker.progress.connect(progress.setValue)
+        worker.completed.connect(install)
+        worker.failed.connect(fail)
+        worker.canceled.connect(progress.close)
+        progress.canceled.connect(worker.cancel)
+        worker.finished.connect(worker.deleteLater)
+        worker.finished.connect(complete)
+        worker.start()
+        progress.show()
 
     def import_time_marker(self):
         context = self.context
