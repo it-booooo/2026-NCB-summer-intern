@@ -1,4 +1,4 @@
-from PySide6.QtCore import QRect, Qt, QTimer, Signal
+from PySide6.QtCore import QRect, Qt, Signal
 from PySide6.QtGui import QPainter, QPen
 from PySide6.QtWidgets import QLabel
 
@@ -18,26 +18,12 @@ class RoiVideoLabel(QLabel):
         self.display_rect = QRect()
         self.frame_size = None
         self.display_pixmap = None
-        self._painting = False
-        self._update_queued = False
-        self.setAttribute(Qt.WA_OpaquePaintEvent, True)
-        self.setAutoFillBackground(False)
 
         # Saved LED ROI in original video-frame coordinates:
         # (x, y, width, height)
 
     def request_paint_update(self):
-        """Queue a paint update without forcing an immediate repaint."""
-        if self._painting or self._update_queued:
-            return
-
-        self._update_queued = True
-
-        def update_later():
-            self._update_queued = False
-            self.update()
-
-        QTimer.singleShot(0, update_later)
+        self.update()
 
     def set_roi_selection_enabled(self, enabled):
         """Set roi selection enabled.
@@ -79,7 +65,7 @@ class RoiVideoLabel(QLabel):
     def set_display_pixmap(self, pixmap):
         """Set the scaled video pixmap rendered by this label."""
         self.display_pixmap = pixmap
-        self.request_paint_update()
+        self.setPixmap(pixmap)
 
     def mousePressEvent(self, event):
         if self.selecting_roi and self.display_rect.contains(event.position().toPoint()):
@@ -159,25 +145,15 @@ class RoiVideoLabel(QLabel):
         return QRect(display_x, display_y, display_w, display_h)
 
     def paintEvent(self, event):
-        """Paint the video frame and ROI overlay."""
-        if self._painting or self.width() <= 0 or self.height() <= 0:
+        """Paint the standard label followed by the ROI overlay."""
+        super().paintEvent(event)
+        if self.display_pixmap is None or (
+            self.led_state.roi is None and not self.selecting_roi
+        ):
             return
 
-        self._painting = True
-        painter = QPainter()
+        painter = QPainter(self)
         try:
-            if not painter.begin(self):
-                return
-
-            painter.fillRect(self.rect(), Qt.black)
-            if self.display_pixmap is None:
-                painter.setPen(Qt.white)
-                painter.drawText(self.rect(), Qt.AlignCenter, self.text())
-                return
-
-            if not self.display_rect.isNull():
-                painter.drawPixmap(self.display_rect.topLeft(), self.display_pixmap)
-
             if self.led_state.roi is not None:
                 saved_rect = self.roi_to_display_rect(self.led_state.roi)
                 if saved_rect is not None:
@@ -209,4 +185,3 @@ class RoiVideoLabel(QLabel):
         finally:
             if painter.isActive():
                 painter.end()
-            self._painting = False
