@@ -2,29 +2,29 @@
 
 from __future__ import annotations
 
+import threading
 from collections import OrderedDict
 from dataclasses import dataclass, field
-import threading
 
 import numpy as np
+
 from .lfp_processing import (
     LfpFilterSettings,
     LfpSegment,
     prepare_lfp_segment,
     prepare_lfp_signal,
-    sample_rate_for_channel,
 )
-from .source import RawSignalSegment, SignalDataSource, signal_data_source
+from .signal_dataset import SignalDataset
+from .source import RawSignalSegment
 
 SEGMENT_CACHE_MAX_BYTES = 128 * 1024 * 1024
 
 
 @dataclass
-class LfpDataset:
+class LfpDataset(SignalDataset):
     """Lazily loaded LFP samples and reusable processed-signal cache."""
 
-    info: dict
-    source: SignalDataSource
+    data_label = "LFP"
     _segment_cache: OrderedDict[
         tuple[int, int, int], RawSignalSegment
     ] = field(default_factory=OrderedDict, init=False, repr=False)
@@ -32,15 +32,6 @@ class LfpDataset:
     _segment_lock: threading.RLock = field(
         default_factory=threading.RLock, init=False, repr=False
     )
-    @classmethod
-    def from_csv(cls, info: dict) -> LfpDataset:
-        path = info.get("path")
-        if not path:
-            raise ValueError("LFP path not found in info dictionary.")
-        metadata = info.get("metadata")
-        if not isinstance(metadata, dict):
-            raise ValueError("LFP metadata not found in info dictionary.")
-        return cls(info=info, source=signal_data_source(info))
 
     @property
     def time_us(self) -> np.ndarray:
@@ -50,38 +41,18 @@ class LfpDataset:
         left, right = self.source.bounds(configured[0])
         return np.asarray([left, right], dtype=float)
 
-    @property
-    def channels(self) -> list[int]:
-        configured = self.info.get("channels") or []
-        if configured:
-            return [int(channel) for channel in configured]
-        return [
-            int(channel) for channel in self.info.get("metadata", {}).get("channels", [])
-        ]
-
-    def sample_rate_hz(self, channel: int) -> float:
-        return sample_rate_for_channel(
-            self.info,
-            np.asarray([], dtype=float),
-            int(channel),
-        )
-
     def overview_values(
         self,
         channel: int,
         settings: LfpFilterSettings | None = None,
     ) -> tuple[np.ndarray, np.ndarray]:
-        overview = self.source.overview(int(channel))
+        overview = self.overview(channel)
         values = prepare_lfp_signal(
             overview.values,
             self.sample_rate_hz(channel),
             settings,
         )
         return np.asarray(overview.time_us), values
-
-    def record_bounds_s(self, channel: int) -> tuple[float, float]:
-        left, right = self.source.bounds(int(channel))
-        return left / 1_000_000.0, right / 1_000_000.0
 
     def segment(
         self,

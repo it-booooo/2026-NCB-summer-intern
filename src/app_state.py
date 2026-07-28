@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any
 from .markers.models import Marker
 
 if TYPE_CHECKING:
-    from .signal_data import LfpDataset
+    from .signal_data import LfpDataset, SignalDataset
 
 
 @dataclass
@@ -47,9 +47,8 @@ class VideoState:
 class DataState:
     """Imported LFP/3-axis data and cross-component plotting settings."""
 
-    lfp_info: dict[str, Any] | None = None
     lfp_dataset: LfpDataset | None = None
-    axis_info: dict[str, Any] | None = None
+    axis_dataset: SignalDataset | None = None
     lfp_step: int | None = None
     axis_step: int | None = None
     line_noise_hz: float = 60.0
@@ -66,6 +65,34 @@ class DataState:
         }
     )
     follow_video_playback: bool = True
+
+    @property
+    def lfp_info(self) -> dict[str, Any] | None:
+        """Compatibility view of metadata owned by the active LFP dataset."""
+        dataset = self.lfp_dataset
+        return None if dataset is None else dataset.info
+
+    def load_lfp_info(self, info: dict[str, Any]) -> LfpDataset:
+        """Prepare and atomically install a dataset from legacy metadata."""
+        from .signal_data import LfpDataset
+
+        dataset = LfpDataset.from_csv(info)
+        self.lfp_dataset = dataset
+        return dataset
+
+    @property
+    def axis_info(self) -> dict[str, Any] | None:
+        """Compatibility view of metadata owned by the active axis dataset."""
+        dataset = self.axis_dataset
+        return None if dataset is None else dataset.info
+
+    def load_axis_info(self, info: dict[str, Any]) -> SignalDataset:
+        """Prepare and atomically install an axis dataset from legacy metadata."""
+        from .signal_data import SignalDataset
+
+        dataset = SignalDataset.from_csv(info)
+        self.axis_dataset = dataset
+        return dataset
 
 
 @dataclass

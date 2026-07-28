@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from pathlib import Path
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -14,11 +16,11 @@ from ..markers import (
     MarkerSource,
     marker_from_legacy_ttl,
 )
+from ..project_archive import load_project_archive
 from ..project_format import (
     file_fingerprint,
     validate_video_bounds,
 )
-from ..project_archive import load_project_archive
 from ..video_player.video_helpers import (
     normalize_rotation_degrees,
     parse_video_metadata,
@@ -26,20 +28,33 @@ from ..video_player.video_helpers import (
 )
 from .project_load_worker import ProjectLoadWorker, prepare_project_objects
 
+if TYPE_CHECKING:
+    from src.app_state import AppState
+    from src.application.project_controller import ProjectController
+    from src.led_detection.led_controller import LedController
+    from src.markers.store import MarkerStore
+    from src.synchronization.sync_controller import SyncController
+    from src.ui.event_table import EventTable
+    from src.ui.led_panel import LedAnalysisPanel
+    from src.ui.sync_panel import SyncPanel
+    from src.ui.ttl_panel import TtlPanel
+    from src.ui.wave_panel import WavePanel
+    from src.video_player.player import VideoPlayer
+
 
 @dataclass
 class ImportContext:
     parent: object
-    marker_store: object
-    video_player: object
-    event_table: object
-    wave_panel: object
-    ttl_panel: object
-    sync_panel: object
-    led_analysis_panel: object
-    project_controller: object
-    sync_controller: object
-    led_controller: object
+    marker_store: MarkerStore
+    video_player: VideoPlayer
+    event_table: EventTable
+    wave_panel: WavePanel
+    ttl_panel: TtlPanel
+    sync_panel: SyncPanel
+    led_analysis_panel: LedAnalysisPanel
+    project_controller: ProjectController
+    sync_controller: SyncController
+    led_controller: LedController
 
 
 class ImportController:
@@ -56,7 +71,7 @@ class ImportController:
         "ttl": ("Locate Project TTL File", "CSV Files (*.csv);;All Files (*)"),
     }
 
-    def __init__(self, context, app_state):
+    def __init__(self, context: ImportContext, app_state: AppState):
         self.context = context
         self.parent = context.parent
         self.app_state = app_state
@@ -104,13 +119,13 @@ class ImportController:
         worker = ProjectLoadWorker(path, self.parent)
         self.project_load_worker = worker
         worker.loaded.connect(
-            lambda archive_data, worker=worker, path=path: (
-                self.finish_project_load(worker, path, archive_data)
+            lambda archive_data, worker=worker, path=path: self.finish_project_load(
+                worker, path, archive_data
             )
         )
         worker.failed.connect(
-            lambda title, message, worker=worker: (
-                self.fail_project_load(worker, title, message)
+            lambda title, message, worker=worker: self.fail_project_load(
+                worker, title, message
             )
         )
         worker.finished.connect(worker.deleteLater)
@@ -179,7 +194,15 @@ class ImportController:
         lfp_path = source_paths.get("lfp")
         axis_path = source_paths.get("axis")
         lfp_info = signal_data.parse_lfp_csv_info(lfp_path) if lfp_path else None
+        lfp_dataset = (
+            signal_data.LfpDataset.from_csv(lfp_info) if lfp_info is not None else None
+        )
         axis_info = signal_data.parse_lfp_csv_info(axis_path) if axis_path else None
+        axis_dataset = (
+            signal_data.SignalDataset.from_csv(axis_info)
+            if axis_info is not None
+            else None
+        )
         led = state.get("led", {})
         roi = led.get("roi")
 
@@ -192,8 +215,8 @@ class ImportController:
                 if timeline_xlim is not None
                 else None
             ),
-            "lfp_info": lfp_info,
-            "axis_info": axis_info,
+            "lfp_dataset": lfp_dataset,
+            "axis_dataset": axis_dataset,
             "markers": list(state.get("markers", [])),
             "ttl_metadata": dict(state.get("ttl", {}).get("metadata") or {}),
             "led": led,
@@ -303,13 +326,9 @@ class ImportController:
             )
             context.wave_panel.apply_project_state()
 
-            if staged["lfp_info"]:
-                self.data_state.lfp_info = staged["lfp_info"]
-                context.wave_panel.set_lfp_info(staged["lfp_info"])
+            context.wave_panel.set_lfp_dataset(staged["lfp_dataset"])
 
-            if staged["axis_info"]:
-                self.data_state.axis_info = staged["axis_info"]
-                context.wave_panel.set_axis_info(staged["axis_info"])
+            context.wave_panel.set_axis_dataset(staged["axis_dataset"])
 
             ttl_metadata = dict(staged["ttl_metadata"])
             if source_paths.get("ttl"):
@@ -380,9 +399,7 @@ class ImportController:
                 int(cache.get("end_frame", 0)),
                 int(cache.get("coarse_step", 1)),
             )
-            self.led_state.brightness_cache[cache_key] = list(
-                cache.get("points", [])
-            )
+            self.led_state.brightness_cache[cache_key] = list(cache.get("points", []))
 
     def actions(self):
         """Create and return the actions exposed by this controller.
@@ -428,7 +445,8 @@ class ImportController:
         context = self.context
         if not context.led_controller.stop_led_detection(wait=True):
             QMessageBox.information(
-                self.parent, "LED detection",
+                self.parent,
+                "LED detection",
                 "LED detection is still stopping. Please try again in a moment.",
             )
             return
@@ -461,13 +479,14 @@ class ImportController:
         if not path:
             return
 
-        info = signal_data.parse_lfp_csv_info(path)
         if signal_type == "lfp":
-            self.data_state.lfp_info = info
-            context.wave_panel.set_lfp_info(info)
+            info = signal_data.parse_lfp_csv_info(path)
+            dataset = signal_data.LfpDataset.from_csv(info)
+            context.wave_panel.set_lfp_dataset(dataset)
         else:
-            self.data_state.axis_info = info
-            context.wave_panel.set_axis_info(info)
+            info = signal_data.parse_lfp_csv_info(path)
+            dataset = signal_data.SignalDataset.from_csv(info)
+            context.wave_panel.set_axis_dataset(dataset)
 
         context.sync_controller.update_waveform_current_time()
         context.project_controller.mark_dirty()

@@ -1001,8 +1001,8 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         return left, right
 
     def available_lfp_channels(self):
-        channels = self.data_state.lfp_info.get("channels", []) if self.data_state.lfp_info else []
-        return [int(channel) for channel in channels]
+        dataset = self.data_state.lfp_dataset
+        return [] if dataset is None else dataset.channels
 
     def load_lfp_segment(self, channel, left, right, settings):
         """Load lfp segment.
@@ -1013,14 +1013,10 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         return self.ensure_lfp_dataset().segment(channel, left, right, settings)
 
     def ensure_lfp_dataset(self):
-        """Return the dataset for the imported file, loading it only once."""
-        info = self.data_state.lfp_info
-        if not (info and info.get("path")):
-            raise ValueError("Please import LFP CSV data first.")
+        """Return the already prepared shared dataset."""
         dataset = self.data_state.lfp_dataset
-        if dataset is None or dataset.info.get("path") != info.get("path"):
-            dataset = signal_func.LfpDataset.from_csv(info)
-            self.data_state.lfp_dataset = dataset
+        if dataset is None:
+            raise ValueError("Please import LFP CSV data first.")
         return dataset
 
     def plot_lfp(self):
@@ -1038,7 +1034,6 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         try:
             if self.lfp_fig is None:
                 self.lfp_fig = draw.LFP(
-                    info=self.data_state.lfp_info,
                     channels=channel,
                     step=self.data_state.lfp_step,
                     filter_settings=self.current_lfp_filter_settings(),
@@ -1072,12 +1067,13 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         Args:
             None.
         """
-        if not (self.data_state.axis_info and self.data_state.axis_info.get("path")):
+        dataset = self.data_state.axis_dataset
+        if dataset is None:
             return
 
         try:
             self.axis_fig = draw.accelerator(
-                info=self.data_state.axis_info,
+                dataset=dataset,
                 compact=True,
                 step=self.data_state.axis_step,
             )
@@ -1098,11 +1094,27 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self.update_current_time_marker()
 
     def set_lfp_info(self, info):
-        """Set lfp info."""
-        self.data_state.lfp_info = info
-        self.data_state.lfp_dataset = None
+        """Compatibility entry point that prepares and installs an LFP dataset."""
+        dataset = self.data_state.load_lfp_info(info)
+        self.set_lfp_dataset(dataset)
+
+    def set_lfp_dataset(self, dataset):
+        """Atomically install a prepared LFP dataset and refresh its controls."""
+        self.data_state.lfp_dataset = dataset
         self.lfp_fig = None
         self.lfp_callback_connected = False
+        if dataset is None:
+            self.lfp_file_label.setText("LFP CSV: not loaded")
+            self.lfp_channel_selector.blockSignals(True)
+            self.lfp_channel_selector.clear()
+            self.lfp_channel_selector.addItem("No LFP channel")
+            self.lfp_channel_selector.setEnabled(False)
+            self.spectrum_button.setEnabled(False)
+            self.spectrogram_button.setEnabled(False)
+            self.lfp_channel_selector.blockSignals(False)
+            return
+
+        info = dataset.info
         self.lfp_file_label.setText(f"LFP CSV: {info['filename']}")
 
         self.lfp_channel_selector.blockSignals(True)
@@ -1133,10 +1145,19 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self.plot_lfp()
 
     def set_axis_info(self, info):
-        """Set axis info."""
-        self.data_state.axis_info = info
+        """Compatibility entry point that prepares and installs an axis dataset."""
+        dataset = self.data_state.load_axis_info(info)
+        self.set_axis_dataset(dataset)
+
+    def set_axis_dataset(self, dataset):
+        """Atomically install a prepared axis dataset and refresh its plot."""
+        self.data_state.axis_dataset = dataset
         self.axis_fig = None
         self.axis_callback_connected = False
+        if dataset is None:
+            self.axis_file_label.setText("3-axis CSV: not loaded")
+            return
+        info = dataset.info
         self.axis_file_label.setText(f"3-axis CSV: {info['filename']} (channel 260)")
         self.plot_axis()
 

@@ -54,8 +54,11 @@ def LFP(
     Args:
         channels: Available LFP channel identifiers.
     """
-    if info is None:
-        raise ValueError("Please provide LFP data information.")
+    if dataset is None:
+        if info is None:
+            raise ValueError("Please provide an LFP dataset or data information.")
+        dataset = signal_func.LfpDataset.from_csv(info)
+    info = dataset.info
 
     file_path = info.get("path")
     if file_path is None:
@@ -65,8 +68,6 @@ def LFP(
     if not input_file.is_file():
         raise FileNotFoundError(f"LFP CSV file not found: {input_file}")
 
-    if dataset is None:
-        dataset = signal_func.LfpDataset.from_csv(info)
     channel_numbers = dataset.channels
 
     if channels is None:

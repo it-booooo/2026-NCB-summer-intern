@@ -10,10 +10,10 @@ import tempfile
 import threading
 import uuid
 from dataclasses import dataclass
+from importlib import import_module
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 
 CACHE_FORMAT_VERSION = 2
 OVERVIEW_ALGORITHM_VERSION = 2
@@ -177,6 +177,10 @@ class SignalDataSource:
         *,
         cancel_event: threading.Event | None,
     ) -> int:
+        # Pandas is only needed when a channel cache is first materialized.
+        # Keeping it out of module import avoids running its large import graph
+        # through PySide/Shiboken's feature hook during application startup.
+        pd = import_module("pandas")
         channels = [int(item) for item in self.metadata.get("channels", [])]
         if channel_id not in channels:
             raise ValueError(f"CSV does not include channel {channel_id}")

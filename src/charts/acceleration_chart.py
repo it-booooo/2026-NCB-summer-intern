@@ -5,7 +5,7 @@ from typing import cast
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 
-from ..signal_data import signal_data_source
+from ..signal_data import SignalDataset
 from .chart_helpers import format_signal_label, install_x_navigation, resolve_plot_step
 
 
@@ -19,6 +19,7 @@ class AcceleratorFigure(Figure):
 
 def accelerator(
     info: dict | None = None,
+    dataset: SignalDataset | None = None,
     compact: bool = False,
     step: int | None = None,
 ) -> AcceleratorFigure:
@@ -31,14 +32,19 @@ def accelerator(
             - sample_rates: Sample rate values used when exporting check results.
             Optional keys such as filename, channels, and channel_count are
             kept with the same structure as LFP imports.
+        dataset: Prepared shared dataset. When provided, its metadata is
+            authoritative and ``info`` is ignored.
         compact: Draw only the axes and waveform for embedding in the main GUI.
         step: Plot every nth sample. Use None for automatic step or 0 to draw every sample.
 
     Returns:
         Generated Matplotlib figure object.
     """
-    if info is None:
-        raise ValueError("Please import a 3-axis CSV file first.")
+    if dataset is None:
+        if info is None:
+            raise ValueError("Please import a 3-axis CSV file first.")
+        dataset = SignalDataset.from_csv(info)
+    info = dataset.info
 
     file_path = info.get("path")
     if file_path is None:
@@ -48,8 +54,7 @@ def accelerator(
     if not input_file.is_file():
         raise FileNotFoundError(f"3-axis CSV file not found: {input_file}")
 
-    source = signal_data_source(info)
-    overview = source.overview(260)
+    overview = dataset.overview(260)
 
     fig = cast(
         AcceleratorFigure,
@@ -103,8 +108,7 @@ def accelerator(
     ax.tick_params(axis="both", labelsize=7, pad=1)
 
     ax.grid(True, linewidth=0.4, alpha=0.35)
-    left_us, right_us = source.bounds(260)
-    full_xlim = (left_us / 1e6, right_us / 1e6)
+    full_xlim = dataset.record_bounds_s(260)
     if full_xlim[0] == full_xlim[1]:
         full_xlim = (full_xlim[0] - 0.5, full_xlim[1] + 0.5)
 

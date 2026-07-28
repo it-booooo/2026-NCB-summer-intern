@@ -544,7 +544,7 @@ class ExportController:
             return
         try:
             figure = charts.accelerator(
-                info=self.data_state.axis_info,
+                dataset=self.data_state.axis_dataset,
                 compact=False,
                 step=self.data_state.axis_step,
             )
@@ -637,7 +637,6 @@ class ExportController:
                     segment,
                     options.settings,
                     time_mode,
-                    self.data_state.lfp_info,
                 )
 
             if "power_spectrum" in options.image_types:

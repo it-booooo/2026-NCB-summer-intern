@@ -235,7 +235,7 @@ class LfpAnalysisMixin:
         ax.grid(True, linewidth=0.4, alpha=0.35)
         return figure
     
-    def create_lfp_waveform_figure(self, channel, segment, settings, time_mode,info):
+    def create_lfp_waveform_figure(self, channel, segment, settings, time_mode):
         """Create lfp waveform figure.
 
         Args:
@@ -267,7 +267,8 @@ class LfpAnalysisMixin:
         )
         ax.set_title(f"LFP Waveform - Channel {channel}")
         ax.set_xlabel(f"{time_mode} (s)")
-        ax.set_ylabel(format_signal_label(info["value_unit"]))
+        value_unit = self.ensure_lfp_dataset().info["value_unit"]
+        ax.set_ylabel(format_signal_label(value_unit))
         ax.grid(True, linewidth=0.4, alpha=0.35)
         return figure
     

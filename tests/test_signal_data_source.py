@@ -11,7 +11,12 @@ matplotlib.use("Agg")
 from benchmarks.signal_csv_fixture import SignalFixtureConfig, generate_signal_csv
 from src.charts.acceleration_chart import accelerator
 from src.charts.lfp_chart import LFP
-from src.signal_data import LfpDataset, LfpFilterSettings, parse_lfp_csv_info
+from src.signal_data import (
+    LfpDataset,
+    LfpFilterSettings,
+    SignalDataset,
+    parse_lfp_csv_info,
+)
 from src.signal_data import lfp_dataset as lfp_dataset_module
 from src.signal_data.source import SignalDataSource, _SOURCES
 
@@ -37,6 +42,12 @@ class SignalDataSourceTests(unittest.TestCase):
     def tearDown(self):
         _SOURCES.clear()
         self.directory.cleanup()
+
+    def test_lfp_dataset_extends_signal_dataset(self):
+        dataset = LfpDataset.from_csv(self.info)
+
+        self.assertIsInstance(dataset, SignalDataset)
+        self.assertEqual(dataset.channels, [2, 5, 8, 13, 21, 34, 55, 260])
 
     def test_dataset_reads_only_selected_channel_and_reuses_it(self):
         calls = []
@@ -142,6 +153,14 @@ class SignalDataSourceTests(unittest.TestCase):
         self.assertEqual(first.axis_plot_step, 1)
         self.assertEqual(second.axis_plot_step, 4)
         self.assertEqual(calls, [260])
+
+    def test_acceleration_uses_provided_dataset(self):
+        dataset = SignalDataset.from_csv(self.info)
+        with patch.object(dataset, "overview", wraps=dataset.overview) as overview:
+            figure = accelerator(dataset=dataset, compact=True)
+
+        overview.assert_called_once_with(260)
+        self.assertEqual(figure.axis_full_xlim, dataset.record_bounds_s(260))
 
 
 if __name__ == "__main__":
