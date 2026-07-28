@@ -55,6 +55,8 @@ Pig Behavior Sync 是一套用於動物行為實驗的 Windows 桌面工具，�
 - 「Unit」或「Units」：訊號單位（選填）。
 - 「Time[us]」：資料區起始表頭；其後每列第一欄為微秒時間，其餘欄位為各 channel 數值。
 
+Time[us] 必須是有效數字，時間順序不可往回遞減，且資料區至少需要兩筆訊號資料，否則可能無法顯示波形或進行分析。
+
 概念範例：前三列依序填寫 Channels、Sample Rate[Hz] 與 Unit；接著以 Time[us] 作為資料表頭，後續每列填寫時間與各 channel 數值。
 
 目前三軸顯示流程會使用 channel 260，因此三軸資料應包含該 channel。
@@ -110,9 +112,11 @@ TTL CSV 建議包含：
 - 「File > Import > Import LFP (.csv)」
 - 「File > Import > Import 3-axis (.csv)」
 
+大型 CSV 第一次匯入，或第一次切換到尚未讀取的 channel 時，程式需要先準備訊號資料，可能會等待較久並使用額外的本機磁碟空間。後續再次使用相同檔案與 channel 時通常會較快；處理期間請耐心等待，避免強制關閉程式。
+
 匯入 LFP 後可選擇 channel 與訊號顯示模式。勾選「Bandpass」後設定 Low／High cutoff；勾選 notch filter 可去除「Settings > Set power noise frequency」設定的電源雜訊。完成設定後按「confirm」套用。
 
-「Power spectrum」與「Spectrogram」會顯示目前所選 LFP channel 的分析結果。「Follow video playback」開啟時，完成同步後的波形視窗會跟隨影片播放位置。
+「Power spectrum」與「Spectrogram」會依目前所選 LFP channel、時間軸範圍及已套用的濾波設定產生分析結果。「Follow video playback」開啟時，完成同步後的波形視窗會跟隨影片播放位置。
 
 ### 3. 建立或匯入 TTL
 
