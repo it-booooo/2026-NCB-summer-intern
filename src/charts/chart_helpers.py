@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from ..plot_steps import LFP_POINTS_PER_PIXEL, resolve_visible_plot_step
 from ..synchronization.time_conversion import relative_time
 
 TARGET_PLOT_POINTS = 5000

@@ -26,6 +26,7 @@ class LfpFigure(Figure):
     line: Line2D
     lfp_channel_numbers: list[int]
     lfp_plot_step: int
+    refresh_lfp_plot: Callable[..., None]
 
 
 def _filter_settings_for_view(filter_settings, show_filtered):
@@ -83,12 +84,6 @@ def LFP(
         raise ValueError(f"Invalid LFP channel: {selected_channel}")
 
     show_filtered = bool(filter_settings and filter_settings.show_filtered)
-    initial_settings = _filter_settings_for_view(filter_settings, show_filtered)
-    initial_times, initial_values = dataset.overview_values(
-        selected_channel, initial_settings
-    )
-    time_s = initial_times / 1_000_000.0
-    plot_step = 1
 
     fig = cast(
         LfpFigure,
@@ -100,10 +95,8 @@ def LFP(
     )
     ax = fig.add_axes((0.08, 0.22, 0.90, 0.62))
 
-    coarse_times = np.asarray(time_s, dtype=float)
-    coarse_values = np.asarray(initial_values, dtype=float)
-    base_times = coarse_times
-    base_values = coarse_values
+    base_times = np.asarray([], dtype=float)
+    base_values = np.asarray([], dtype=float)
     line = ax.plot(base_times, base_values, linewidth=0.5, color="blue")[0]
 
     ax.set_xlabel("")
@@ -140,26 +133,40 @@ def LFP(
         full_xlim = (full_xlim[0] - 0.5, full_xlim[1] + 0.5)
 
     navigation = install_x_navigation(fig, ax, full_xlim)
+    resolved_auto_stride: int | None = None
 
-    def load_coarse() -> None:
-        nonlocal coarse_times, coarse_values
+    def plot_width_px() -> float:
+        width = float(ax.bbox.width)
+        if width <= 1:
+            width = float(fig.get_figwidth() * fig.dpi * 0.9)
+        return max(width, 1.0)
+
+    def refresh_lfp_plot(*, recalculate_auto: bool = False) -> None:
+        """Rebuild the fixed full-range plot data with the configured step."""
+        nonlocal base_times, base_values, resolved_auto_stride
         settings = _filter_settings_for_view(filter_settings, show_filtered)
-        overview_times, overview_values = dataset.overview_values(
-            selected_channel, settings
+        effective_step = step
+        if step is None and resolved_auto_stride is not None and not recalculate_auto:
+            effective_step = resolved_auto_stride
+        times, values, actual_stride = dataset.plot_segment(
+            selected_channel,
+            full_xlim[0],
+            full_xlim[1],
+            effective_step,
+            plot_width_px(),
+            settings,
         )
-        coarse_times = np.asarray(overview_times / 1_000_000.0, dtype=float)
-        coarse_values = np.asarray(overview_values, dtype=float)
-
-    def update_line() -> None:
-        nonlocal base_times, base_values
-        base_times = coarse_times
-        base_values = coarse_values
+        if step is None:
+            resolved_auto_stride = actual_stride
+        base_times = np.asarray(times, dtype=float)
+        base_values = np.asarray(values, dtype=float)
         line.set_data(base_times, base_values)
         fig.current_channel = selected_channel
         fig.current_view = "filtered" if show_filtered else "raw"
-        fig.lfp_plot_step = 1
+        fig.lfp_plot_step = actual_stride
         ax.relim()
         ax.autoscale_view(scalex=False, scaley=True)
+        fig.canvas.draw_idle()
 
     def set_lfp_channel(channel: int) -> None:
         """Set lfp channel.
@@ -175,16 +182,13 @@ def LFP(
             raise ValueError(f"Invalid LFP channel: {channel}")
 
         selected_channel = channel
-        load_coarse()
-        update_line()
-        fig.canvas.draw_idle()
+        refresh_lfp_plot()
 
     def set_lfp_signal_view(filtered: bool) -> None:
         """Set lfp signal view."""
         nonlocal show_filtered
         show_filtered = bool(filtered)
-        load_coarse()
-        update_line()
+        refresh_lfp_plot()
         label_settings = _filter_settings_for_view(filter_settings, show_filtered)
         filter_label.set_text(signal_func.filter_description(label_settings))
         fig.canvas.draw_idle()
@@ -225,7 +229,7 @@ def LFP(
         ax.autoscale_view(scalex=False, scaley=True)
         fig.canvas.draw_idle()
 
-    set_lfp_channel(selected_channel)
+    refresh_lfp_plot(recalculate_auto=True)
 
     fig.set_lfp_channel = set_lfp_channel
     fig.set_lfp_signal_view = set_lfp_signal_view
@@ -238,6 +242,6 @@ def LFP(
     fig.current_channel = selected_channel
     fig.current_view = "filtered" if show_filtered else "raw"
     fig.lfp_channel_numbers = channel_numbers
-    fig.lfp_plot_step = plot_step
+    fig.refresh_lfp_plot = refresh_lfp_plot
 
     return fig

@@ -10,6 +10,7 @@ matplotlib.use("Agg")
 
 from benchmarks.signal_csv_fixture import SignalFixtureConfig, generate_signal_csv
 from src.charts.acceleration_chart import accelerator
+from src.charts.chart_helpers import resolve_visible_plot_step
 from src.charts.lfp_chart import LFP
 from src.signal_data import (
     LfpDataset,
@@ -48,6 +49,47 @@ class SignalDataSourceTests(unittest.TestCase):
 
         self.assertIsInstance(dataset, SignalDataset)
         self.assertEqual(dataset.channels, [2, 5, 8, 13, 21, 34, 55, 260])
+
+    def test_visible_auto_step_depends_on_samples_and_pixels(self):
+        self.assertEqual(resolve_visible_plot_step(1_000_000, None, 1000), 500)
+        self.assertEqual(resolve_visible_plot_step(10_000, None, 1000), 5)
+        self.assertEqual(resolve_visible_plot_step(1_000_000, None, 2000), 250)
+        self.assertEqual(resolve_visible_plot_step(1_000_000, 0, 1), 1)
+        self.assertEqual(resolve_visible_plot_step(1_000_000, 100, 1), 100)
+        with self.assertRaises(ValueError):
+            resolve_visible_plot_step(10, -2, 100)
+
+    def test_plot_segment_zero_and_positive_steps_match_raw_slicing(self):
+        dataset = LfpDataset.from_csv(self.info)
+        all_times, all_values, all_stride = dataset.plot_segment(
+            5, 0.2, 0.8, 0, 1, LfpFilterSettings(show_filtered=False)
+        )
+        stepped_times, stepped_values, stride = dataset.plot_segment(
+            5, 0.2, 0.8, 4, 1, LfpFilterSettings(show_filtered=False)
+        )
+        self.assertEqual(all_stride, 1)
+        self.assertEqual(stride, 4)
+        np.testing.assert_array_equal(stepped_times, all_times[::4])
+        np.testing.assert_allclose(stepped_values, all_values[::4])
+
+    def test_filtered_plot_segment_processes_full_resolution_before_stride(self):
+        dataset = LfpDataset.from_csv(self.info)
+        settings = LfpFilterSettings(show_filtered=True)
+        with (
+            patch.object(dataset, "segment", wraps=dataset.segment) as segment,
+            patch.object(
+                dataset.source, "sampled_segment", wraps=dataset.source.sampled_segment
+            ) as sampled,
+        ):
+            times, values, stride = dataset.plot_segment(
+                5, 0.1, 0.9, 5, 100, settings
+            )
+        segment.assert_called_once_with(5, 0.1, 0.9, settings)
+        sampled.assert_not_called()
+        full = dataset.segment(5, 0.1, 0.9, settings)
+        np.testing.assert_array_equal(times, full.record_time_s[::5])
+        np.testing.assert_allclose(values, full.values[::5])
+        self.assertEqual(stride, 5)
 
     def test_dataset_reads_only_selected_channel_and_reuses_it(self):
         calls = []
@@ -113,6 +155,7 @@ class SignalDataSourceTests(unittest.TestCase):
 
             figure.set_lfp_xlim(*figure.lfp_full_xlim, emit=False)
             callback.assert_not_called()
+            figure.refresh_lfp_plot()
             displayed_times = figure.line.get_xdata()
             self.assertLessEqual(displayed_times[0], figure.lfp_full_xlim[0])
             self.assertGreater(
@@ -122,9 +165,35 @@ class SignalDataSourceTests(unittest.TestCase):
 
             # Rebuilding only to change plot step must reuse parsed channel data.
             stepped = LFP(info=self.info, channels=5, step=2, dataset=dataset)
-            self.assertEqual(stepped.lfp_plot_step, 1)
+            self.assertEqual(stepped.lfp_plot_step, 2)
             self.assertIn(260, calls)
             self.assertIn(5, calls)
+
+    def test_xlim_change_does_not_reload_or_recalculate_step(self):
+        dataset = LfpDataset.from_csv(self.info)
+        figure = LFP(channels=5, step=None, dataset=dataset)
+        original_step = figure.lfp_plot_step
+        original_times = figure.line.get_xdata().copy()
+        with patch.object(
+            dataset, "plot_segment", wraps=dataset.plot_segment
+        ) as plot_segment:
+            figure.set_lfp_xlim(0.2, 0.8)
+            figure.set_lfp_xlim(0.3, 0.6)
+            plot_segment.assert_not_called()
+        self.assertEqual(figure.lfp_plot_step, original_step)
+        np.testing.assert_array_equal(figure.line.get_xdata(), original_times)
+
+    def test_auto_step_stays_fixed_when_channel_changes(self):
+        dataset = LfpDataset.from_csv(self.info)
+        figure = LFP(channels=5, step=None, dataset=dataset)
+        fixed_stride = figure.lfp_plot_step
+        with patch.object(
+            dataset, "plot_segment", wraps=dataset.plot_segment
+        ) as plot_segment:
+            figure.set_lfp_channel(8)
+
+        self.assertEqual(figure.lfp_plot_step, fixed_stride)
+        self.assertEqual(plot_segment.call_args.args[3], fixed_stride)
 
     def test_segment_lru_stays_within_byte_budget(self):
         dataset = LfpDataset.from_csv(self.info)

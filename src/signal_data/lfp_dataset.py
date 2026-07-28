@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from ..plot_steps import resolve_visible_plot_step
 from .lfp_processing import (
     LfpFilterSettings,
     LfpSegment,
@@ -73,6 +74,38 @@ class LfpDataset(SignalDataset):
             end_s,
             settings,
         )
+
+    def plot_segment(
+        self,
+        channel: int,
+        start_s: float,
+        end_s: float,
+        configured_step: int | None,
+        plot_width_px: float,
+        settings: LfpFilterSettings | None,
+    ) -> tuple[np.ndarray, np.ndarray, int]:
+        """Return plot-ready samples while preserving full-resolution filtering."""
+        channel = int(channel)
+        start_s, end_s = sorted((float(start_s), float(end_s)))
+        start_us = int(round(start_s * 1_000_000.0))
+        end_us = int(round(end_s * 1_000_000.0))
+        left, right = self.source.segment_indices(channel, start_us, end_us)
+        stride = resolve_visible_plot_step(
+            right - left, configured_step, plot_width_px
+        )
+
+        if settings is not None and settings.show_filtered:
+            full = self.segment(channel, start_s, end_s, settings)
+            return (
+                np.asarray(full.record_time_s[::stride]),
+                np.asarray(full.values[::stride]),
+                stride,
+            )
+
+        raw = self.source.sampled_segment(
+            channel, start_us, end_us, stride
+        )
+        return raw.time_us / 1_000_000.0, raw.values, stride
 
     @staticmethod
     def _segment_key(channel: int, start_s: float, end_s: float):

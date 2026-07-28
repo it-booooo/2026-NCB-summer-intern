@@ -1049,6 +1049,10 @@ class WavePanel(LfpAnalysisMixin, QWidget):
 
         if created_figure or self.lfp_canvas is None:
             self.set_figure(self.lfp_waveform_area, "lfp_canvas", self.lfp_fig)
+            # The Qt canvas now has its real on-screen width, so recompute
+            # automatic LFP sampling once instead of keeping the nominal
+            # pre-widget Figure width.
+            self.lfp_fig.refresh_lfp_plot(recalculate_auto=True)
 
         if not self.lfp_callback_connected:
             self.lfp_fig.add_lfp_xlim_callback(

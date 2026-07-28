@@ -3,6 +3,7 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 
@@ -71,6 +72,26 @@ class SignalCacheTests(unittest.TestCase):
         np.testing.assert_allclose(segment.values, expected["channel_5"].to_numpy())
         self.assertEqual(segment.time_us[0], expected["time_us"].iloc[0])
         self.assertEqual(segment.time_us[-1], expected["time_us"].iloc[-1])
+
+    def test_sampled_segment_uses_raw_indices_channel_and_step(self):
+        source = self.source()
+        source.ensure_cache(5)
+        with patch("pandas.read_csv") as read_csv:
+            segment = source.sampled_segment(5, 310_000, 870_000, 3)
+        read_csv.assert_not_called()
+
+        legacy = read_signal_csv(self.path, [5], metadata=self.info["metadata"])
+        times = legacy["time_us"].to_numpy()
+        values = legacy["channel_5"].to_numpy()
+        left = int(np.searchsorted(times, 310_000, side="left"))
+        right = int(np.searchsorted(times, 870_000, side="right"))
+        self.assertEqual((segment.left_index, segment.right_index), (left, right))
+        np.testing.assert_array_equal(segment.time_us, times[left:right:3])
+        np.testing.assert_allclose(segment.values, values[left:right:3])
+
+    def test_sampled_segment_rejects_non_positive_step(self):
+        with self.assertRaises(ValueError):
+            self.source().sampled_segment(5, 0, 1_000_000, 0)
 
     def test_truncated_or_version_mismatched_cache_is_rebuilt(self):
         source = self.source()

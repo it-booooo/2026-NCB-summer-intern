@@ -340,6 +340,61 @@ class SignalDataSource:
             del times
             del values
 
+    def segment_indices(
+        self,
+        channel_id: int,
+        start_us: float,
+        end_us: float,
+        cancel_event: threading.Event | None = None,
+    ) -> tuple[int, int]:
+        """Return the inclusive-time selection bounds without copying samples."""
+        self._check_cancel(cancel_event)
+        path, metadata = self._cache_metadata(channel_id, cancel_event)
+        count = int(metadata["sample_count"])
+        times = np.memmap(path / "time_us.bin", dtype="<f8", mode="r", shape=(count,))
+        try:
+            left_index = int(np.searchsorted(times, start_us, side="left"))
+            right_index = int(np.searchsorted(times, end_us, side="right"))
+            self._check_cancel(cancel_event)
+            return left_index, right_index
+        finally:
+            del times
+
+    def sampled_segment(
+        self,
+        channel_id: int,
+        start_us: float,
+        end_us: float,
+        step: int,
+        cancel_event: threading.Event | None = None,
+    ) -> RawSignalSegment:
+        """Copy only every ``step``-th raw memmap sample in a time range."""
+        step = int(step)
+        if step < 1:
+            raise ValueError("Sample step must be at least 1.")
+        self._check_cancel(cancel_event)
+        path, metadata = self._cache_metadata(channel_id, cancel_event)
+        count = int(metadata["sample_count"])
+        times = np.memmap(path / "time_us.bin", dtype="<f8", mode="r", shape=(count,))
+        values = np.memmap(path / "values.bin", dtype="<f4", mode="r", shape=(count,))
+        try:
+            left_index = int(np.searchsorted(times, start_us, side="left"))
+            right_index = int(np.searchsorted(times, end_us, side="right"))
+            self._check_cancel(cancel_event)
+            return RawSignalSegment(
+                time_us=np.asarray(
+                    times[left_index:right_index:step], dtype="<f8"
+                ).copy(),
+                values=np.asarray(
+                    values[left_index:right_index:step], dtype="<f4"
+                ).copy(),
+                left_index=left_index,
+                right_index=right_index,
+            )
+        finally:
+            del times
+            del values
+
     def bounds(self, channel_id: int) -> tuple[float, float]:
         path, metadata = self._cache_metadata(channel_id)
         count = int(metadata["sample_count"])
