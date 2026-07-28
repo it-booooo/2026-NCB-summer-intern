@@ -395,6 +395,43 @@ class SignalDataSource:
             del times
             del values
 
+    def indexed_segment(
+        self,
+        channel_id: int,
+        left_index: int,
+        right_index: int,
+        cancel_event: threading.Event | None = None,
+    ) -> RawSignalSegment:
+        """Copy one half-open sample-index range from the raw memmap."""
+        self._check_cancel(cancel_event)
+        path, metadata = self._cache_metadata(channel_id, cancel_event)
+        count = int(metadata["sample_count"])
+        left_index = max(min(int(left_index), count), 0)
+        right_index = max(min(int(right_index), count), left_index)
+        times = np.memmap(path / "time_us.bin", dtype="<f8", mode="r", shape=(count,))
+        values = np.memmap(path / "values.bin", dtype="<f4", mode="r", shape=(count,))
+        try:
+            self._check_cancel(cancel_event)
+            return RawSignalSegment(
+                time_us=np.asarray(times[left_index:right_index], dtype="<f8").copy(),
+                values=np.asarray(values[left_index:right_index], dtype="<f4").copy(),
+                left_index=left_index,
+                right_index=right_index,
+            )
+        finally:
+            del times
+            del values
+
+    def sample_count(self, channel_id: int) -> int:
+        """Return cached raw sample count without mapping the arrays."""
+        _, metadata = self._cache_metadata(channel_id)
+        return int(metadata["sample_count"])
+
+    def identity_token(self) -> tuple[str, int, int]:
+        """Return the current source identity used by in-memory caches."""
+        stat = Path(self.path).stat()
+        return self.path, int(stat.st_size), int(stat.st_mtime_ns)
+
     def bounds(self, channel_id: int) -> tuple[float, float]:
         path, metadata = self._cache_metadata(channel_id)
         count = int(metadata["sample_count"])

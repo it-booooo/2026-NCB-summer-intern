@@ -148,14 +148,22 @@ def LFP(
         effective_step = step
         if step is None and resolved_auto_stride is not None and not recalculate_auto:
             effective_step = resolved_auto_stride
-        times, values, actual_stride = dataset.plot_segment(
-            selected_channel,
-            full_xlim[0],
-            full_xlim[1],
-            effective_step,
-            plot_width_px(),
-            settings,
-        )
+        if settings.show_filtered:
+            # Navigation preview only: never filter the complete raw recording.
+            overview_times, values = dataset.overview_values(
+                selected_channel, settings
+            )
+            times = overview_times / 1_000_000.0
+            actual_stride = 1
+        else:
+            times, values, actual_stride = dataset.plot_segment(
+                selected_channel,
+                full_xlim[0],
+                full_xlim[1],
+                effective_step,
+                plot_width_px(),
+                settings,
+            )
         if step is None:
             resolved_auto_stride = actual_stride
         base_times = np.asarray(times, dtype=float)

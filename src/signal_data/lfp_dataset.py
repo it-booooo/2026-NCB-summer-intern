@@ -12,13 +12,15 @@ from ..plot_steps import resolve_visible_plot_step
 from .lfp_processing import (
     LfpFilterSettings,
     LfpSegment,
-    prepare_lfp_segment,
+    filter_padding_samples,
     prepare_lfp_signal,
 )
 from .signal_dataset import SignalDataset
 from .source import RawSignalSegment
 
 SEGMENT_CACHE_MAX_BYTES = 128 * 1024 * 1024
+FILTERED_SEGMENT_CACHE_MAX_BYTES = 128 * 1024 * 1024
+FILTERED_SEGMENT_CACHE_MAX_ENTRIES = 32
 
 
 @dataclass
@@ -32,6 +34,12 @@ class LfpDataset(SignalDataset):
     _segment_cache_bytes: int = field(default=0, init=False, repr=False)
     _segment_lock: threading.RLock = field(
         default_factory=threading.RLock, init=False, repr=False
+    )
+    _filtered_segment_cache: OrderedDict[tuple, LfpSegment] = field(
+        default_factory=OrderedDict, init=False, repr=False
+    )
+    _filtered_segment_cache_bytes: int = field(
+        default=0, init=False, repr=False
     )
 
     @property
@@ -47,6 +55,7 @@ class LfpDataset(SignalDataset):
         channel: int,
         settings: LfpFilterSettings | None = None,
     ) -> tuple[np.ndarray, np.ndarray]:
+        """Return a navigation-only filtered approximation of coarse samples."""
         overview = self.overview(channel)
         values = prepare_lfp_signal(
             overview.values,
@@ -62,17 +71,118 @@ class LfpDataset(SignalDataset):
         end_s: float,
         settings: LfpFilterSettings | None,
     ) -> LfpSegment:
-        """Return a full-resolution time selection from a cached signal."""
+        """Filter a padded raw interval, then crop to the exact requested indices."""
         channel = int(channel)
         start_s, end_s = sorted((float(start_s), float(end_s)))
-        raw = self._raw_segment(channel, start_s, end_s)
-        return prepare_lfp_segment(
-            raw.time_us,
-            raw.values,
-            self.sample_rate_hz(channel),
-            start_s,
-            end_s,
-            settings,
+        if not np.isfinite(start_s) or not np.isfinite(end_s):
+            raise ValueError("Selected time range must be finite.")
+        if start_s == end_s:
+            raise ValueError("Selected time range is too short.")
+
+        start_us = int(round(start_s * 1_000_000.0))
+        end_us = int(round(end_s * 1_000_000.0))
+        left_index, right_index = self.source.segment_indices(
+            channel, start_us, end_us
+        )
+        if right_index - left_index < 2:
+            raise ValueError("Selected time range is too short for analysis.")
+
+        effective_settings = (
+            settings if settings is not None and settings.show_filtered else None
+        )
+        if effective_settings is None:
+            raw = self._raw_segment(channel, start_s, end_s)
+            raw_values = prepare_lfp_signal(
+                raw.values,
+                self.sample_rate_hz(channel),
+                None,
+            )
+            return LfpSegment(
+                time_us=np.asarray(raw.time_us, dtype="<f8").copy(),
+                record_time_s=np.asarray(
+                    raw.time_us / 1_000_000.0, dtype="<f8"
+                ).copy(),
+                values=np.asarray(raw_values, dtype="<f4").copy(),
+                sample_rate_hz=float(self.sample_rate_hz(channel)),
+            )
+
+        cache_key = (
+            self.source.identity_token(),
+            channel,
+            left_index,
+            right_index,
+            effective_settings,
+        )
+        with self._segment_lock:
+            cached = self._filtered_segment_cache.get(cache_key)
+            if cached is not None:
+                self._filtered_segment_cache.move_to_end(cache_key)
+                return cached
+
+        sample_rate_hz = self.sample_rate_hz(channel)
+        padding = filter_padding_samples(effective_settings, sample_rate_hz)
+        loaded_left = max(left_index - padding, 0)
+        loaded_right = min(
+            right_index + padding,
+            self.source.sample_count(channel),
+        )
+        loaded = self.source.indexed_segment(channel, loaded_left, loaded_right)
+        filtered_values = prepare_lfp_signal(
+            loaded.values,
+            sample_rate_hz,
+            effective_settings,
+        )
+        crop_left = left_index - loaded_left
+        crop_right = crop_left + (right_index - left_index)
+        result = LfpSegment(
+            time_us=np.asarray(
+                loaded.time_us[crop_left:crop_right], dtype=float
+            ).copy(),
+            record_time_s=np.asarray(
+                loaded.time_us[crop_left:crop_right] / 1_000_000.0,
+                dtype=float,
+            ).copy(),
+            values=np.asarray(
+                filtered_values[crop_left:crop_right], dtype=float
+            ).copy(),
+            sample_rate_hz=float(sample_rate_hz),
+        )
+        self._store_filtered_segment(cache_key, result)
+        return result
+
+    def _store_filtered_segment(self, key: tuple, segment: LfpSegment) -> None:
+        size = int(
+            segment.time_us.nbytes
+            + segment.record_time_s.nbytes
+            + segment.values.nbytes
+        )
+        if size > FILTERED_SEGMENT_CACHE_MAX_BYTES:
+            return
+        with self._segment_lock:
+            existing = self._filtered_segment_cache.pop(key, None)
+            if existing is not None:
+                self._filtered_segment_cache_bytes -= self._lfp_segment_bytes(
+                    existing
+                )
+            self._filtered_segment_cache[key] = segment
+            self._filtered_segment_cache_bytes += size
+            while self._filtered_segment_cache and (
+                len(self._filtered_segment_cache)
+                > FILTERED_SEGMENT_CACHE_MAX_ENTRIES
+                or self._filtered_segment_cache_bytes
+                > FILTERED_SEGMENT_CACHE_MAX_BYTES
+            ):
+                _, removed = self._filtered_segment_cache.popitem(last=False)
+                self._filtered_segment_cache_bytes -= self._lfp_segment_bytes(
+                    removed
+                )
+
+    @staticmethod
+    def _lfp_segment_bytes(segment: LfpSegment) -> int:
+        return int(
+            segment.time_us.nbytes
+            + segment.record_time_s.nbytes
+            + segment.values.nbytes
         )
 
     def plot_segment(

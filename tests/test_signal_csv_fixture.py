@@ -80,6 +80,7 @@ class SignalCsvFixtureTests(unittest.TestCase):
             path = Path(directory) / "dataset.csv"
             generate_signal_csv(path, config)
             info = parse_lfp_csv_info(path)
+            info["_signal_cache_root"] = str(Path(directory) / "signal-cache")
             dataset = LfpDataset.from_csv(info)
             segment = dataset.segment(2, 0.0, 0.5, None)
 
