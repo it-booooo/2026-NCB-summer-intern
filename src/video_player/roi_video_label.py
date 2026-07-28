@@ -164,9 +164,9 @@ class RoiVideoLabel(QLabel):
             return
 
         self._painting = True
+        painter = QPainter()
         try:
-            painter = QPainter(self)
-            if not painter.isActive():
+            if not painter.begin(self):
                 return
 
             painter.fillRect(self.rect(), Qt.black)
@@ -207,4 +207,6 @@ class RoiVideoLabel(QLabel):
             if not drag_rect.isNull():
                 painter.drawRect(drag_rect)
         finally:
+            if painter.isActive():
+                painter.end()
             self._painting = False

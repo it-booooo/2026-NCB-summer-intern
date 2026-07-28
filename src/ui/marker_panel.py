@@ -1,5 +1,6 @@
 from PySide6.QtWidgets import (
     QGridLayout,
+    QLabel,
     QMessageBox,
     QPushButton,
     QSizePolicy,
@@ -9,6 +10,37 @@ from PySide6.QtWidgets import (
 from ..app_state import VideoState
 from ..markers import Marker, MarkerKind, MarkerSource, VideoPosition
 from .marker_view_panel import MarkerViewPanel
+
+
+def behavior_interval_warning(markers):
+    pending_start = None
+    video_number = 0
+    for marker in markers:
+        if not isinstance(marker.position, VideoPosition):
+            continue
+        video_number += 1
+        if marker.kind == MarkerKind.BEHAVIOR_START:
+            if pending_start is not None:
+                return (
+                    f"Event #{pending_start[0]} Action Start has no matching "
+                    "Action End before the next Start."
+                )
+            pending_start = (video_number, marker)
+        elif marker.kind == MarkerKind.BEHAVIOR_END:
+            if pending_start is None:
+                return f"Event #{video_number} Action End has no preceding Action Start."
+            start_number, start_marker = pending_start
+            if marker.position.time_sec <= start_marker.position.time_sec:
+                return (
+                    f"Event #{video_number} Action End time must be later than "
+                    f"Event #{start_number} Action Start time."
+                )
+            pending_start = None
+    return (
+        f"Event #{pending_start[0]} Action Start has no matching Action End."
+        if pending_start
+        else ""
+    )
 
 
 class MarkerPanel(MarkerViewPanel):
@@ -38,6 +70,11 @@ class MarkerPanel(MarkerViewPanel):
         edit_button.clicked.connect(self.event_table.edit_selected_event)
         delete_button.clicked.connect(self.event_table.delete_selected_rows)
 
+        self.interval_warning_label = QLabel()
+        self.interval_warning_label.setStyleSheet("color: #b54708;")
+        self.interval_warning_label.setWordWrap(True)
+        self.marker_store.changed.connect(self.update_interval_warning)
+
         all_buttons = [*marker_buttons, edit_button, delete_button]
         for button in all_buttons:
             button.setFixedHeight(22)
@@ -56,10 +93,17 @@ class MarkerPanel(MarkerViewPanel):
         layout.setContentsMargins(3, 3, 3, 3)
         layout.setSpacing(3)
         layout.addLayout(button_layout)
+        layout.addWidget(self.interval_warning_label)
         layout.addWidget(self.event_table)
+        self.update_interval_warning()
 
     def accepts_marker(self, marker):
         return isinstance(marker.position, VideoPosition)
+
+    def update_interval_warning(self):
+        warning = behavior_interval_warning(self.marker_store.all())
+        self.interval_warning_label.setText(warning)
+        self.interval_warning_label.setVisible(bool(warning))
 
     def add_marker(self, kind):
         if not self.video_player.has_video():
