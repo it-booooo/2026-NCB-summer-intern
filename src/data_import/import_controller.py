@@ -302,7 +302,6 @@ class ImportController:
             self._project_signal_progress.close()
         self._project_signal_progress = None
         QApplication.restoreOverrideCursor()
-        worker.deleteLater()
 
     def stop_project_load(self, wait=False):
         """Return whether the project loader has stopped safely."""
@@ -312,7 +311,7 @@ class ImportController:
                 self.project_load_worker,
                 self._project_signal_worker,
             )
-            if worker is not None and worker.isRunning()
+            if widget_is_valid(worker) and worker.isRunning()
         ]
         for worker in workers:
             cancel = getattr(worker, "cancel", None)
