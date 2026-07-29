@@ -1049,14 +1049,6 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         dataset = self.data_state.lfp_dataset
         return [] if dataset is None else dataset.channels
 
-    def load_lfp_segment(self, channel, left, right, settings):
-        """Load lfp segment.
-
-        Args:
-            channel: LFP channel identifier.
-        """
-        return self.ensure_lfp_dataset().segment(channel, left, right, settings)
-
     def ensure_lfp_dataset(self):
         """Return the already prepared shared dataset."""
         dataset = self.data_state.lfp_dataset

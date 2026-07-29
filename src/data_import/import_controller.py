@@ -126,7 +126,6 @@ class ImportController:
             return
 
         QApplication.setOverrideCursor(Qt.WaitCursor)
-        QApplication.processEvents()
         worker = ProjectLoadWorker(path, self.parent)
         self.project_load_worker = worker
         worker.loaded.connect(

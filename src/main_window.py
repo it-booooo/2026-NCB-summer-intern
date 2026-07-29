@@ -81,5 +81,4 @@ class MainWindow(QMainWindow):
             video_player.cap = None
         if self.app_state.data.lfp_dataset is not None:
             self.app_state.data.lfp_dataset.close(wait=True)
-        project.cleanup()
         event.accept()

@@ -110,7 +110,6 @@ class ExportController:
         error_message = None
         temporary_path = None
         QApplication.setOverrideCursor(Qt.WaitCursor)
-        QApplication.processEvents()
         try:
             sources = {}
             source_candidates = {
