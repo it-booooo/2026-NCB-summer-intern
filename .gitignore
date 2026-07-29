@@ -12,6 +12,8 @@ dist/
 *.param
 .build_deps/
 .opencl_temp/
+.cupy_cache/
+.cupy_temp/
 
 # Editor settings
 .vscode/
