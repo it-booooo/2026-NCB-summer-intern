@@ -11,7 +11,7 @@ Pig Behavior Sync 是一套用於動物行為實驗的 Windows 桌面工具，�
 - 匯入或手動新增 TTL 時間標記。
 - 在影片上建立 LED On、LED Off、Action Start、Action End 與 Seizure-like 標記。
 - 選取影片中的 LED ROI，自動分析亮度變化並建立 LED 事件。
-- 使用第一個 LED On 與第一個 TTL 自動計算影片／記錄時間差。
+- 可自動使用最早的 LED On 與 TTL，或手動指定同步事件，計算影片／記錄時間差。
 - 在同步後的 LFP 訊號中尋找正向與負向峰值。
 - 將標記、檢查結果與各類分析圖匯出成 CSV、Excel 或圖片。
 - 將工作狀態儲存為 .pigproj，稍後繼續分析。
@@ -86,7 +86,7 @@ TTL CSV 建議包含：
 - 「File > Save Project...」：保存目前分析狀態。
 - 「File > Import」：匯入影片、LFP、三軸及 TTL。
 - 「File > Export」：匯出標記、檢查結果及圖表。
-- 「Settings」：調整 LFP／三軸繪圖步距、電源雜訊頻率、LFP 峰值門檻，以及檢查 OpenCL GPU。
+- 「Settings」：調整 LFP／三軸繪圖步距、電源雜訊頻率、LFP 峰值門檻、檢查 OpenCL GPU，以及清除訊號暫存資料。
 
 ## 建議操作流程
 
@@ -112,11 +112,13 @@ TTL CSV 建議包含：
 - 「File > Import > Import LFP (.csv)」
 - 「File > Import > Import 3-axis (.csv)」
 
-大型 CSV 第一次匯入，或第一次切換到尚未讀取的 channel 時，程式需要先準備訊號資料，可能會等待較久並使用額外的本機磁碟空間。後續再次使用相同檔案與 channel 時通常會較快；處理期間請耐心等待，避免強制關閉程式。
+大型 CSV 第一次匯入時，程式需要先準備訊號資料，會顯示處理進度，並可能使用較多記憶體及額外的本機磁碟空間。後續再次使用相同檔案時通常會較快；如不想繼續，可按進度視窗中的「Cancel」，請避免直接強制關閉程式。
+
+若要釋放訊號暫存所占用的磁碟與記憶體，可使用「Settings > Clear signal cache」。此操作不會刪除原始 CSV，但下次使用相關訊號時需要重新建立暫存，因此第一次顯示或分析可能較慢。
 
 匯入 LFP 後可選擇 channel 與訊號顯示模式。勾選「Bandpass」後設定 Low／High cutoff；勾選 notch filter 可去除「Settings > Set power noise frequency」設定的電源雜訊。完成設定後按「confirm」套用。
 
-「Power spectrum」與「Spectrogram」會依目前所選 LFP channel、時間軸範圍及已套用的濾波設定產生分析結果。「Follow video playback」開啟時，完成同步後的波形視窗會跟隨影片播放位置。
+「Power spectrum」與「Spectrogram」會依目前所選 LFP channel、時間軸範圍及已套用的濾波設定產生分析結果。建立 filtered overview、power spectrum 或 spectrogram 時會顯示進度，需要時可按「Cancel」中止。「Follow video playback」開啟時，完成同步後的波形視窗會跟隨影片播放位置。
 
 ### 3. 建立或匯入 TTL
 
@@ -138,7 +140,9 @@ TTL CSV 建議包含：
 - 「Action Start」／「Action End」
 - 「Seizure-like」
 
-點選表格資料列可跳回該事件位置。使用「Edit Selected」編輯標記，或使用「Delete Selected」刪除標記。Action Start／End 及 LED On／Off 會依表格順序配成事件區間並顯示在訊號圖上。
+點選表格資料列可跳回該事件位置。使用「Edit Selected」可修改事件編號、類型、時間、影格與 note，或使用「Delete Selected」刪除標記。Action Start／End 及 LED On／Off 會依表格順序配成事件區間並顯示在訊號圖上。
+
+若 Action End 或 LED Off 前方沒有相對應的 Start／On，或 End／Off 時間沒有晚於 Start／On，Video 頁面會顯示橘色提示。請調整事件順序或時間，否則該組事件不會形成有效區間。
 
 ### 5. LED 自動偵測
 
@@ -154,22 +158,19 @@ TTL CSV 建議包含：
 
 變更 ROI、影片旋轉角度或掃描範圍後，應重新執行偵測。
 
-圖表中的標記會以顏色區分：綠色代表 LED On 或 LED 區段，紅色代表 LED Off，橘色色塊代表 Action Start 至 Action End，紅色標線代表 Seizure-like 或目前影片位置，TTL 則以綠色標線顯示。
+圖表中的標記會以顏色區分：綠色代表 LED On 或 LED 區段，紅色代表 LED Off，橘色色塊代表 Action Start 至 Action End，紅色標線代表 Seizure-like 或目前影片位置，TTL 則以綠色標線顯示；目前採用的影片同步事件也會在表格中以淡綠色標示。
 
 ### 6. 時間同步
 
-當資料中同時存在：
+預設使用自動同步。當資料中至少有一個影片端 LED On 與一個記錄端 TTL 時，程式會採用最早的 LED On 與最早的 TTL，並以「影片事件時間減去 TTL 記錄時間」計算時間差。
 
-- 至少一個影片時間軸上的「LED On」；以及
-- 至少一個記錄時間軸上的 TTL；
+若最早的兩個事件並非同一次同步訊號，不需要刪除其他標記。請到「Video」頁面按「Select Sync Events...」，將 Mode 改為「Manual selection」，分別選擇「TTL event」及「Video event」，再按「Apply」。影片端可選擇 LED On 或 Action Start；若要恢復自動選擇，將 Mode 改回「Automatic: earliest TTL + earliest LED On」。
 
-程式會以兩者各自最早的標記計算時間差，也就是「影片 LED On 時間減去 TTL 記錄時間」。
+同步完成後，影片會跳至所選的影片端同步事件，影片、TTL、LFP 與三軸圖會共用同步時間基準。點選 TTL、影片標記、峰值或波形位置也可互相跳轉。
 
-同步完成後，影片會跳至第一個 LED On，影片、TTL、LFP 與三軸圖會共用同步時間基準。點選 TTL、影片標記、峰值或波形位置也可互相跳轉。
+同步後會以所選影片事件與 TTL 對應的同步點為 0 秒。畫面出現負數時間是正常現象，表示該影格或訊號發生在同步點之前。
 
-同步後會以第一個 LED On 與第一個 TTL 所對應的時間點為 0 秒。畫面出現負數時間是正常現象，表示該影格或訊號發生在第一個同步點之前。
-
-為避免錯誤對齊，請確認第一個 LED On 確實對應第一個 TTL。如果不是，請刪除多餘標記或調整標記內容。
+若刪除目前手動指定的同步事件，Video 頁面會提示原選擇已無法使用；請重新按「Select Sync Events...」選擇事件，或切回自動模式。
 
 ### 7. 尋找 LFP 峰值
 
@@ -181,7 +182,7 @@ TTL CSV 建議包含：
 4. 到「Settings > Set LFP peak thresholds」設定高度、prominence 與最小間距門檻。
 5. 切換至「Find Peak」，按「Find Peak」。
 
-程式只在與影片時間重疊的訊號範圍尋找峰值，並以訊號基準線區分正向峰值與負向峰值。正向與負向峰值都會加入表格，note 中會標示 positive peak 或 negative peak。再次對同一個 channel 執行會取代該 channel 先前自動偵測出的 LFP peak；其他 channel 的峰值會保留。表格內可編輯 note、點選峰值跳轉影片，或刪除選定峰值。
+程式只在與影片時間重疊的訊號範圍尋找峰值，並以訊號基準線區分正向峰值與負向峰值。正向與負向峰值都會加入表格，note 中會標示 positive peak 或 negative peak。偵測期間會顯示進度，需要時可按「Cancel」中止。再次對同一個 channel 執行會取代該 channel 先前自動偵測出的 LFP peak；其他 channel 的峰值會保留。表格內可編輯 note、點選峰值跳轉影片，或刪除選定峰值。
 
 完成峰值偵測後，可按「Analyze Peaks」查看所選 channel 每分鐘的 LFP peak 數量長條圖。圖表會合併統計正向與負向峰值，不會分開顯示。此功能必須先有完成同步的 LFP peak 才能使用。
 
@@ -198,7 +199,7 @@ TTL CSV 建議包含：
 
 ### Export Check Results
 
-檢查已載入的 LFP 或三軸 CSV，並輸出 CSV check report。若兩者皆已載入，程式會先詢問要檢查哪一份資料。
+檢查已載入的 LFP 或三軸 CSV，並輸出 CSV check report。若兩者皆已載入，程式會先詢問要檢查哪一份資料；檢查期間會顯示進度，需要時可按「Cancel」中止。
 
 ### Export 3-axis Waveform Image
 
@@ -213,7 +214,7 @@ TTL CSV 建議包含：
 - waveform、power spectrum、spectrogram（可複選）；
 - 圖片 DPI 與目的資料夾。
 
-輸出檔名會包含來源檔名、channel、raw／processed 及圖表類型。
+輸出檔名會包含來源檔名、channel、raw／processed 及圖表類型。準備大量資料或多張圖片時會顯示進度，需要時可按「Cancel」中止。
 
 ### Export Peak analyze Image
 
@@ -221,11 +222,12 @@ TTL CSV 建議包含：
 
 ## 儲存與開啟專案
 
-使用「File > Save Project...」將目前狀態儲存為 .pigproj。專案會保存匯入來源、目前影格、旋轉角度、圖表範圍、filter 設定、標記、LED ROI 與分析結果等資訊。
+使用「File > Save Project...」將目前狀態儲存為 .pigproj。專案會保存匯入來源、目前影格、旋轉角度、圖表範圍、filter 設定、標記、同步事件選擇、LED ROI 與分析結果等資訊。
 
 .pigproj **不會內嵌原始影片或 CSV**，只會記錄外部檔案路徑與檔案指紋。因此：
 
 - 移動 .pigproj 時，請一併保留原始 MP4／CSV。
 - 原始檔路徑失效時，開啟專案會要求重新指定檔案。
 - 重新指定的檔案必須與原始來源的大小及抽樣雜湊一致；修改過的副本不會被接受。
+- 開啟含大型訊號資料的專案時會顯示準備進度，需要時可按「Cancel」中止開啟。
 - 關閉程式或開啟其他專案前，如有未保存變更，程式會要求確認。
