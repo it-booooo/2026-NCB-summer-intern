@@ -1,6 +1,11 @@
 import sys
 from pathlib import Path
 
+from src.cupy_bootstrap import preload_cupy
+
+# Load the optional CUDA/NVRTC DLL set before Qt registers its own DLL paths.
+_CUPY_PRELOAD_ERROR = preload_cupy()
+
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 

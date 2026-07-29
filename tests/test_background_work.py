@@ -4,6 +4,10 @@ import threading
 import tracemalloc
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+
+import numpy as np
+from scipy.signal import find_peaks
 
 from benchmarks.signal_csv_fixture import SignalFixtureConfig, generate_signal_csv
 from src.background_requests import request_matches
@@ -250,6 +254,101 @@ class PureSignalWorkerTests(unittest.TestCase):
         self.assertEqual(len(record_times), len(set(record_times)))
         self.assertTrue(any(abs(time_s - 0.5) < 1e-9 for time_s in record_times))
         self.assertTrue(any(abs(time_s - 1.5) < 1e-9 for time_s in record_times))
+
+    def test_peak_candidate_pipeline_matches_scipy_for_plateaus_and_distance(self):
+        values = np.asarray(
+            [0.0, 4.0, 4.0, 4.0, 0.0, 3.0, 0.0, -5.0, -5.0, 0.0]
+        )
+        positive, positive_prominences = PeakDetectionWorker._qualified_peaks(
+            values,
+            minimum_height=1.0,
+            minimum_prominence=1.0,
+            prominence_wlen=9,
+            distance=3,
+            negative=False,
+        )
+        negative, negative_prominences = PeakDetectionWorker._qualified_peaks(
+            values,
+            minimum_height=1.0,
+            minimum_prominence=1.0,
+            prominence_wlen=9,
+            distance=3,
+            negative=True,
+        )
+
+        np.testing.assert_array_equal(positive, np.asarray([2, 5]))
+        np.testing.assert_allclose(positive_prominences, np.asarray([4.0, 3.0]))
+        np.testing.assert_array_equal(negative, np.asarray([7]))
+        np.testing.assert_allclose(negative_prominences, np.asarray([5.0]))
+
+    def test_peak_candidate_pipeline_matches_scipy_on_seeded_signal(self):
+        values = np.random.default_rng(20260729).normal(size=2_000)
+        values[400:404] = 8.0
+        values[1200:1203] = -9.0
+        for negative in (False, True):
+            working = -values if negative else values
+            expected, properties = find_peaks(
+                working,
+                height=0.75,
+                prominence=0.5,
+                distance=7,
+                wlen=101,
+            )
+            actual, prominences = PeakDetectionWorker._qualified_peaks(
+                values,
+                minimum_height=0.75,
+                minimum_prominence=0.5,
+                prominence_wlen=101,
+                distance=7,
+                negative=negative,
+            )
+            np.testing.assert_array_equal(actual, expected)
+            np.testing.assert_allclose(prominences, properties["prominences"])
+
+    def test_peak_statistics_are_cached_between_parameter_changes(self):
+        PeakDetectionWorker._statistics_cache.clear()
+        worker = PeakDetectionWorker(
+            "peaks-cache",
+            self.dataset,
+            2,
+            0.0,
+            1.9,
+            LfpFilterSettings(show_filtered=False),
+            height_sigma=2.0,
+            prominence_sigma=1.0,
+            min_distance_sec=0.1,
+            chunk_samples=50,
+        )
+        left, right = self.dataset.source.segment_indices(2, 0, 1_900_000)
+        first = worker._global_mean_std(left, right, 100.0, 200)
+
+        with patch.object(
+            worker,
+            "_processed_indices",
+            side_effect=AssertionError("statistics should come from cache"),
+        ):
+            second = worker._global_mean_std(left, right, 100.0, 200)
+
+        self.assertEqual(first, second)
+
+    def test_short_raw_peak_request_stays_on_cpu_in_auto_mode(self):
+        worker = PeakDetectionWorker(
+            "peaks-raw-policy",
+            self.dataset,
+            2,
+            0.0,
+            1.9,
+            LfpFilterSettings(show_filtered=False),
+            height_sigma=2.0,
+            prominence_sigma=1.0,
+            min_distance_sec=0.1,
+        )
+        with patch.dict(
+            "os.environ",
+            {"PIG_LFP_COMPUTE_BACKEND": "auto"},
+            clear=False,
+        ):
+            self.assertFalse(worker._use_gpu_pipeline(813_120))
 
     def test_peak_marker_record_video_time_and_payload(self):
         records = [

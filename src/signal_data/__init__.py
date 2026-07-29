@@ -14,6 +14,7 @@ from .background_workers import (
     LfpSegmentWorker,
     PeakDetectionWorker,
 )
+from .gpu_backend import cupy_status, select_backend
 from .lfp_dataset import LfpDataset
 from .lfp_processing import (
     LfpFilterSettings,
@@ -53,6 +54,7 @@ __all__ = [
     "SignalOverview",
     "compute_power_spectrum",
     "compute_time_frequency",
+    "cupy_status",
     "filter_description",
     "filter_padding_samples",
     "parse_lfp_csv_info",
@@ -63,5 +65,6 @@ __all__ = [
     "prepare_lfp_signal",
     "read_csv_preview",
     "sample_rate_for_channel",
+    "select_backend",
     "signal_data_source",
 ]
