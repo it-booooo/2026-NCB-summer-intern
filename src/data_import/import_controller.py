@@ -211,6 +211,7 @@ class ImportController:
             )
         )
         progress.canceled.connect(worker.cancel)
+        worker.finished.connect(worker.deleteLater)
         worker.start()
         progress.show()
 

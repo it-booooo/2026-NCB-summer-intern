@@ -23,6 +23,86 @@ FILTER_COARSE_ALGORITHM_VERSION = 1
 DEFAULT_CHUNK_ROWS = 250_000
 DEFAULT_OVERVIEW_MAX_POINTS = 5_000
 DEFAULT_CACHE_MAX_BYTES = 20 * 1024 * 1024 * 1024
+DEFAULT_CACHE_MAX_AGE_DAYS = 30
+DAY_SECONDS = 24 * 60 * 60
+
+_CACHE_CLEANUP_LOCK = threading.RLock()
+_CLEANED_CACHE_ROOTS: set[str] = set()
+
+
+def _remove_cache_directory(path: Path) -> bool:
+    claimed = path.with_name(f".{path.name}.{uuid.uuid4().hex}.stale")
+    try:
+        path.rename(claimed)
+    except OSError:
+        return False
+    shutil.rmtree(claimed, ignore_errors=True)
+    return not claimed.exists()
+
+
+def cleanup_signal_cache(
+    cache_root: str | Path,
+    *,
+    max_bytes: int = DEFAULT_CACHE_MAX_BYTES,
+    max_age_days: int = DEFAULT_CACHE_MAX_AGE_DAYS,
+    protected_paths: tuple[Path, ...] = (),
+    now: float | None = None,
+) -> None:
+    """Remove abandoned, expired, and oldest excess signal caches."""
+    root = Path(cache_root)
+    if not root.is_dir():
+        return
+
+    current_time = time.time() if now is None else float(now)
+    protected = {str(Path(path).resolve()) for path in protected_paths}
+    abandoned_cutoff = current_time - DAY_SECONDS
+    age_cutoff = current_time - max(int(max_age_days), 0) * DAY_SECONDS
+
+    with _CACHE_CLEANUP_LOCK:
+        try:
+            children = list(root.iterdir())
+        except OSError:
+            return
+
+        caches = []
+        for path in children:
+            if not path.is_dir():
+                continue
+            try:
+                is_protected = str(path.resolve()) in protected
+                if path.name.startswith(".") and path.name.endswith(
+                    (".tmp", ".stale")
+                ):
+                    if not is_protected and path.stat().st_mtime <= abandoned_cutoff:
+                        shutil.rmtree(path, ignore_errors=True)
+                    continue
+                if not path.name.startswith(("signal-", "coarse-")):
+                    continue
+                complete = path / "COMPLETE"
+                if not complete.is_file():
+                    if not is_protected and path.stat().st_mtime <= abandoned_cutoff:
+                        _remove_cache_directory(path)
+                    continue
+                access_time = complete.stat().st_mtime
+                size = sum(
+                    item.stat().st_size
+                    for item in path.rglob("*")
+                    if item.is_file()
+                )
+            except OSError:
+                continue
+            if not is_protected and access_time <= age_cutoff:
+                _remove_cache_directory(path)
+                continue
+            caches.append((access_time, size, path, is_protected))
+
+        total_bytes = sum(size for _access, size, _path, _protected in caches)
+        byte_limit = max(int(max_bytes), 0)
+        for _access, size, path, is_protected in sorted(caches):
+            if total_bytes <= byte_limit:
+                break
+            if not is_protected and _remove_cache_directory(path):
+                total_bytes -= size
 
 
 class CacheBuildCancelled(RuntimeError):
@@ -136,9 +216,18 @@ class SignalDataSource:
         with self._build_lock:
             identity = self._identity()
             final_path = self._cache_path(identity)
-            if self._valid_cache(final_path, identity):
-                return final_path
             self.cache_root.mkdir(parents=True, exist_ok=True)
+            cleanup_key = str(self.cache_root.resolve())
+            with _CACHE_CLEANUP_LOCK:
+                if cleanup_key not in _CLEANED_CACHE_ROOTS:
+                    cleanup_signal_cache(
+                        self.cache_root,
+                        protected_paths=(final_path,),
+                    )
+                    _CLEANED_CACHE_ROOTS.add(cleanup_key)
+            if self._valid_cache(final_path, identity):
+                self._touch_cache(final_path)
+                return final_path
             self._prune_cache({final_path})
             temporary = (
                 self.cache_root
@@ -440,6 +529,8 @@ class SignalDataSource:
                     cancel_event=cancel_event,
                     progress_callback=progress_callback,
                 )
+            else:
+                self._touch_cache(coarse_path)
         metadata = json.loads((coarse_path / "metadata.json").read_text("utf-8"))
         count = int(metadata["coarse_count"])
         times = np.memmap(
@@ -643,32 +734,17 @@ class SignalDataSource:
             )
 
     def _prune_cache(self, protected: set[Path]) -> None:
-        """Keep completed signal caches under a bounded disk budget."""
-        entries = []
-        total = 0
-        for path in self.cache_root.iterdir():
-            if (
-                not path.is_dir()
-                or not (path / "COMPLETE").is_file()
-            ):
-                continue
-            try:
-                size = sum(
-                    item.stat().st_size
-                    for item in path.rglob("*")
-                    if item.is_file()
-                )
-                modified = path.stat().st_mtime_ns
-            except OSError:
-                continue
-            total += size
-            if path not in protected:
-                entries.append((modified, path, size))
-        for _, path, size in sorted(entries):
-            if total <= DEFAULT_CACHE_MAX_BYTES:
-                break
-            shutil.rmtree(path, ignore_errors=True)
-            total -= size
+        cleanup_signal_cache(
+            self.cache_root,
+            protected_paths=tuple(protected),
+        )
+
+    @staticmethod
+    def _touch_cache(path: Path) -> None:
+        try:
+            (path / "COMPLETE").touch()
+        except OSError:
+            pass
 
     @staticmethod
     def _check_cancel(cancel_event: threading.Event | None) -> None:
