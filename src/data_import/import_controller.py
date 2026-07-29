@@ -139,7 +139,6 @@ class ImportController:
                 worker, title, message
             )
         )
-        worker.finished.connect(worker.deleteLater)
         worker.start()
 
     def finish_project_load(self, worker, path, archive_data):
@@ -211,6 +210,7 @@ class ImportController:
             )
         )
         progress.canceled.connect(worker.cancel)
+        worker.finished.connect(worker.deleteLater)
         worker.start()
         progress.show()
 
@@ -302,7 +302,8 @@ class ImportController:
             self._project_signal_progress.close()
         self._project_signal_progress = None
         QApplication.restoreOverrideCursor()
-        worker.deleteLater()
+        if widget_is_valid(worker):
+            worker.deleteLater()
 
     def stop_project_load(self, wait=False):
         """Return whether the project loader has stopped safely."""

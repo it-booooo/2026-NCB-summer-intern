@@ -36,8 +36,8 @@ def check(
     missing_count = 0
     duplicate_count = 0
     discontinuous_count = 0
-    row_offset = 0
-    previous_time = None
+    row_count = 0
+    previous_valid_time = None
     processed_bytes = 0
     source_size = max(file_path.stat().st_size, 1)
     channels = [int(channel) for channel in info.get("channels", [])]
@@ -57,68 +57,51 @@ def check(
                 for frame in reader:
                     _check_cancel(cancel_event)
                     times = pd.to_numeric(frame.iloc[:, 0], errors="coerce")
-                    missing_mask = frame.isna()
-                    missing_count += int(missing_mask.sum().sum())
-                    intervals = times.diff()
-                    if len(times) and previous_time is not None:
-                        current = times.iloc[0]
-                        if pd.notna(current) and pd.notna(previous_time):
-                            intervals.iloc[0] = current - previous_time
+                    for column_index, column_name in enumerate(frame.columns):
+                        column_missing = frame.iloc[:, column_index].isna()
+                        local_rows = column_missing.to_numpy().nonzero()[0]
+                        missing_count += len(local_rows)
+                        for local_row in local_rows:
+                            csv_line = header_row + 2 + row_count + local_row
+                            time_value = times.iloc[local_row]
+                            time_text = (
+                                "missing"
+                                if pd.isna(time_value)
+                                else f"{int(time_value)} us"
+                            )
+                            detail_writer.writerow(
+                                {
+                                    "Type": "Missing value",
+                                    "File": f"line {csv_line}",
+                                    "Value": (
+                                        f"time={time_text}, channel="
+                                        f"{channel_label(column_index, channels, column_name)}"
+                                    ),
+                                }
+                            )
 
-                    duplicate_mask = intervals.notna() & (intervals == 0)
-                    discontinuous_mask = (
-                        intervals.notna()
-                        & (intervals != 0)
-                        & (intervals != expected_interval)
-                    )
-                    duplicate_count += int(duplicate_mask.sum())
-                    discontinuous_count += int(discontinuous_mask.sum())
-
-                    for local_row, column_index in zip(
-                        *missing_mask.to_numpy().nonzero()
-                    ):
-                        csv_line = header_row + 2 + row_offset + local_row
-                        time_value = times.iloc[local_row]
-                        time_text = (
-                            "missing"
-                            if pd.isna(time_value)
-                            else f"{int(time_value)} us"
-                        )
-                        detail_writer.writerow(
-                            {
-                                "Type": "Missing value",
-                                "File": f"line {csv_line}",
-                                "Value": (
-                                    f"time={time_text}, channel="
-                                    f"{channel_label(column_index, channels, frame.columns[column_index])}"
-                                ),
-                            }
-                        )
-
-                    anomaly_mask = duplicate_mask | discontinuous_mask
-                    for local_row, has_anomaly in enumerate(
-                        anomaly_mask.to_numpy()
-                    ):
-                        if not has_anomaly:
+                    for local_row, current_value in enumerate(times):
+                        if pd.isna(current_value):
                             continue
-                        current_value = times.iloc[local_row]
-                        if local_row:
-                            previous_value = times.iloc[local_row - 1]
-                        else:
-                            previous_value = previous_time
-                        if pd.isna(previous_value) or pd.isna(current_value):
-                            continue
-                        previous_us = int(previous_value)
                         current_us = int(current_value)
+                        if previous_valid_time is None:
+                            previous_valid_time = current_us
+                            continue
+                        previous_us = int(previous_valid_time)
                         actual_interval = current_us - previous_us
-                        csv_line = header_row + 2 + row_offset + local_row
+                        if actual_interval == 0:
+                            anomaly_type = "Duplicate timestamp"
+                            duplicate_count += 1
+                        elif actual_interval != expected_interval:
+                            anomaly_type = "Time discontinuity"
+                            discontinuous_count += 1
+                        else:
+                            previous_valid_time = current_us
+                            continue
+                        csv_line = header_row + 2 + row_count + local_row
                         detail_writer.writerow(
                             {
-                                "Type": (
-                                    "Duplicate timestamp"
-                                    if duplicate_mask.iloc[local_row]
-                                    else "Time discontinuity"
-                                ),
+                                "Type": anomaly_type,
                                 "File": f"line {csv_line}",
                                 "Value": (
                                     f"{previous_us} -> {current_us} us "
@@ -127,9 +110,8 @@ def check(
                                 ),
                             }
                         )
-                    if len(times):
-                        previous_time = times.iloc[-1]
-                    row_offset += len(frame)
+                        previous_valid_time = current_us
+                    row_count += len(frame)
                     processed_bytes += int(frame.memory_usage(deep=True).sum())
                     if progress_callback is not None:
                         progress_callback(
@@ -142,24 +124,25 @@ def check(
 
         _check_cancel(cancel_event)
         results = [
-        {"Type": "Summary", "File": str(file_path), "Value": ""},
-        {"Type": "Sample rate", "File": "", "Value": f"{sample_rate} Hz"},
-        {
-            "Type": "Expected interval",
-            "File": "",
-            "Value": f"{expected_interval} us",
-        },
-        {"Type": "Missing values", "File": "", "Value": str(missing_count)},
-        {
-            "Type": "Duplicate timestamps",
-            "File": "",
-            "Value": str(duplicate_count),
-        },
-        {
-            "Type": "Discontinuous timestamps",
-            "File": "",
-            "Value": str(discontinuous_count),
-        },
+            {"Type": "Summary", "File": str(file_path), "Value": ""},
+            {"Type": "Rows", "File": "", "Value": str(row_count)},
+            {"Type": "Sample rate", "File": "", "Value": f"{sample_rate} Hz"},
+            {
+                "Type": "Expected interval",
+                "File": "",
+                "Value": f"{expected_interval} us",
+            },
+            {"Type": "Missing values", "File": "", "Value": str(missing_count)},
+            {
+                "Type": "Duplicate timestamps",
+                "File": "",
+                "Value": str(duplicate_count),
+            },
+            {
+                "Type": "Discontinuous timestamps",
+                "File": "",
+                "Value": str(discontinuous_count),
+            },
         ]
         with (
             final_temp.open("w", encoding="utf-8-sig", newline="") as output,

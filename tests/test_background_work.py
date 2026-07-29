@@ -1,6 +1,7 @@
 import csv
 import tempfile
 import threading
+import tracemalloc
 import unittest
 from pathlib import Path
 
@@ -81,6 +82,61 @@ class ChunkedDataCheckTests(unittest.TestCase):
             )
         self.assertFalse(output.exists())
         self.assertFalse(any(self.root.glob("*.tmp")))
+
+    def test_chunk_size_does_not_change_report_or_boundary_anomalies(self):
+        reports = []
+        for chunk_rows in (1, 3, 5, 9, 100):
+            output = self.root / f"report-{chunk_rows}.csv"
+            check(self.info, output, chunk_rows=chunk_rows)
+            with output.open("r", encoding="utf-8-sig", newline="") as stream:
+                reports.append(list(csv.DictReader(stream)))
+
+        for report in reports[1:]:
+            self.assertEqual(report, reports[0])
+        details = reports[0][7:]
+        self.assertIn(
+            ("Duplicate timestamp", "line 10"),
+            {(row["Type"], row["File"]) for row in details},
+        )
+        self.assertIn(
+            ("Time discontinuity", "line 14"),
+            {(row["Type"], row["File"]) for row in details},
+        )
+
+    def test_many_missing_details_are_streamed_with_bounded_memory(self):
+        path = self.root / "many-missing.csv"
+        sample_count = 2_000
+        generate_signal_csv(
+            path,
+            SignalFixtureConfig(
+                sample_rate_hz=100,
+                duration_s=sample_count / 100,
+                channels=(2, 5, 260),
+                missing_sample_indices=tuple(range(sample_count)),
+                peak_indices=(),
+            ),
+        )
+        output = self.root / "many-missing-report.csv"
+        tracemalloc.start()
+        check(
+            parse_lfp_csv_info(path),
+            output,
+            chunk_rows=17,
+        )
+        _, peak_bytes = tracemalloc.get_traced_memory()
+        tracemalloc.stop()
+
+        missing_details = 0
+        summary = {}
+        with output.open("r", encoding="utf-8-sig", newline="") as stream:
+            for row in csv.DictReader(stream):
+                summary[row["Type"]] = row["Value"]
+                if row["Type"] == "Missing value":
+                    missing_details += 1
+        self.assertEqual(summary["Rows"], str(sample_count))
+        self.assertEqual(summary["Missing values"], str(sample_count * 3))
+        self.assertEqual(missing_details, sample_count * 3)
+        self.assertLess(peak_bytes, 25 * 1024 * 1024)
 
 
 class PureSignalWorkerTests(unittest.TestCase):

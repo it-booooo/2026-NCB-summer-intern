@@ -38,6 +38,20 @@ chunk、建立 cache 或分塊濾波時會定期檢查旗標並安全離開。�
 程式關閉時會通知所有已知 worker 取消並等待結束。暫存報告與 cache
 半成品會清除；只有完整寫入、flush 並關閉後的檔案才會成為有效 cache。
 
+## 資料檢查的 chunk streaming
+
+資料檢查不會建立全檔案的 DataFrame 或 boolean mask。每次只保留一個
+chunk，缺值則逐欄檢查。程式會累計 row count、完整異常總數，以及上一筆
+有效 timestamp。
+
+上一筆有效 timestamp 不會在 chunk 結束時清除，因此 duplicate 與
+discontinuity 即使剛好落在兩個 chunk 之間也能被偵測。報告採「所有異常
+串流寫出」策略：明細先逐筆寫入暫存 CSV，統計完成後再將 summary 與明細
+組成正式報告，所以 RAM 不會隨異常數量持續增加。
+
+報告的 `line N` 使用原始 CSV 的一基底行號，包含 metadata 與資料 header，
+可以直接對照文字編輯器所顯示的原始檔案行數。
+
 ## 進度
 
 長時間工作會顯示非 modal 進度視窗，所以載入期間主視窗仍可移動、取消
