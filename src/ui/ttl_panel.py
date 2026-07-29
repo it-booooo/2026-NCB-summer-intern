@@ -2,6 +2,7 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import ClassVar
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
@@ -14,8 +15,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from ..app_state import TtlState, VideoState
+from ..app_state import SyncState, TtlState, VideoState
 from ..markers import Marker, MarkerKind, MarkerSource, RecordPosition
+from ..synchronization import resolve_sync_reference_markers
 from ..synchronization.time_conversion import record_time_parts
 from .marker_view_panel import MarkerViewPanel
 
@@ -32,10 +34,12 @@ class TtlPanel(MarkerViewPanel):
         ttl_state=None,
         video_player=None,
         video_state=None,
+        sync_state=None,
     ):
         super().__init__(marker_store)
         self.ttl_state = ttl_state or TtlState()
         self.video_state = video_state or VideoState()
+        self.sync_state = sync_state or SyncState()
         self.video_player = video_player
 
         self.record_time_input = QLineEdit()
@@ -166,6 +170,11 @@ class TtlPanel(MarkerViewPanel):
         return int((seconds * 1_000_000).to_integral_value(rounding=ROUND_HALF_UP))
 
     def refresh_table(self):
+        ttl_reference, _video_reference = resolve_sync_reference_markers(
+            self.marker_store.all(),
+            self.sync_state,
+        )
+        sync_marker_id = ttl_reference.marker_id if ttl_reference else None
         self.table.setRowCount(0)
         for row, marker in enumerate(self.ttl_markers()):
             self.table.insertRow(row)
@@ -184,6 +193,8 @@ class TtlPanel(MarkerViewPanel):
             for column, text in enumerate((str(row + 1), local_text, record_text)):
                 item = QTableWidgetItem(text)
                 item.setTextAlignment(Qt.AlignCenter)
+                if marker.marker_id == sync_marker_id:
+                    item.setBackground(QColor("#d8f3dc"))
                 if column == 0:
                     item.setData(self.MARKER_ID_ROLE, marker.marker_id)
                     item.setData(self.RECORD_TIME_ROLE, marker.position.time_sec)

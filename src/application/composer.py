@@ -45,12 +45,14 @@ class ApplicationComposer:
             state.ttl,
             video_player,
             state.video,
+            state.sync,
         )
         marker_panel = MarkerPanel(
             marker_store,
             event_table,
             video_player,
             state.video,
+            state.sync,
         )
         find_peak_panel = FindPeakPanel(
             marker_store,
@@ -79,6 +81,7 @@ class ApplicationComposer:
             event_table=event_table,
             wave_panel=wave_panel,
             ttl_panel=ttl_panel,
+            marker_panel=marker_panel,
             find_peak_panel=find_peak_panel,
             led_analysis_panel=led_analysis_panel,
         )
@@ -147,6 +150,7 @@ class ApplicationComposer:
             video_player.project_changed,
             marker_store.changed,
             wave_panel.project_changed,
+            marker_panel.sync_selection_changed,
         )
         sync_controller.connect_signals()
         led_controller.connect_signals()

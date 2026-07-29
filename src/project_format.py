@@ -132,6 +132,16 @@ def validate_state(state):
             "Project analysis setting lfp_peak_min_distance_sec is invalid."
         )
 
+    sync = state.get("sync", {})
+    if sync.get("reference_mode", "auto") not in {"auto", "manual"}:
+        raise ValueError("Project sync reference mode is invalid.")
+    for name in ("ttl_reference_marker_id", "video_reference_marker_id"):
+        value = sync.get(name)
+        if value is not None and (
+            not isinstance(value, str) or not value or len(value) > MAX_TEXT_LENGTH
+        ):
+            raise ValueError(f"Project sync {name} is invalid.")
+
     markers = state.get("markers", [])
     if not isinstance(markers, list) or len(markers) > MAX_EVENTS:
         raise ValueError("Project marker list is invalid or too large.")

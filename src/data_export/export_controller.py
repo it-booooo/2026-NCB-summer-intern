@@ -189,6 +189,13 @@ class ExportController:
                 },
                 "sync": {
                     "time_offset_sec": self.sync_state.time_offset_sec,
+                    "reference_mode": self.sync_state.reference_mode,
+                    "ttl_reference_marker_id": (
+                        self.sync_state.ttl_reference_marker_id
+                    ),
+                    "video_reference_marker_id": (
+                        self.sync_state.video_reference_marker_id
+                    ),
                     "video_time_origin_sec": self.sync_state.video_time_origin_sec,
                     "record_time_origin_sec": self.sync_state.record_time_origin_sec,
                 },

@@ -2,10 +2,55 @@ from ..markers import (
     Marker,
     MarkerKind,
     MarkerSource,
+    RecordPosition,
     VideoPosition,
     marker_record_time,
     marker_video_time,
 )
+
+
+SYNC_VIDEO_REFERENCE_KINDS = frozenset(
+    {MarkerKind.LED_ON, MarkerKind.BEHAVIOR_START}
+)
+
+
+def resolve_sync_reference_markers(markers, sync_state):
+    markers = tuple(markers)
+    if sync_state.reference_mode == "manual":
+        by_id = {marker.marker_id: marker for marker in markers}
+        ttl_marker = by_id.get(sync_state.ttl_reference_marker_id)
+        video_marker = by_id.get(sync_state.video_reference_marker_id)
+        if (
+            ttl_marker is None
+            or ttl_marker.kind != MarkerKind.TTL
+            or not isinstance(ttl_marker.position, RecordPosition)
+            or video_marker is None
+            or video_marker.kind not in SYNC_VIDEO_REFERENCE_KINDS
+            or not isinstance(video_marker.position, VideoPosition)
+        ):
+            return None, None
+        return ttl_marker, video_marker
+
+    ttl_markers = [
+        marker
+        for marker in markers
+        if marker.kind == MarkerKind.TTL
+        and isinstance(marker.position, RecordPosition)
+    ]
+    led_markers = [
+        marker
+        for marker in markers
+        if marker.kind == MarkerKind.LED_ON
+        and isinstance(marker.position, VideoPosition)
+    ]
+    return (
+        min(ttl_markers, key=lambda marker: marker.position.time_sec)
+        if ttl_markers
+        else None,
+        min(led_markers, key=lambda marker: marker.position.time_sec)
+        if led_markers
+        else None,
+    )
 
 
 def pair_event_intervals(markers, start_kind, end_kind, interval_type, offset_sec):
@@ -49,6 +94,7 @@ class SyncController:
         event_table,
         wave_panel,
         ttl_panel,
+        marker_panel,
         find_peak_panel,
         led_analysis_panel,
     ):
@@ -61,6 +107,7 @@ class SyncController:
         self.event_table = event_table
         self.wave_panel = wave_panel
         self.ttl_panel = ttl_panel
+        self.marker_panel = marker_panel
         self.find_peak_panel = find_peak_panel
         self.led_analysis_panel = led_analysis_panel
 
@@ -73,6 +120,7 @@ class SyncController:
         )
         self.event_table.events_changed.connect(self.update_time_offset)
         self.event_table.video_time_selected.connect(self.seek_video_marker_time)
+        self.marker_panel.sync_selection_changed.connect(self.set_sync_selection)
         self.find_peak_panel.video_time_selected.connect(
             self.seek_video_marker_time
         )
@@ -86,6 +134,9 @@ class SyncController:
         self.ttl_state.metadata = None
         self.led_state.roi = None
         self.sync_state.time_offset_sec = None
+        self.sync_state.reference_mode = "auto"
+        self.sync_state.ttl_reference_marker_id = None
+        self.sync_state.video_reference_marker_id = None
 
         self.ttl_panel.set_markers(None, emit=False)
         self.marker_store.clear(emit=False)
@@ -99,6 +150,7 @@ class SyncController:
         self.wave_panel.set_event_intervals([])
 
         self.video_player.update_time_offset_display()
+        self.marker_panel.update_sync_selection_status()
         self.led_analysis_panel.led_roi_label.setText("LED ROI: Not selected")
         self.led_analysis_panel.set_roi_plot_idle()
         self.led_analysis_panel.set_led_detection_status(
@@ -148,17 +200,18 @@ class SyncController:
         self.marker_store.replace_by_source(MarkerSource.LED_DETECTION, markers)
         return markers
 
-    def first_video_led_time_sec(self):
-        led_events = self.marker_store.by_kind(MarkerKind.LED_ON)
-        if not led_events:
-            return None
+    def set_sync_selection(self, mode, ttl_marker_id, video_marker_id):
+        self.sync_state.reference_mode = mode
+        self.sync_state.ttl_reference_marker_id = ttl_marker_id
+        self.sync_state.video_reference_marker_id = video_marker_id
+        self.update_time_offset()
+        self.ttl_panel.refresh_table()
 
-        video_events = [
-            marker for marker in led_events if isinstance(marker.position, VideoPosition)
-        ]
-        if not video_events:
-            return None
-        return min(video_events, key=lambda marker: marker.position.time_sec).position.time_sec
+    def sync_reference_markers(self):
+        return resolve_sync_reference_markers(
+            self.marker_store.all(),
+            self.sync_state,
+        )
 
     def clear_time_offset(self):
         """Clear time offset.
@@ -174,6 +227,7 @@ class SyncController:
         self.find_peak_panel.refresh_table()
         self.wave_panel.clear_current_time_marker()
         self.update_event_intervals()
+        self.marker_panel.update_sync_selection_status()
 
     def update_time_offset(self):
         """Update time offset.
@@ -181,32 +235,30 @@ class SyncController:
         Args:
             None.
         """
-        video_led_sec = self.first_video_led_time_sec()
-        ttl_markers = self.marker_store.by_kind(MarkerKind.TTL)
-        ttl_marker_sec = (
-            min(marker.position.time_sec for marker in ttl_markers)
-            if ttl_markers
-            else None
-        )
-        if video_led_sec is None or ttl_marker_sec is None:
+        ttl_marker, video_marker = self.sync_reference_markers()
+        if ttl_marker is None or video_marker is None:
             self.clear_time_offset()
             return
 
+        ttl_marker_sec = ttl_marker.position.time_sec
+        video_marker_sec = video_marker.position.time_sec
+
         previous_video_origin_sec = self.sync_state.video_time_origin_sec
-        self.sync_state.time_offset_sec = video_led_sec - ttl_marker_sec
-        self.video_player.set_sync_time_origin(video_led_sec)
+        self.sync_state.time_offset_sec = video_marker_sec - ttl_marker_sec
+        self.video_player.set_sync_time_origin(video_marker_sec)
         self.wave_panel.set_sync_time_origin(ttl_marker_sec)
-        self.event_table.set_sync_time_origin(video_led_sec)
+        self.event_table.set_sync_time_origin(video_marker_sec)
         self.find_peak_panel.refresh_table()
         self.video_player.update_time_offset_display()
         if (
             previous_video_origin_sec is None
-            or abs(previous_video_origin_sec - video_led_sec) > 1e-6
+            or abs(previous_video_origin_sec - video_marker_sec) > 1e-6
         ):
-            self.video_player.seek_time_sec(video_led_sec)
+            self.video_player.seek_time_sec(video_marker_sec)
 
         self.update_waveform_current_time()
         self.update_event_intervals()
+        self.marker_panel.update_sync_selection_status()
 
     def update_event_intervals(self):
         """Update event intervals.

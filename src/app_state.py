@@ -73,6 +73,9 @@ class SyncState:
     """Shared video/record time relationship and derived display data."""
 
     time_offset_sec: float | None = None
+    reference_mode: str = "auto"
+    ttl_reference_marker_id: str | None = None
+    video_reference_marker_id: str | None = None
     video_time_origin_sec: float | None = None
     record_time_origin_sec: float | None = None
     current_record_time_sec: float | None = None

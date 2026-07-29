@@ -187,6 +187,7 @@ class ImportController:
             "source_paths": source_paths,
             "data": data,
             "analysis": state.get("analysis", {}),
+            "sync": state.get("sync", {}),
             "timeline_xlim": (
                 tuple(float(value) for value in timeline_xlim)
                 if timeline_xlim is not None
@@ -315,6 +316,14 @@ class ImportController:
             if source_paths.get("ttl"):
                 ttl_metadata["path"] = source_paths["ttl"]
             self.ttl_state.metadata = ttl_metadata or None
+            sync = staged["sync"]
+            self.sync_state.reference_mode = sync.get("reference_mode", "auto")
+            self.sync_state.ttl_reference_marker_id = sync.get(
+                "ttl_reference_marker_id"
+            )
+            self.sync_state.video_reference_marker_id = sync.get(
+                "video_reference_marker_id"
+            )
             self.marker_store.replace_all(staged["markers"])
 
             led = staged["led"]

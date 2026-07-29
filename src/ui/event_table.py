@@ -1,6 +1,7 @@
 from typing import ClassVar
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -22,6 +23,7 @@ from ..markers import (
     MarkerKind,
     VideoPosition,
 )
+from ..synchronization import resolve_sync_reference_markers
 from ..synchronization.time_conversion import relative_time
 
 VIDEO_MARKER_KINDS = [kind for kind in MarkerKind if kind != MarkerKind.TTL]
@@ -148,12 +150,14 @@ class NoteEditor(QLineEdit):
         self.selection_requested.emit()
         super().focusInEvent(event)
 
-    def set_row_selected(self, selected):
-        self.setStyleSheet(
-            "background-color: #dcecff; border: 1px solid #2f80ed; color: #111111;"
-            if selected
-            else "background-color: #ffffff; border: none; color: #111111;"
-        )
+    def set_row_selected(self, selected, sync_reference=False):
+        if selected:
+            style = "background-color: #dcecff; border: 1px solid #2f80ed;"
+        elif sync_reference:
+            style = "background-color: #d8f3dc; border: 1px solid #40916c;"
+        else:
+            style = "background-color: #ffffff; border: none;"
+        self.setStyleSheet(f"{style} color: #111111;")
 
 
 class MarkerTable(QTableWidget):
@@ -209,6 +213,11 @@ class MarkerTable(QTableWidget):
 
     def refresh(self):
         current_id = self.selected_marker_id()
+        _ttl_reference, video_reference = resolve_sync_reference_markers(
+            self.marker_store.all(),
+            self.sync_state,
+        )
+        sync_marker_id = video_reference.marker_id if video_reference else None
         self._refreshing = True
         try:
             self.setRowCount(0)
@@ -226,6 +235,9 @@ class MarkerTable(QTableWidget):
                 time_item.setData(self.VIDEO_TIME_ROLE, marker.position.time_sec)
                 time_item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
                 time_item.setTextAlignment(Qt.AlignCenter)
+                if marker.marker_id == sync_marker_id:
+                    for item in (number_item, type_item, time_item):
+                        item.setBackground(QColor("#d8f3dc"))
                 self.setItem(row, 0, number_item)
                 self.setItem(row, 1, type_item)
                 self.setItem(row, 2, time_item)
@@ -291,10 +303,19 @@ class MarkerTable(QTableWidget):
 
     def update_note_selection_styles(self):
         selected = {index.row() for index in self.selectionModel().selectedRows()}
+        _ttl_reference, video_reference = resolve_sync_reference_markers(
+            self.marker_store.all(),
+            self.sync_state,
+        )
+        sync_marker_id = video_reference.marker_id if video_reference else None
         for row in range(self.rowCount()):
             editor = self.cellWidget(row, 3)
             if editor is not None:
-                editor.set_row_selected(row in selected)
+                marker_id = self.item(row, 0).data(self.MARKER_ID_ROLE)
+                editor.set_row_selected(
+                    row in selected,
+                    marker_id == sync_marker_id,
+                )
 
     def edit_selected_event(self):
         marker_id = self.selected_marker_id()
