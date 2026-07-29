@@ -1,5 +1,6 @@
 import json
 import tempfile
+import uuid
 from dataclasses import asdict, dataclass, is_dataclass
 from datetime import datetime
 from pathlib import Path
@@ -15,10 +16,15 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QInputDialog,
     QMessageBox,
+    QProgressDialog,
     QVBoxLayout,
 )
 
 from .. import charts, data_validation, signal_data
+from ..background_requests import (
+    source_identity_for_info,
+    widget_is_valid,
+)
 from ..markers import (
     MarkerKind,
     VideoPosition,
@@ -60,6 +66,12 @@ class ExportController:
         self.led_state = self.app_state.led
         self.marker_store = context.marker_store
         self.last_lfp_export_directory = None
+        self._check_workers = {}
+        self._check_request_id = None
+        self._check_progress = None
+        self._lfp_export_workers = {}
+        self._lfp_export_request_id = None
+        self._lfp_export_progress = None
 
     def save_project(self):
         """Save project state while referencing every source file by path."""
@@ -502,24 +514,105 @@ class ExportController:
         if not path:
             return
 
-        try:
-            output_path = data_validation.check(
-                info=info,
-                output_path=path,
-            )
-        except Exception as error:
-            QMessageBox.warning(
-                self.parent,
-                "Export check results failed",
-                str(error),
-            )
-            return
+        request_id = uuid.uuid4().hex
+        self._cancel_check_workers()
+        self._check_request_id = request_id
+        worker = data_validation.DataCheckWorker(request_id, info, path)
+        self._check_workers[request_id] = worker
+        progress = QProgressDialog(
+            "Checking signal data…",
+            "Cancel",
+            0,
+            100,
+            self.parent,
+        )
+        progress.setWindowTitle("Export check results")
+        progress.setWindowModality(Qt.WindowModality.NonModal)
+        progress.setAutoClose(False)
+        self._check_progress = progress
+        worker.progress.connect(self._update_check_progress)
+        worker.completed.connect(self._finish_check_export)
+        worker.failed.connect(self._fail_check_export)
+        worker.canceled.connect(
+            lambda result_id, _identity: self._complete_check_request(result_id)
+        )
+        progress.canceled.connect(worker.cancel)
+        worker.finished.connect(
+            lambda result_id=request_id: self._discard_check_worker(result_id)
+        )
+        worker.finished.connect(worker.deleteLater)
+        worker.start()
+        progress.show()
 
+    def _check_result_is_current(self, request_id, identity):
+        if (
+            request_id != self._check_request_id
+            or not widget_is_valid(self.parent)
+        ):
+            return False
+        for info in (self.data_state.lfp_info, self.data_state.axis_info):
+            if info is None:
+                continue
+            try:
+                if source_identity_for_info(info) == identity:
+                    return True
+            except OSError:
+                continue
+        return False
+
+    def _update_check_progress(self, request_id, value):
+        if request_id != self._check_request_id:
+            return
+        if self._check_progress is not None and widget_is_valid(
+            self._check_progress
+        ):
+            self._check_progress.setValue(value)
+
+    def _finish_check_export(self, request_id, identity, output_path):
+        if not self._check_result_is_current(request_id, identity):
+            return
+        self._complete_check_request(request_id)
         QMessageBox.information(
             self.parent,
             "Check Results Exported",
             f"Check results exported to:\n{output_path}",
         )
+
+    def _fail_check_export(self, request_id, identity, message):
+        if not self._check_result_is_current(request_id, identity):
+            return
+        self._complete_check_request(request_id)
+        QMessageBox.warning(
+            self.parent,
+            "Export check results failed",
+            message,
+        )
+
+    def _complete_check_request(self, request_id):
+        if request_id != self._check_request_id:
+            return
+        if self._check_progress is not None and widget_is_valid(
+            self._check_progress
+        ):
+            self._check_progress.close()
+        self._check_progress = None
+
+    def _discard_check_worker(self, request_id):
+        self._check_workers.pop(request_id, None)
+
+    def _cancel_check_workers(self, wait=False):
+        workers = list(self._check_workers.values())
+        for worker in workers:
+            worker.cancel()
+        if wait:
+            for worker in workers:
+                worker.wait(10_000)
+        return not any(worker.isRunning() for worker in workers)
+
+    def stop_background_work(self, wait=False):
+        check_stopped = self._cancel_check_workers(wait=wait)
+        export_stopped = self._cancel_lfp_export_workers(wait=wait)
+        return check_stopped and export_stopped
 
     def export_waveform_image(self):
         """Export waveform image.
@@ -618,19 +711,107 @@ class ExportController:
             if answer != QMessageBox.StandardButton.Yes:
                 return
 
+        self._start_lfp_image_export(options, paths)
+
+    def _start_lfp_image_export(self, options, paths):
+        dataset = self.data_state.lfp_dataset
+        if dataset is None:
+            QMessageBox.warning(
+                self.parent,
+                "Cannot export LFP images",
+                "The LFP data source is no longer available.",
+            )
+            return
+        self._cancel_lfp_export_workers()
+        request_id = uuid.uuid4().hex
+        worker = signal_data.LfpExportDataWorker(
+            request_id,
+            dataset,
+            options.channel,
+            options.left,
+            options.right,
+            options.settings,
+            options.image_types,
+        )
+        self._lfp_export_request_id = request_id
+        self._lfp_export_workers[request_id] = worker
+        progress = QProgressDialog(
+            "Preparing LFP image data...",
+            "Cancel",
+            0,
+            100,
+            self.parent,
+        )
+        progress.setWindowTitle("Export LFP images")
+        progress.setWindowModality(Qt.WindowModality.NonModal)
+        progress.setAutoClose(False)
+        self._lfp_export_progress = progress
+        worker.progress.connect(self._update_lfp_export_progress)
+        worker.completed.connect(
+            lambda result_id, identity, result: self._finish_lfp_image_export(
+                result_id,
+                identity,
+                result,
+                options,
+                paths,
+            )
+        )
+        worker.failed.connect(self._fail_lfp_image_export)
+        worker.canceled.connect(
+            lambda result_id, _identity: self._complete_lfp_export_request(
+                result_id
+            )
+        )
+        progress.canceled.connect(worker.cancel)
+        worker.finished.connect(
+            lambda result_id=request_id: self._discard_lfp_export_worker(
+                result_id
+            )
+        )
+        worker.finished.connect(worker.deleteLater)
+        worker.start()
+        progress.show()
+
+    def _lfp_export_result_is_current(self, request_id, identity):
+        if (
+            request_id != self._lfp_export_request_id
+            or not widget_is_valid(self.parent)
+            or self.data_state.lfp_info is None
+        ):
+            return False
+        try:
+            return source_identity_for_info(self.data_state.lfp_info) == identity
+        except OSError:
+            return False
+
+    def _update_lfp_export_progress(self, request_id, value):
+        if request_id != self._lfp_export_request_id:
+            return
+        progress = self._lfp_export_progress
+        if progress is not None and widget_is_valid(progress):
+            progress.setValue(value)
+
+    def _finish_lfp_image_export(
+        self,
+        request_id,
+        identity,
+        result,
+        options,
+        paths,
+    ):
+        if not self._lfp_export_result_is_current(request_id, identity):
+            return
+        self._complete_lfp_export_request(request_id)
+        panel = self.context.wave_panel
+        segment = result["segment"]
+        time_mode = (
+            "Sync time"
+            if panel.sync_state.record_time_origin_sec is not None
+            else "Time"
+        )
         figures = {}
         saved_paths = []
         try:
-            segment = panel.load_lfp_segment(
-                options.channel,
-                options.left,
-                options.right,
-                options.settings,
-            )
-            time_mode = (
-                "Sync time" if panel.sync_state.record_time_origin_sec is not None else "Time"
-            )
-
             if "waveform" in options.image_types:
                 figures["waveform"] = panel.create_lfp_waveform_figure(
                     options.channel,
@@ -638,23 +819,15 @@ class ExportController:
                     options.settings,
                     time_mode,
                 )
-
             if "power_spectrum" in options.image_types:
-                frequencies, power = signal_data.compute_power_spectrum(
-                    segment.values,
-                    segment.sample_rate_hz,
-                )
+                frequencies, power = result["power_spectrum"]
                 figures["power_spectrum"] = panel.create_power_spectrum_figure(
                     options.channel,
                     frequencies,
                     power,
                 )
-
             if "spectrogram" in options.image_types:
-                frequencies, times, power = signal_data.compute_time_frequency(
-                    segment.values,
-                    segment.sample_rate_hz,
-                )
+                frequencies, times, power = result["spectrogram"]
                 figures["spectrogram"] = panel.create_spectrogram_figure(
                     options.channel,
                     segment,
@@ -663,7 +836,6 @@ class ExportController:
                     power,
                     time_mode,
                 )
-
             for figure in figures.values():
                 panel.annotate_lfp_figure(
                     figure,
@@ -671,7 +843,6 @@ class ExportController:
                     segment,
                     options.settings,
                 )
-
             for image_type in options.image_types:
                 path = paths[image_type]
                 figures[image_type].savefig(str(path), dpi=options.dpi)
@@ -690,7 +861,6 @@ class ExportController:
         finally:
             for figure in figures.values():
                 figure.clear()
-
         filenames = "\n".join(f"- {path.name}" for path in saved_paths)
         QMessageBox.information(
             self.parent,
@@ -698,6 +868,36 @@ class ExportController:
             f"Exported {len(saved_paths)} image(s) to:\n"
             f"{options.directory}\n\n{filenames}",
         )
+
+    def _fail_lfp_image_export(self, request_id, identity, message):
+        if not self._lfp_export_result_is_current(request_id, identity):
+            return
+        self._complete_lfp_export_request(request_id)
+        QMessageBox.warning(
+            self.parent,
+            "Export LFP images failed",
+            message,
+        )
+
+    def _complete_lfp_export_request(self, request_id):
+        if request_id != self._lfp_export_request_id:
+            return
+        progress = self._lfp_export_progress
+        if progress is not None and widget_is_valid(progress):
+            progress.close()
+        self._lfp_export_progress = None
+
+    def _discard_lfp_export_worker(self, request_id):
+        self._lfp_export_workers.pop(request_id, None)
+
+    def _cancel_lfp_export_workers(self, wait=False):
+        workers = list(self._lfp_export_workers.values())
+        for worker in workers:
+            worker.cancel()
+        if wait:
+            for worker in workers:
+                worker.wait(10_000)
+        return not any(worker.isRunning() for worker in workers)
 
     def _lfp_filename(self, channel, settings, suffix):
         # 將通道、處理模式與同步後的時間範圍編入預設檔名，方便辨識輸出內容。

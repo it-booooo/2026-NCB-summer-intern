@@ -18,13 +18,14 @@ from .lfp_processing import (
     prepare_lfp_signal,
 )
 from .signal_dataset import SignalDataset
-from .source import RawSignalSegment
+from .source import CacheBuildCancelled, RawSignalSegment
 
 SEGMENT_CACHE_MAX_BYTES = 128 * 1024 * 1024
 FILTERED_SEGMENT_CACHE_MAX_BYTES = 128 * 1024 * 1024
 FILTERED_SEGMENT_CACHE_MAX_ENTRIES = 32
 PLAYBACK_WINDOW_SECONDS = 30.0
 MAX_FINE_PREFETCH_SECONDS = 120.0
+FILTER_BLOCK_SAMPLES = 250_000
 
 
 @dataclass
@@ -101,6 +102,7 @@ class LfpDataset(SignalDataset):
         end_s: float,
         settings: LfpFilterSettings | None,
         cancel_event: threading.Event | None = None,
+        progress_callback=None,
     ) -> LfpSegment:
         """Filter a padded raw interval, then crop to the exact requested indices."""
         channel = int(channel)
@@ -156,32 +158,47 @@ class LfpDataset(SignalDataset):
 
         sample_rate_hz = self.sample_rate_hz(channel)
         padding = filter_padding_samples(effective_settings, sample_rate_hz)
-        loaded_left = max(left_index - padding, 0)
-        loaded_right = min(
-            right_index + padding,
-            self.source.sample_count(channel),
-        )
-        loaded = self.source.indexed_segment(
-            channel, loaded_left, loaded_right, cancel_event
-        )
-        filtered_values = prepare_lfp_signal(
-            loaded.values,
-            sample_rate_hz,
-            effective_settings,
-        )
-        crop_left = left_index - loaded_left
-        crop_right = crop_left + (right_index - left_index)
+        requested_count = right_index - left_index
+        result_times = np.empty(requested_count, dtype="<f8")
+        result_values = np.empty(requested_count, dtype="<f8")
+        source_count = self.source.sample_count(channel)
+        for block_offset in range(0, requested_count, FILTER_BLOCK_SAMPLES):
+            if cancel_event is not None and cancel_event.is_set():
+                raise CacheBuildCancelled("Segment filtering was cancelled.")
+            block_left = left_index + block_offset
+            block_right = min(
+                block_left + FILTER_BLOCK_SAMPLES,
+                right_index,
+            )
+            loaded_left = max(block_left - padding, 0)
+            loaded_right = min(block_right + padding, source_count)
+            loaded = self.source.indexed_segment(
+                channel,
+                loaded_left,
+                loaded_right,
+                cancel_event,
+            )
+            filtered_values = prepare_lfp_signal(
+                loaded.values,
+                sample_rate_hz,
+                effective_settings,
+            )
+            crop_left = block_left - loaded_left
+            crop_right = crop_left + (block_right - block_left)
+            output_left = block_left - left_index
+            output_right = block_right - left_index
+            result_times[output_left:output_right] = loaded.time_us[
+                crop_left:crop_right
+            ]
+            result_values[output_left:output_right] = filtered_values[
+                crop_left:crop_right
+            ]
+            if progress_callback is not None:
+                progress_callback(output_right / requested_count)
         result = LfpSegment(
-            time_us=np.asarray(
-                loaded.time_us[crop_left:crop_right], dtype=float
-            ).copy(),
-            record_time_s=np.asarray(
-                loaded.time_us[crop_left:crop_right] / 1_000_000.0,
-                dtype=float,
-            ).copy(),
-            values=np.asarray(
-                filtered_values[crop_left:crop_right], dtype=float
-            ).copy(),
+            time_us=result_times,
+            record_time_s=result_times / 1_000_000.0,
+            values=result_values,
             sample_rate_hz=float(sample_rate_hz),
         )
         self._store_filtered_segment(cache_key, result)

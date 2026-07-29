@@ -1,10 +1,22 @@
 import csv
+import os
+import threading
+import uuid
 from pathlib import Path
 
 import pandas as pd
 
+from ..signal_data.source import CacheBuildCancelled
 
-def check(info: dict, output_path: str | Path | None = None) -> Path:
+
+def check(
+    info: dict,
+    output_path: str | Path | None = None,
+    *,
+    cancel_event: threading.Event | None = None,
+    progress_callback=None,
+    chunk_rows: int = 250_000,
+) -> Path:
     """Validate CSV timestamps/data integrity and output a check report CSV."""
     path = info.get("path")
     if not path:
@@ -16,25 +28,120 @@ def check(info: dict, output_path: str | Path | None = None) -> Path:
 
     sample_rate = first_sample_rate(info)
     header_row, data_column_count = find_data_header(file_path)
-    df = pd.read_csv(
-        file_path,
-        skiprows=header_row,
-        header=0,
-        usecols=range(data_column_count),
-        low_memory=False,
-    )
-
     expected_interval = round(1_000_000 / sample_rate)
-    times = pd.to_numeric(df.iloc[:, 0], errors="coerce")
-    missing_count = int(df.isna().sum().sum())
-    intervals = times.diff()
+    fieldnames = ["Type", "File", "Value"]
+    token = uuid.uuid4().hex
+    detail_path = output_file.with_name(f".{output_file.name}.{token}.details.tmp")
+    final_temp = output_file.with_name(f".{output_file.name}.{token}.tmp")
+    missing_count = 0
+    duplicate_count = 0
+    discontinuous_count = 0
+    row_offset = 0
+    previous_time = None
+    processed_bytes = 0
+    source_size = max(file_path.stat().st_size, 1)
+    channels = [int(channel) for channel in info.get("channels", [])]
+    try:
+        with detail_path.open("w", encoding="utf-8", newline="") as detail_stream:
+            detail_writer = csv.DictWriter(detail_stream, fieldnames=fieldnames)
+            detail_writer.writeheader()
+            reader = pd.read_csv(
+                file_path,
+                skiprows=header_row,
+                header=0,
+                usecols=range(data_column_count),
+                chunksize=max(int(chunk_rows), 1),
+                low_memory=False,
+            )
+            try:
+                for frame in reader:
+                    _check_cancel(cancel_event)
+                    times = pd.to_numeric(frame.iloc[:, 0], errors="coerce")
+                    missing_mask = frame.isna()
+                    missing_count += int(missing_mask.sum().sum())
+                    intervals = times.diff()
+                    if len(times) and previous_time is not None:
+                        current = times.iloc[0]
+                        if pd.notna(current) and pd.notna(previous_time):
+                            intervals.iloc[0] = current - previous_time
 
-    duplicate_timestamp_mask = intervals.notna() & (intervals == 0)
-    discontinuous_mask = (
-        intervals.notna() & (intervals != 0) & (intervals != expected_interval)
-    )
+                    duplicate_mask = intervals.notna() & (intervals == 0)
+                    discontinuous_mask = (
+                        intervals.notna()
+                        & (intervals != 0)
+                        & (intervals != expected_interval)
+                    )
+                    duplicate_count += int(duplicate_mask.sum())
+                    discontinuous_count += int(discontinuous_mask.sum())
 
-    results = [
+                    for local_row, column_index in zip(
+                        *missing_mask.to_numpy().nonzero()
+                    ):
+                        csv_line = header_row + 2 + row_offset + local_row
+                        time_value = times.iloc[local_row]
+                        time_text = (
+                            "missing"
+                            if pd.isna(time_value)
+                            else f"{int(time_value)} us"
+                        )
+                        detail_writer.writerow(
+                            {
+                                "Type": "Missing value",
+                                "File": f"line {csv_line}",
+                                "Value": (
+                                    f"time={time_text}, channel="
+                                    f"{channel_label(column_index, channels, frame.columns[column_index])}"
+                                ),
+                            }
+                        )
+
+                    anomaly_mask = duplicate_mask | discontinuous_mask
+                    for local_row, has_anomaly in enumerate(
+                        anomaly_mask.to_numpy()
+                    ):
+                        if not has_anomaly:
+                            continue
+                        current_value = times.iloc[local_row]
+                        if local_row:
+                            previous_value = times.iloc[local_row - 1]
+                        else:
+                            previous_value = previous_time
+                        if pd.isna(previous_value) or pd.isna(current_value):
+                            continue
+                        previous_us = int(previous_value)
+                        current_us = int(current_value)
+                        actual_interval = current_us - previous_us
+                        csv_line = header_row + 2 + row_offset + local_row
+                        detail_writer.writerow(
+                            {
+                                "Type": (
+                                    "Duplicate timestamp"
+                                    if duplicate_mask.iloc[local_row]
+                                    else "Time discontinuity"
+                                ),
+                                "File": f"line {csv_line}",
+                                "Value": (
+                                    f"{previous_us} -> {current_us} us "
+                                    f"(actual: {actual_interval} us, "
+                                    f"expected: {expected_interval} us)"
+                                ),
+                            }
+                        )
+                    if len(times):
+                        previous_time = times.iloc[-1]
+                    row_offset += len(frame)
+                    processed_bytes += int(frame.memory_usage(deep=True).sum())
+                    if progress_callback is not None:
+                        progress_callback(
+                            min(0.95, processed_bytes / source_size)
+                        )
+            finally:
+                reader.close()
+            detail_stream.flush()
+            os.fsync(detail_stream.fileno())
+
+        _check_cancel(cancel_event)
+        results = [
         {"Type": "Summary", "File": str(file_path), "Value": ""},
         {"Type": "Sample rate", "File": "", "Value": f"{sample_rate} Hz"},
         {
@@ -46,68 +153,37 @@ def check(info: dict, output_path: str | Path | None = None) -> Path:
         {
             "Type": "Duplicate timestamps",
             "File": "",
-            "Value": str(int(duplicate_timestamp_mask.sum())),
+            "Value": str(duplicate_count),
         },
         {
             "Type": "Discontinuous timestamps",
             "File": "",
-            "Value": str(int(discontinuous_mask.sum())),
+            "Value": str(discontinuous_count),
         },
-    ]
+        ]
+        with (
+            final_temp.open("w", encoding="utf-8-sig", newline="") as output,
+            detail_path.open("r", encoding="utf-8", newline="") as details,
+        ):
+            writer = csv.DictWriter(output, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(results)
+            writer.writerows(csv.DictReader(details))
+            output.flush()
+            os.fsync(output.fileno())
+        _check_cancel(cancel_event)
+        os.replace(final_temp, output_file)
+        if progress_callback is not None:
+            progress_callback(1.0)
+        return output_file
+    finally:
+        detail_path.unlink(missing_ok=True)
+        final_temp.unlink(missing_ok=True)
 
-    channels = [int(channel) for channel in info.get("channels", [])]
-    for row_index, column_index in zip(*df.isna().to_numpy().nonzero()):
-        csv_line = header_row + 2 + row_index
-        time_value = times.iloc[row_index]
-        time_text = "missing" if pd.isna(time_value) else f"{int(time_value)} us"
-        channel_text = channel_label(column_index, channels, df.columns[column_index])
 
-        results.append(
-            {
-                "Type": "Missing value",
-                "File": f"line {csv_line}",
-                "Value": f"time={time_text}, channel={channel_text}",
-            }
-        )
-
-    anomaly_mask = duplicate_timestamp_mask | discontinuous_mask
-    for current_index, has_anomaly in enumerate(anomaly_mask.to_numpy()):
-        if not has_anomaly:
-            continue
-
-        previous_value = times.iloc[current_index - 1]
-        current_value = times.iloc[current_index]
-        if pd.isna(previous_value) or pd.isna(current_value):
-            continue
-
-        previous_time = int(previous_value)
-        current_time = int(current_value)
-        actual_interval = current_time - previous_time
-        csv_line = header_row + 2 + current_index
-        result_type = (
-            "Duplicate timestamp"
-            if duplicate_timestamp_mask.iloc[current_index]
-            else "Time discontinuity"
-        )
-
-        results.append(
-            {
-                "Type": result_type,
-                "File": f"line {csv_line}",
-                "Value": (
-                    f"{previous_time} -> {current_time} us "
-                    f"(actual: {actual_interval} us, expected: {expected_interval} us)"
-                ),
-            }
-        )
-
-    with output_file.open("w", encoding="utf-8-sig", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["Type", "File", "Value"])
-        writer.writeheader()
-        writer.writerows(results)
-
-    print(f"Report saved to: {output_file}")
-    return output_file
+def _check_cancel(cancel_event):
+    if cancel_event is not None and cancel_event.is_set():
+        raise CacheBuildCancelled("Data validation was cancelled.")
 
 
 def default_output_path(file_path: Path) -> Path:

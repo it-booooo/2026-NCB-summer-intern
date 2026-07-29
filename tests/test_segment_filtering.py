@@ -1,4 +1,5 @@
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -14,7 +15,7 @@ from src.signal_data import (
     prepare_lfp_signal,
 )
 from src.signal_data import lfp_dataset as lfp_dataset_module
-from src.signal_data.source import _SOURCES
+from src.signal_data.source import CacheBuildCancelled, _SOURCES
 
 
 class SegmentFilteringTests(unittest.TestCase):
@@ -197,6 +198,29 @@ class SegmentFilteringTests(unittest.TestCase):
             self.dataset._filtered_segment_cache_bytes,
             10 * 1024 * 1024,
         )
+
+    def test_large_filter_checks_cancellation_between_blocks(self):
+        settings = self.settings()
+        cancel = threading.Event()
+        progress = []
+
+        def stop_after_first_block(value):
+            progress.append(value)
+            cancel.set()
+
+        with (
+            patch.object(lfp_dataset_module, "FILTER_BLOCK_SAMPLES", 100),
+            self.assertRaises(CacheBuildCancelled),
+        ):
+            self.dataset.segment(
+                2,
+                0.0,
+                10.0,
+                settings,
+                cancel,
+                stop_after_first_block,
+            )
+        self.assertEqual(len(progress), 1)
 
 
 if __name__ == "__main__":

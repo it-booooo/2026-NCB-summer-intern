@@ -7,6 +7,13 @@ from .csv_loader import (
     parse_time_marker_csv_info,
     read_csv_preview,
 )
+from .background_workers import (
+    LfpAnalysisWorker,
+    LfpCoarseWorker,
+    LfpExportDataWorker,
+    LfpSegmentWorker,
+    PeakDetectionWorker,
+)
 from .lfp_dataset import LfpDataset
 from .lfp_processing import (
     LfpFilterSettings,
@@ -32,9 +39,14 @@ from .signal_dataset import SignalDataset
 __all__ = [
     "CacheBuildCancelled",
     "LfpAnalysisService",
+    "LfpAnalysisWorker",
+    "LfpCoarseWorker",
+    "LfpExportDataWorker",
     "LfpDataset",
     "LfpFilterSettings",
     "LfpSegment",
+    "LfpSegmentWorker",
+    "PeakDetectionWorker",
     "RawSignalSegment",
     "SignalDataSource",
     "SignalDataset",

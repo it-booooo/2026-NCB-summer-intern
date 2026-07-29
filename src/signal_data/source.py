@@ -426,12 +426,7 @@ class SignalDataSource:
         if channel_id not in self.channels:
             raise ValueError(f"CSV does not include channel {channel_id}")
         step = max(int(step), 1)
-        identity = {
-            "source": self._identity(),
-            "step": step,
-            "filter_algorithm_version": FILTER_COARSE_ALGORITHM_VERSION,
-            "filter_settings": asdict(settings) if settings is not None else None,
-        }
+        identity = self._coarse_identity(step, settings)
         coarse_path = self.cache_root / f"coarse-{self._digest(identity)}"
         with self._build_lock:
             self._check_cancel(cancel_event)
@@ -464,6 +459,20 @@ class SignalDataSource:
         finally:
             del times
             del values
+
+    def coarse_is_ready(self, step: int, settings=None) -> bool:
+        """Check cache validity without starting conversion."""
+        identity = self._coarse_identity(max(int(step), 1), settings)
+        path = self.cache_root / f"coarse-{self._digest(identity)}"
+        return self._valid_coarse(path, identity)
+
+    def _coarse_identity(self, step: int, settings) -> dict:
+        return {
+            "source": self._identity(),
+            "step": max(int(step), 1),
+            "filter_algorithm_version": FILTER_COARSE_ALGORITHM_VERSION,
+            "filter_settings": asdict(settings) if settings is not None else None,
+        }
 
     def _valid_coarse(self, path: Path, identity: dict) -> bool:
         try:

@@ -52,6 +52,20 @@ class MainWindow(QMainWindow):
             event.ignore()
             return
 
+        background_stopped = (
+            self.components.wave_panel.stop_background_work(wait=True)
+            and self.components.find_peak_panel.cancel_peak_detection(wait=True)
+            and self.components.export_controller.stop_background_work(wait=True)
+        )
+        if not background_stopped:
+            QMessageBox.information(
+                self,
+                "Background work",
+                "Signal analysis is still closing. Please close the window again in a moment.",
+            )
+            event.ignore()
+            return
+
         if not led.stop_led_detection(wait=True):
             QMessageBox.information(
                 self,

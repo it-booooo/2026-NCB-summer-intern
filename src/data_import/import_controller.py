@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
+import uuid
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -13,6 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import signal_data
+from ..background_requests import widget_is_valid
 from ..markers import (
     MarkerSource,
     marker_from_legacy_ttl,
@@ -28,7 +30,7 @@ from ..video_player.video_helpers import (
     read_frame,
 )
 from .project_load_worker import ProjectLoadWorker, prepare_project_objects
-from .signal_cache_worker import SignalCacheWorker
+from .signal_cache_worker import ProjectSignalCacheWorker, SignalCacheWorker
 
 if TYPE_CHECKING:
     from src.app_state import AppState
@@ -84,8 +86,13 @@ class ImportController:
         self.led_state = self.app_state.led
         self.marker_store = context.marker_store
         self.project_load_worker = None
+        self._project_signal_worker = None
+        self._project_signal_request_id = None
+        self._project_signal_progress = None
         self._signal_cache_worker = None
         self._signal_cache_progress = None
+        self._signal_cache_workers = {}
+        self._signal_request_id = None
 
     def open_project(self):
         """Open a path-only project after every source has been validated."""
@@ -142,21 +149,138 @@ class ImportController:
 
         try:
             staged = self.prepare_project_restore(path, archive_data)
-            self.apply_project_restore(path, staged)
         except (KeyError, OSError, ValueError) as error:
+            self.complete_project_load(worker)
             QMessageBox.warning(self.parent, "Open project failed", str(error))
             return
         except Exception as error:
+            self.complete_project_load(worker)
             QMessageBox.warning(self.parent, "Restore project failed", str(error))
             return
-        finally:
-            self.complete_project_load(worker)
+        if staged.get("lfp_dataset") is not None or staged.get(
+            "axis_dataset"
+        ) is not None:
+            self._prepare_project_signals(worker, path, staged)
+            return
+        self._apply_prepared_project(worker, path, staged)
 
+    def _prepare_project_signals(self, archive_worker, path, staged):
+        request_id = uuid.uuid4().hex
+        self._project_signal_request_id = request_id
+        worker = ProjectSignalCacheWorker(request_id, staged)
+        self._project_signal_worker = worker
+        progress = QProgressDialog(
+            "Preparing project signal data…",
+            "Cancel",
+            0,
+            100,
+            self.parent,
+        )
+        progress.setWindowTitle("Open project")
+        progress.setWindowModality(Qt.WindowModality.NonModal)
+        progress.setAutoClose(False)
+        self._project_signal_progress = progress
+        worker.progress.connect(
+            lambda result_id, value: (
+                progress.setValue(value)
+                if result_id == self._project_signal_request_id
+                and widget_is_valid(progress)
+                else None
+            )
+        )
+        worker.completed.connect(
+            lambda result_id, identities, prepared: self._finish_project_signals(
+                result_id,
+                identities,
+                archive_worker,
+                path,
+                prepared,
+            )
+        )
+        worker.failed.connect(
+            lambda result_id, message: self._fail_project_signals(
+                result_id,
+                archive_worker,
+                message,
+            )
+        )
+        worker.canceled.connect(
+            lambda result_id: self._cancel_project_signals(
+                result_id,
+                archive_worker,
+            )
+        )
+        progress.canceled.connect(worker.cancel)
+        worker.start()
+        progress.show()
+
+    def _finish_project_signals(
+        self,
+        request_id,
+        identities,
+        archive_worker,
+        path,
+        staged,
+    ):
+        if (
+            request_id != self._project_signal_request_id
+            or archive_worker is not self.project_load_worker
+            or not widget_is_valid(self.parent)
+        ):
+            return
+        datasets = [
+            dataset
+            for dataset in (
+                staged.get("lfp_dataset"),
+                staged.get("axis_dataset"),
+            )
+            if dataset is not None
+        ]
+        try:
+            source_changed = any(
+                dataset.source.identity_token() != identities.get(id(dataset))
+                for dataset in datasets
+            )
+        except OSError:
+            source_changed = True
+        if source_changed:
+            self._fail_project_signals(
+                request_id,
+                archive_worker,
+                "A project signal source changed while it was loading.",
+            )
+            return
+        self._apply_prepared_project(archive_worker, path, staged)
+
+    def _apply_prepared_project(self, worker, path, staged):
+        try:
+            self.apply_project_restore(path, staged)
+        except Exception as error:
+            self.complete_project_load(worker)
+            QMessageBox.warning(self.parent, "Restore project failed", str(error))
+            return
+        self.complete_project_load(worker)
         QMessageBox.information(
             self.parent,
             "Project Opened",
             f"Project restored from:\n{path}",
         )
+
+    def _fail_project_signals(self, request_id, archive_worker, message):
+        if (
+            request_id != self._project_signal_request_id
+            or archive_worker is not self.project_load_worker
+        ):
+            return
+        self.complete_project_load(archive_worker)
+        QMessageBox.warning(self.parent, "Restore project failed", message)
+
+    def _cancel_project_signals(self, request_id, archive_worker):
+        if (
+            request_id == self._project_signal_request_id
+            and archive_worker is self.project_load_worker
+        ):
+            self.complete_project_load(archive_worker)
 
     def fail_project_load(self, worker, title, message):
         """Report an archive-loading failure on the GUI thread."""
@@ -170,26 +294,44 @@ class ImportController:
         if worker is not self.project_load_worker:
             return
         self.project_load_worker = None
+        self._project_signal_worker = None
+        self._project_signal_request_id = None
+        if self._project_signal_progress is not None and widget_is_valid(
+            self._project_signal_progress
+        ):
+            self._project_signal_progress.close()
+        self._project_signal_progress = None
         QApplication.restoreOverrideCursor()
+        worker.deleteLater()
 
     def stop_project_load(self, wait=False):
         """Return whether the project loader has stopped safely."""
-        worker = self.project_load_worker
-        if worker is None or not worker.isRunning():
-            return True
+        workers = [
+            worker
+            for worker in (
+                self.project_load_worker,
+                self._project_signal_worker,
+            )
+            if worker is not None and worker.isRunning()
+        ]
+        for worker in workers:
+            cancel = getattr(worker, "cancel", None)
+            if cancel is not None:
+                cancel()
         if wait:
-            worker.wait(3000)
-        return not worker.isRunning()
+            for worker in workers:
+                worker.wait(10_000)
+        return not any(worker.isRunning() for worker in workers)
 
     def stop_signal_import(self, wait=False):
         """Cancel an active CSV conversion and report whether it has stopped."""
-        worker = self._signal_cache_worker
-        if worker is None or not worker.isRunning():
-            return True
-        worker.cancel()
+        workers = list(self._signal_cache_workers.values())
+        for worker in workers:
+            worker.cancel()
         if wait:
-            worker.wait(10_000)
-        return not worker.isRunning()
+            for worker in workers:
+                worker.wait(10_000)
+        return not any(worker.isRunning() for worker in workers)
 
     def prepare_project_restore(self, path, archive_data=None):
         if archive_data is None:
@@ -489,26 +631,27 @@ class ImportController:
     def import_signal(self, signal_type):
         """Import an LFP or 3-axis CSV through the shared signal workflow."""
         context = self.context
-        if (
-            self._signal_cache_worker is not None
-            and self._signal_cache_worker.isRunning()
-        ):
-            QMessageBox.information(
-                self.parent,
-                "Import signal",
-                "A signal file is already being imported.",
-            )
-            return
         path = self.open_csv_file(self.SIGNAL_IMPORT_TITLES[signal_type])
         if not path:
             return
 
-        info = signal_data.parse_lfp_csv_info(path)
-        dataset = (
-            signal_data.LfpDataset.from_csv(info)
-            if signal_type == "lfp"
-            else signal_data.SignalDataset.from_csv(info)
-        )
+        try:
+            info = signal_data.parse_lfp_csv_info(path)
+            dataset = (
+                signal_data.LfpDataset.from_csv(info)
+                if signal_type == "lfp"
+                else signal_data.SignalDataset.from_csv(info)
+            )
+        except Exception as error:
+            QMessageBox.warning(self.parent, "Signal import failed", str(error))
+            return
+        request_id = uuid.uuid4().hex
+        for previous in self._signal_cache_workers.values():
+            previous.cancel()
+        previous_progress = self._signal_cache_progress
+        if previous_progress is not None and widget_is_valid(previous_progress):
+            previous_progress.close()
+        self._signal_request_id = request_id
         progress = QProgressDialog(
             "Building signal cache…",
             "Cancel",
@@ -517,13 +660,42 @@ class ImportController:
             self.parent,
         )
         progress.setWindowTitle("Import signal")
-        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setWindowModality(Qt.WindowModality.NonModal)
         progress.setAutoClose(False)
-        worker = SignalCacheWorker(dataset, self.parent)
+        configured_step = (
+            self.data_state.lfp_step
+            if signal_type == "lfp"
+            else self.data_state.axis_step
+        )
+        worker = SignalCacheWorker(request_id, dataset, configured_step)
         self._signal_cache_worker = worker
         self._signal_cache_progress = progress
+        self._signal_cache_workers[request_id] = worker
+        expected_identity = worker.source_identity
 
-        def install(prepared_dataset):
+        def is_current(result_id, identity):
+            try:
+                source_matches = dataset.source.identity_token() == identity
+            except OSError:
+                source_matches = False
+            return (
+                result_id == self._signal_request_id
+                and identity == expected_identity
+                and source_matches
+                and widget_is_valid(self.parent)
+            )
+
+        def update_progress(result_id, value):
+            if (
+                is_current(result_id, expected_identity)
+                and self._signal_cache_progress is progress
+                and widget_is_valid(progress)
+            ):
+                progress.setValue(value)
+
+        def install(result_id, identity, prepared_dataset):
+            if not is_current(result_id, identity):
+                return
             progress.close()
             if signal_type == "lfp":
                 context.wave_panel.set_lfp_dataset(prepared_dataset)
@@ -532,19 +704,28 @@ class ImportController:
             context.sync_controller.update_waveform_current_time()
             context.project_controller.mark_dirty()
 
-        def fail(message):
+        def fail(result_id, identity, message):
+            if not is_current(result_id, identity):
+                return
             progress.close()
             QMessageBox.warning(self.parent, "Signal import failed", message)
 
         def complete():
+            self._signal_cache_workers.pop(request_id, None)
             if self._signal_cache_worker is worker:
                 self._signal_cache_worker = None
                 self._signal_cache_progress = None
 
-        worker.progress.connect(progress.setValue)
+        worker.progress.connect(update_progress)
         worker.completed.connect(install)
         worker.failed.connect(fail)
-        worker.canceled.connect(progress.close)
+        worker.canceled.connect(
+            lambda result_id, identity: (
+                progress.close()
+                if is_current(result_id, identity) and widget_is_valid(progress)
+                else None
+            )
+        )
         progress.canceled.connect(worker.cancel)
         worker.finished.connect(worker.deleteLater)
         worker.finished.connect(complete)
