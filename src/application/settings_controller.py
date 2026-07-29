@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QFormLayout,
     QInputDialog,
+    QMessageBox,
     QVBoxLayout,
 )
 
@@ -43,6 +44,51 @@ class AnalysisSettingsController:
             self.wave_panel.set_plot_step(
                 plot_name, None if step == -1 else step
             )
+
+    def clear_signal_cache(self):
+        """Clear active signal disk caches after explicit confirmation."""
+        datasets = [
+            self.data_state.lfp_dataset,
+            self.data_state.axis_dataset,
+        ]
+        datasets = [dataset for dataset in datasets if dataset is not None]
+        if not datasets:
+            QMessageBox.information(
+                self.parent, "Signal cache", "No signal data is loaded."
+            )
+            return
+        answer = QMessageBox.question(
+            self.parent,
+            "Clear signal cache",
+            "Clear disk and memory caches for the loaded signal files?",
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        seen = set()
+        try:
+            for dataset in datasets:
+                close = getattr(dataset, "close", None)
+                if close is not None:
+                    close(wait=True)
+                clear_memory = getattr(dataset, "clear_memory_cache", None)
+                if clear_memory is not None:
+                    clear_memory()
+                source = dataset.source
+                if id(source) not in seen:
+                    source.clear_cache()
+                    seen.add(id(source))
+        except OSError as error:
+            QMessageBox.warning(
+                self.parent,
+                "Signal cache",
+                f"Some cache files could not be removed:\n{error}",
+            )
+            return
+        QMessageBox.information(
+            self.parent,
+            "Signal cache",
+            "Signal caches were cleared and will be rebuilt when needed.",
+        )
 
     def set_power_noise_frequency(self):
         items = ["60 Hz", "50 Hz"]

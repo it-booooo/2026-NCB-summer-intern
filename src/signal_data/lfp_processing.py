@@ -3,6 +3,8 @@ from dataclasses import dataclass
 import numpy as np
 from scipy import signal
 
+FILTER_PADDING_CYCLES = 3.0
+
 
 @dataclass(frozen=True)
 class LfpFilterSettings:
@@ -25,6 +27,36 @@ class LfpSegment:
     def sample_count(self) -> int:
         """Return the number of samples contained in this LFP segment."""
         return int(self.values.size)
+
+
+def filter_padding_samples(
+    settings: LfpFilterSettings | None,
+    sample_rate_hz: float,
+) -> int:
+    """Calculate per-side context from filter order and slowest active frequency."""
+    if settings is None or not settings.show_filtered:
+        return 0
+
+    _validate_sample_rate(sample_rate_hz)
+    active_frequencies: list[float] = []
+    structural_pad = 0
+    if settings.bandpass_enabled:
+        active_frequencies.append(float(settings.bandpass_low_hz))
+        # The fourth-order bandpass implementation produces four SOS sections.
+        structural_pad = max(structural_pad, 3 * (2 * 4 + 1))
+    if settings.line_noise_hz is not None:
+        active_frequencies.append(float(settings.line_noise_hz))
+        structural_pad = max(structural_pad, 3 * 3)
+    if not active_frequencies:
+        return 0
+
+    lowest_hz = min(active_frequencies)
+    if lowest_hz <= 0:
+        raise ValueError("Filter frequencies must be greater than 0 Hz.")
+    transient_pad = int(
+        np.ceil(FILTER_PADDING_CYCLES * float(sample_rate_hz) / lowest_hz)
+    )
+    return max(structural_pad, transient_pad)
 
 
 def sample_rate_for_channel(

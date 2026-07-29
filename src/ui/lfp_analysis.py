@@ -1,5 +1,7 @@
 """LFP analysis dialogs and figure creation used by ``WavePanel``."""
 
+import uuid
+
 import numpy as np
 from matplotlib.figure import Figure
 from PySide6.QtCore import Qt
@@ -8,11 +10,13 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QLabel,
     QMessageBox,
+    QProgressDialog,
     QScrollArea,
     QVBoxLayout,
 )
 
 from .. import signal_data as signal_func
+from ..background_requests import widget_is_valid
 from ..charts.chart_helpers import format_signal_label, resolve_plot_step
 from ..synchronization.time_conversion import relative_time
 
@@ -67,7 +71,7 @@ class LfpAnalysisMixin:
         )
     
     def _prepare_lfp_analysis(self, failure_title):
-        """Validate the current selection and load one shared analysis segment."""
+        """Validate the selection without running signal work on the GUI thread."""
         if not (self.data_state.lfp_info and self.data_state.lfp_info.get("path")):
             QMessageBox.information(
                 self,
@@ -88,12 +92,11 @@ class LfpAnalysisMixin:
         settings = self.current_lfp_filter_settings()
         try:
             left, right = self.current_lfp_record_xlim()
-            segment = self.load_lfp_segment(channel, left, right, settings)
         except Exception as error:
             QMessageBox.warning(self, failure_title, str(error))
             return None
-    
-        return channel, left, right, segment, settings
+
+        return channel, left, right, settings
     
     def show_lfp_analysis(self, analysis_type):
         """Calculate and display the selected frequency-domain analysis."""
@@ -114,31 +117,142 @@ class LfpAnalysisMixin:
         if analysis is None:
             return
     
-        channel, left, right, segment, settings = analysis
+        channel, left, right, settings = analysis
+        dataset = self.ensure_lfp_dataset()
+        request_id = uuid.uuid4().hex
+        self._cancel_lfp_analysis_workers()
+        self._lfp_analysis_request_id = request_id
+        worker = signal_func.LfpAnalysisWorker(
+            request_id,
+            dataset,
+            channel,
+            left,
+            right,
+            settings,
+            analysis_type,
+        )
+        workers = getattr(self, "_lfp_analysis_workers", {})
+        self._lfp_analysis_workers = workers
+        workers[request_id] = worker
+        progress = QProgressDialog(
+            "Preparing LFP analysis…",
+            "Cancel",
+            0,
+            100,
+            self,
+        )
+        progress.setWindowTitle(dialog_title)
+        progress.setWindowModality(Qt.WindowModality.NonModal)
+        progress.setAutoClose(False)
+        self._lfp_analysis_progress = progress
+
+        worker.progress.connect(
+            lambda result_id, value: self._update_lfp_analysis_progress(
+                result_id, value
+            )
+        )
+        worker.completed.connect(
+            lambda result_id, identity, result: self._finish_lfp_analysis(
+                result_id,
+                identity,
+                result,
+                analysis_type=analysis_type,
+                failure_title=failure_title,
+                dialog_title=dialog_title,
+                dialog_size=dialog_size,
+                channel=channel,
+                left=left,
+                right=right,
+                settings=settings,
+            )
+        )
+        worker.failed.connect(
+            lambda result_id, identity, message: self._fail_lfp_analysis(
+                result_id,
+                identity,
+                failure_title,
+                message,
+            )
+        )
+        worker.canceled.connect(
+            lambda result_id, _identity: self._complete_lfp_analysis_request(
+                result_id
+            )
+        )
+        progress.canceled.connect(worker.cancel)
+        worker.finished.connect(
+            lambda result_id=request_id: self._discard_lfp_analysis_worker(
+                result_id
+            )
+        )
+        worker.finished.connect(worker.deleteLater)
+        worker.start()
+        progress.show()
+
+    def _analysis_result_is_current(self, request_id, identity):
+        if (
+            request_id != getattr(self, "_lfp_analysis_request_id", None)
+            or not widget_is_valid(self)
+        ):
+            return False
+        dataset = self.data_state.lfp_dataset
+        if dataset is None:
+            return False
         try:
+            return dataset.source.identity_token() == identity
+        except OSError:
+            return False
+
+    def _update_lfp_analysis_progress(self, request_id, value):
+        if request_id != getattr(self, "_lfp_analysis_request_id", None):
+            return
+        progress = getattr(self, "_lfp_analysis_progress", None)
+        if progress is not None and widget_is_valid(progress):
+            progress.setValue(value)
+
+    def _finish_lfp_analysis(
+        self,
+        request_id,
+        identity,
+        result,
+        *,
+        analysis_type,
+        failure_title,
+        dialog_title,
+        dialog_size,
+        channel,
+        left,
+        right,
+        settings,
+    ):
+        if not self._analysis_result_is_current(request_id, identity):
+            return
+        try:
+            segment = result["segment"]
             if analysis_type == "power_spectrum":
-                frequencies, power = signal_func.compute_power_spectrum(
-                    segment.values,
-                    segment.sample_rate_hz,
+                figure = self.create_power_spectrum_figure(
+                    channel,
+                    result["frequencies"],
+                    result["power"],
                 )
-                figure = self.create_power_spectrum_figure(channel, frequencies, power)
             else:
-                frequencies, times, power = signal_func.compute_time_frequency(
-                    segment.values,
-                    segment.sample_rate_hz,
-                )
                 figure = self.create_spectrogram_figure(
                     channel,
                     segment,
-                    frequencies,
-                    times,
-                    power,
-                    "sync time" if self.sync_state.record_time_origin_sec is not None else "time",
+                    result["frequencies"],
+                    result["times"],
+                    result["power"],
+                    (
+                        "sync time"
+                        if self.sync_state.record_time_origin_sec is not None
+                        else "time"
+                    ),
                 )
         except Exception as error:
+            self._complete_lfp_analysis_request(request_id)
             QMessageBox.warning(self, failure_title, str(error))
             return
-    
+        self._complete_lfp_analysis_request(request_id)
         self.open_lfp_analysis_dialog(
             f"{dialog_title} - Channel {channel}",
             channel,
@@ -149,6 +263,39 @@ class LfpAnalysisMixin:
             figure,
             dialog_size,
         )
+
+    def _fail_lfp_analysis(
+        self,
+        request_id,
+        identity,
+        failure_title,
+        message,
+    ):
+        if not self._analysis_result_is_current(request_id, identity):
+            return
+        self._complete_lfp_analysis_request(request_id)
+        QMessageBox.warning(self, failure_title, message)
+
+    def _complete_lfp_analysis_request(self, request_id):
+        if request_id != getattr(self, "_lfp_analysis_request_id", None):
+            return
+        progress = getattr(self, "_lfp_analysis_progress", None)
+        if progress is not None and widget_is_valid(progress):
+            progress.close()
+        self._lfp_analysis_progress = None
+
+    def _discard_lfp_analysis_worker(self, request_id):
+        workers = getattr(self, "_lfp_analysis_workers", {})
+        workers.pop(request_id, None)
+
+    def _cancel_lfp_analysis_workers(self, wait=False):
+        workers = list(getattr(self, "_lfp_analysis_workers", {}).values())
+        for worker in workers:
+            worker.cancel()
+        if wait:
+            for worker in workers:
+                worker.wait(10_000)
+        return not any(worker.isRunning() for worker in workers)
     
     def open_lfp_analysis_dialog(
         self,
@@ -235,7 +382,7 @@ class LfpAnalysisMixin:
         ax.grid(True, linewidth=0.4, alpha=0.35)
         return figure
     
-    def create_lfp_waveform_figure(self, channel, segment, settings, time_mode,info):
+    def create_lfp_waveform_figure(self, channel, segment, settings, time_mode):
         """Create lfp waveform figure.
 
         Args:
@@ -267,7 +414,8 @@ class LfpAnalysisMixin:
         )
         ax.set_title(f"LFP Waveform - Channel {channel}")
         ax.set_xlabel(f"{time_mode} (s)")
-        ax.set_ylabel(format_signal_label(info["value_unit"]))
+        value_unit = self.ensure_lfp_dataset().info["value_unit"]
+        ax.set_ylabel(format_signal_label(value_unit))
         ax.grid(True, linewidth=0.4, alpha=0.35)
         return figure
     

@@ -1,4 +1,5 @@
 import numpy as np
+import uuid
 from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
 from PySide6.QtCore import Qt, Signal
@@ -12,6 +13,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
+    QProgressDialog,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -23,7 +25,9 @@ from ..app_state import DataState, SyncState
 from ..charts.chart_helpers import (
     clamp_xlim,
     format_time_tick,
+    resolve_plot_step,
 )
+from ..background_requests import widget_is_valid
 from ..markers import MarkerKind, marker_record_time
 from .lfp_analysis import LfpAnalysisMixin
 from .lfp_controls import PlaybackAwareComboBox, SharedTimelineSlider
@@ -60,6 +64,10 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self.event_interval_artists = []
         self.click_seek_state = None
         self.spectrum_dialogs = []
+        self._lfp_coarse_workers = {}
+        self._lfp_coarse_request_id = None
+        self._lfp_coarse_progress = None
+        self._lfp_coarse_key = None
 
         self.lfp_file_label = QLabel("LFP CSV: Not imported")
         self.axis_file_label = QLabel("3-axis CSV: Not imported")
@@ -383,6 +391,13 @@ class WavePanel(LfpAnalysisMixin, QWidget):
 
         self.invalidate_current_time_backgrounds()
         self.updating_timeline = False
+        dataset = self.data_state.lfp_dataset
+        if dataset is not None:
+            dataset.update_visible_range(
+                left,
+                right,
+                self.current_lfp_filter_settings(),
+            )
 
     def on_plot_xlim_changed(self, value, source):
         if self.updating_timeline:
@@ -801,6 +816,23 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         if self.sync_state.current_record_time_sec is None:
             return
 
+        dataset = self.data_state.lfp_dataset
+        if dataset is not None:
+            visible = self.data_state.timeline_xlim
+            visible_preloaded = (
+                visible is not None
+                and dataset.update_visible_range(
+                    visible[0],
+                    visible[1],
+                    self.current_lfp_filter_settings(),
+                )
+            )
+            if not visible_preloaded:
+                dataset.update_playback_window(
+                    self.sync_state.current_record_time_sec,
+                    self.current_lfp_filter_settings(),
+                )
+
         for key, fig, canvas in self.figure_items():
             if fig is None or canvas is None or not fig.axes:
                 continue
@@ -900,8 +932,21 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self.mark_lfp_filter_settings_pending()
         self.project_changed.emit()
         if self.lfp_fig is None:
+            if show_filtered:
+                self.plot_lfp()
             return
+        if show_filtered and not self._filtered_coarse_ready(
+            self._applied_lfp_filter_settings
+        ):
+            self._start_filtered_coarse(
+                self._applied_lfp_filter_settings,
+                self._apply_ready_filtered_view,
+            )
+            return
+        if not show_filtered:
+            self._cancel_lfp_coarse_workers()
         self.lfp_fig.set_lfp_signal_view(show_filtered)
+        self.update_current_time_marker()
         self.update_lfp_peak_artist()
         self.invalidate_current_time_backgrounds("lfp")
 
@@ -1001,8 +1046,8 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         return left, right
 
     def available_lfp_channels(self):
-        channels = self.data_state.lfp_info.get("channels", []) if self.data_state.lfp_info else []
-        return [int(channel) for channel in channels]
+        dataset = self.data_state.lfp_dataset
+        return [] if dataset is None else dataset.channels
 
     def load_lfp_segment(self, channel, left, right, settings):
         """Load lfp segment.
@@ -1013,14 +1058,10 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         return self.ensure_lfp_dataset().segment(channel, left, right, settings)
 
     def ensure_lfp_dataset(self):
-        """Return the dataset for the imported file, loading it only once."""
-        info = self.data_state.lfp_info
-        if not (info and info.get("path")):
-            raise ValueError("Please import LFP CSV data first.")
+        """Return the already prepared shared dataset."""
         dataset = self.data_state.lfp_dataset
-        if dataset is None or dataset.info.get("path") != info.get("path"):
-            dataset = signal_func.LfpDataset.from_csv(info)
-            self.data_state.lfp_dataset = dataset
+        if dataset is None:
+            raise ValueError("Please import LFP CSV data first.")
         return dataset
 
     def plot_lfp(self):
@@ -1034,11 +1075,18 @@ class WavePanel(LfpAnalysisMixin, QWidget):
 
         channel = self.selected_channel(self.lfp_channel_selector)
         self.data_state.selected_lfp_channel = channel
+        settings = self.current_lfp_filter_settings()
+        if (
+            channel is not None
+            and settings.show_filtered
+            and not self._filtered_coarse_ready(settings, channel)
+        ):
+            self._start_filtered_coarse(settings, self.plot_lfp, channel)
+            return
         created_figure = False
         try:
             if self.lfp_fig is None:
                 self.lfp_fig = draw.LFP(
-                    info=self.data_state.lfp_info,
                     channels=channel,
                     step=self.data_state.lfp_step,
                     filter_settings=self.current_lfp_filter_settings(),
@@ -1054,6 +1102,10 @@ class WavePanel(LfpAnalysisMixin, QWidget):
 
         if created_figure or self.lfp_canvas is None:
             self.set_figure(self.lfp_waveform_area, "lfp_canvas", self.lfp_fig)
+            # The Qt canvas now has its real on-screen width, so recompute
+            # automatic LFP sampling once instead of keeping the nominal
+            # pre-widget Figure width.
+            self.lfp_fig.refresh_lfp_plot(recalculate_auto=True)
 
         if not self.lfp_callback_connected:
             self.lfp_fig.add_lfp_xlim_callback(
@@ -1072,12 +1124,13 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         Args:
             None.
         """
-        if not (self.data_state.axis_info and self.data_state.axis_info.get("path")):
+        dataset = self.data_state.axis_dataset
+        if dataset is None:
             return
 
         try:
             self.axis_fig = draw.accelerator(
-                info=self.data_state.axis_info,
+                dataset=dataset,
                 compact=True,
                 step=self.data_state.axis_step,
             )
@@ -1098,11 +1151,31 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self.update_current_time_marker()
 
     def set_lfp_info(self, info):
-        """Set lfp info."""
-        self.data_state.lfp_info = info
-        self.data_state.lfp_dataset = None
+        """Compatibility entry point that prepares and installs an LFP dataset."""
+        dataset = self.data_state.load_lfp_info(info)
+        self.set_lfp_dataset(dataset)
+
+    def set_lfp_dataset(self, dataset):
+        """Atomically install a prepared LFP dataset and refresh its controls."""
+        self._cancel_lfp_coarse_workers()
+        previous_dataset = self.data_state.lfp_dataset
+        if previous_dataset is not None and previous_dataset is not dataset:
+            previous_dataset.close(wait=True)
+        self.data_state.lfp_dataset = dataset
         self.lfp_fig = None
         self.lfp_callback_connected = False
+        if dataset is None:
+            self.lfp_file_label.setText("LFP CSV: not loaded")
+            self.lfp_channel_selector.blockSignals(True)
+            self.lfp_channel_selector.clear()
+            self.lfp_channel_selector.addItem("No LFP channel")
+            self.lfp_channel_selector.setEnabled(False)
+            self.spectrum_button.setEnabled(False)
+            self.spectrogram_button.setEnabled(False)
+            self.lfp_channel_selector.blockSignals(False)
+            return
+
+        info = dataset.info
         self.lfp_file_label.setText(f"LFP CSV: {info['filename']}")
 
         self.lfp_channel_selector.blockSignals(True)
@@ -1132,11 +1205,178 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self.lfp_channel_selector.blockSignals(False)
         self.plot_lfp()
 
+    def _lfp_coarse_step(self, channel):
+        dataset = self.ensure_lfp_dataset()
+        sample_count = dataset.source.sample_count(channel)
+        return max(
+            resolve_plot_step(sample_count, self.data_state.lfp_step),
+            1,
+        )
+
+    def _filtered_coarse_ready(self, settings, channel=None):
+        dataset = self.data_state.lfp_dataset
+        if dataset is None:
+            return False
+        if channel is None:
+            channel = self.selected_channel(self.lfp_channel_selector)
+        if channel is None:
+            return False
+        step = self._lfp_coarse_step(channel)
+        return dataset.source.coarse_is_ready(step, settings)
+
+    def _start_filtered_coarse(self, settings, callback, channel=None):
+        dataset = self.ensure_lfp_dataset()
+        if channel is None:
+            channel = self.selected_channel(self.lfp_channel_selector)
+        if channel is None:
+            return
+        step = self._lfp_coarse_step(channel)
+        key = (dataset.source.identity_token(), step, settings)
+        if (
+            key == self._lfp_coarse_key
+            and any(worker.isRunning() for worker in self._lfp_coarse_workers.values())
+        ):
+            return
+        request_id = uuid.uuid4().hex
+        self._cancel_lfp_coarse_workers()
+        self._lfp_coarse_request_id = request_id
+        self._lfp_coarse_key = key
+        worker = signal_func.LfpCoarseWorker(
+            request_id,
+            dataset,
+            channel,
+            step,
+            settings,
+        )
+        self._lfp_coarse_workers[request_id] = worker
+        progress = QProgressDialog(
+            "Building filtered overview…",
+            "Cancel",
+            0,
+            100,
+            self,
+        )
+        progress.setWindowTitle("Filtered LFP")
+        progress.setWindowModality(Qt.WindowModality.NonModal)
+        progress.setAutoClose(False)
+        self._lfp_coarse_progress = progress
+        worker.progress.connect(self._update_lfp_coarse_progress)
+        worker.completed.connect(
+            lambda result_id, identity, _result: self._finish_lfp_coarse(
+                result_id,
+                identity,
+                settings,
+                callback,
+            )
+        )
+        worker.failed.connect(self._fail_lfp_coarse)
+        worker.canceled.connect(
+            lambda result_id, _identity: self._complete_lfp_coarse_request(
+                result_id
+            )
+        )
+        progress.canceled.connect(worker.cancel)
+        worker.finished.connect(
+            lambda result_id=request_id: self._discard_lfp_coarse_worker(
+                result_id
+            )
+        )
+        worker.finished.connect(worker.deleteLater)
+        worker.start()
+        progress.show()
+
+    def _lfp_coarse_result_is_current(self, request_id, identity):
+        dataset = self.data_state.lfp_dataset
+        if (
+            request_id != self._lfp_coarse_request_id
+            or not widget_is_valid(self)
+            or dataset is None
+        ):
+            return False
+        try:
+            return dataset.source.identity_token() == identity
+        except OSError:
+            return False
+
+    def _update_lfp_coarse_progress(self, request_id, value):
+        if request_id != self._lfp_coarse_request_id:
+            return
+        if self._lfp_coarse_progress is not None and widget_is_valid(
+            self._lfp_coarse_progress
+        ):
+            self._lfp_coarse_progress.setValue(value)
+
+    def _finish_lfp_coarse(
+        self,
+        request_id,
+        identity,
+        settings,
+        callback,
+    ):
+        if not self._lfp_coarse_result_is_current(request_id, identity):
+            return
+        if settings != self.current_lfp_filter_settings():
+            self._complete_lfp_coarse_request(request_id)
+            return
+        self._complete_lfp_coarse_request(request_id)
+        callback()
+
+    def _fail_lfp_coarse(self, request_id, identity, message):
+        if not self._lfp_coarse_result_is_current(request_id, identity):
+            return
+        self._complete_lfp_coarse_request(request_id)
+        QMessageBox.warning(self, "Filtered LFP failed", message)
+
+    def _complete_lfp_coarse_request(self, request_id):
+        if request_id != self._lfp_coarse_request_id:
+            return
+        if self._lfp_coarse_progress is not None and widget_is_valid(
+            self._lfp_coarse_progress
+        ):
+            self._lfp_coarse_progress.close()
+        self._lfp_coarse_progress = None
+        self._lfp_coarse_key = None
+
+    def _discard_lfp_coarse_worker(self, request_id):
+        self._lfp_coarse_workers.pop(request_id, None)
+
+    def _cancel_lfp_coarse_workers(self, wait=False):
+        workers = list(self._lfp_coarse_workers.values())
+        for worker in workers:
+            worker.cancel()
+        if wait:
+            for worker in workers:
+                worker.wait(10_000)
+        self._lfp_coarse_key = None
+        return not any(worker.isRunning() for worker in workers)
+
+    def _apply_ready_filtered_view(self):
+        if self.lfp_fig is None:
+            self.plot_lfp()
+            return
+        self.lfp_fig.set_lfp_signal_view(True)
+        self.update_current_time_marker()
+        self.update_lfp_peak_artist()
+
+    def stop_background_work(self, wait=False):
+        analysis_stopped = self._cancel_lfp_analysis_workers(wait=wait)
+        coarse_stopped = self._cancel_lfp_coarse_workers(wait=wait)
+        return analysis_stopped and coarse_stopped
+
     def set_axis_info(self, info):
-        """Set axis info."""
-        self.data_state.axis_info = info
+        """Compatibility entry point that prepares and installs an axis dataset."""
+        dataset = self.data_state.load_axis_info(info)
+        self.set_axis_dataset(dataset)
+
+    def set_axis_dataset(self, dataset):
+        """Atomically install a prepared axis dataset and refresh its plot."""
+        self.data_state.axis_dataset = dataset
         self.axis_fig = None
         self.axis_callback_connected = False
+        if dataset is None:
+            self.axis_file_label.setText("3-axis CSV: not loaded")
+            return
+        info = dataset.info
         self.axis_file_label.setText(f"3-axis CSV: {info['filename']} (channel 260)")
         self.plot_axis()
 

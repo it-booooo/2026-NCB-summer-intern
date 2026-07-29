@@ -1,11 +1,11 @@
 from typing import ClassVar
+import uuid
 
 import numpy as np
 from matplotlib.figure import Figure
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QApplication,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -14,14 +14,15 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
+    QProgressDialog,
     QScrollArea,
     QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
 )
-from scipy.signal import find_peaks
 
+from ..background_requests import widget_is_valid
 from ..markers import (
     Marker,
     MarkerKind,
@@ -29,6 +30,7 @@ from ..markers import (
     RecordPosition,
     marker_video_time,
 )
+from ..signal_data import PeakDetectionWorker
 from ..synchronization import relative_time
 from .event_table import NoteEditor
 from .marker_view_panel import MarkerViewPanel
@@ -57,6 +59,9 @@ class FindPeakPanel(MarkerViewPanel):
         self.analysis_settings = analysis_settings
         self._refreshing = False
         self._analysis_dialogs = set()
+        self._peak_workers = {}
+        self._peak_request_id = None
+        self._peak_progress = None
 
         self.channel_selector = QComboBox()
         self.channel_selector.setMinimumContentsLength(12)
@@ -367,79 +372,115 @@ class FindPeakPanel(MarkerViewPanel):
         metadata = self.video_state.metadata
         duration = float(metadata.duration_sec)
         offset = float(self.sync_state.time_offset_sec)
-        QApplication.setOverrideCursor(Qt.WaitCursor)
+        dataset = self.lfp_service.dataset()
+        request_id = uuid.uuid4().hex
+        self.cancel_peak_detection()
+        self._peak_request_id = request_id
+        worker = PeakDetectionWorker(
+            request_id,
+            dataset,
+            channel,
+            -offset,
+            duration - offset,
+            self.lfp_service.filter_settings(),
+            height_sigma=self.analysis_settings.lfp_peak_height_sigma,
+            prominence_sigma=self.analysis_settings.lfp_peak_prominence_sigma,
+            min_distance_sec=self.analysis_settings.lfp_peak_min_distance_sec,
+        )
+        self._peak_workers[request_id] = worker
+        progress = QProgressDialog(
+            "Detecting LFP peaks…",
+            "Cancel",
+            0,
+            100,
+            self,
+        )
+        progress.setWindowTitle("LFP peak detection")
+        progress.setWindowModality(Qt.WindowModality.NonModal)
+        progress.setAutoClose(False)
+        self._peak_progress = progress
+        worker.progress.connect(self._update_peak_progress)
+        worker.completed.connect(self._finish_peak_detection)
+        worker.failed.connect(self._fail_peak_detection)
+        worker.canceled.connect(
+            lambda result_id, _identity: self._complete_peak_request(result_id)
+        )
+        progress.canceled.connect(worker.cancel)
+        worker.finished.connect(
+            lambda result_id=request_id: self._discard_peak_worker(result_id)
+        )
+        worker.finished.connect(worker.deleteLater)
+        worker.start()
+        progress.show()
+
+    def _peak_result_is_current(self, request_id, identity):
+        if request_id != self._peak_request_id or not widget_is_valid(self):
+            return False
         try:
-            dataset = self.lfp_service.dataset()
-            segment = dataset.segment(
-                channel,
-                -offset,
-                duration - offset,
-                self.lfp_service.filter_settings(),
-            )
-            visible = segment.values
-            baseline = float(np.nanmedian(visible))
-            mad = float(np.nanmedian(np.abs(visible - baseline)))
-            sigma = 1.4826 * mad
-            if not np.isfinite(sigma) or sigma <= 0.0:
-                sigma = float(np.nanstd(visible))
-            if not np.isfinite(sigma) or sigma <= 0.0:
-                sigma = np.finfo(float).eps
-            distance = max(
-                1,
-                round(
-                    dataset.sample_rate_hz(channel)
-                    * self.analysis_settings.lfp_peak_min_distance_sec
-                ),
-            )
-            prominence = self.analysis_settings.lfp_peak_prominence_sigma * sigma
-            height_delta = self.analysis_settings.lfp_peak_height_sigma * sigma
+            return self.lfp_service.dataset().source.identity_token() == identity
+        except (OSError, RuntimeError, ValueError):
+            return False
 
-            positive_peaks, _ = find_peaks(
-                visible,
-                height=baseline + height_delta,
-                prominence=prominence,
-                distance=distance,
-            )
-
-            negative_peaks, _ = find_peaks(
-                -visible,
-                height=-baseline + height_delta,
-                prominence=prominence,
-                distance=distance,
-            )
-
-            local_peaks = np.sort(np.concatenate((positive_peaks, negative_peaks)))
-
-            markers = [
-                Marker(
-                    kind=MarkerKind.LFP_PEAK,
-                    source=MarkerSource.LFP_DETECTION,
-                    position=RecordPosition(float(segment.record_time_s[index])),
-                    note=(
-                        f"channel={channel}, value={visible[index]:.6g}, "
-                        f"{'negative' if visible[index] < baseline else 'positive'} peak"
-                    ),
-                    payload={"channel": channel, "value": float(visible[index])},
-                )
-                for index in local_peaks
-            ]
-            retained = [
-                marker
-                for marker in self.marker_store.all()
-                if not (
-                    marker.source == MarkerSource.LFP_DETECTION
-                    and marker.payload.get("channel") == channel
-                )
-            ]
-            self.marker_store.replace_all([*retained, *markers])
-        except (KeyError, OSError, RuntimeError, TypeError, ValueError) as error:
-            QMessageBox.warning(self, "Peak detection failed", str(error))
+    def _update_peak_progress(self, request_id, value):
+        if request_id != self._peak_request_id:
             return
-        finally:
-            QApplication.restoreOverrideCursor()
+        if self._peak_progress is not None and widget_is_valid(self._peak_progress):
+            self._peak_progress.setValue(value)
 
+    def _finish_peak_detection(self, request_id, identity, result):
+        if not self._peak_result_is_current(request_id, identity):
+            return
+        channel = int(result["channel"])
+        markers = [
+            Marker(
+                kind=MarkerKind.LFP_PEAK,
+                source=MarkerSource.LFP_DETECTION,
+                position=RecordPosition(record["record_time_s"]),
+                note=(
+                    f"channel={channel}, value={record['value']:.6g}, "
+                    f"{'negative' if record['negative'] else 'positive'} peak"
+                ),
+                payload={"channel": channel, "value": record["value"]},
+            )
+            for record in result["records"]
+        ]
+        retained = [
+            marker
+            for marker in self.marker_store.all()
+            if not (
+                marker.source == MarkerSource.LFP_DETECTION
+                and marker.payload.get("channel") == channel
+            )
+        ]
+        self.marker_store.replace_all([*retained, *markers])
+        self._complete_peak_request(request_id)
         QMessageBox.information(
             self,
             "LFP peaks",
             f"Added {len(markers)} peak markers from channel {channel}.",
         )
+
+    def _fail_peak_detection(self, request_id, identity, message):
+        if not self._peak_result_is_current(request_id, identity):
+            return
+        self._complete_peak_request(request_id)
+        QMessageBox.warning(self, "Peak detection failed", message)
+
+    def _complete_peak_request(self, request_id):
+        if request_id != self._peak_request_id:
+            return
+        if self._peak_progress is not None and widget_is_valid(self._peak_progress):
+            self._peak_progress.close()
+        self._peak_progress = None
+
+    def _discard_peak_worker(self, request_id):
+        self._peak_workers.pop(request_id, None)
+
+    def cancel_peak_detection(self, wait=False):
+        workers = list(self._peak_workers.values())
+        for worker in workers:
+            worker.cancel()
+        if wait:
+            for worker in workers:
+                worker.wait(10_000)
+        return not any(worker.isRunning() for worker in workers)

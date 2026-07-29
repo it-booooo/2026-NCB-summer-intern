@@ -36,14 +36,18 @@ JSON 結果。`benchmark-results/` 目錄與所有產生的 CSV 檔案都已由 
 除了 `peak_memory_bytes` 以 byte 表示之外，其餘時間指標都使用秒：
 
 - `metadata_parse_s`：解析 channel、sample rate、表頭與單位所需時間。
-- `first_display_s`：載入第一個 channel 所需時間。
-- `channel_switch_s`：載入第二個 channel，模擬切換通道所需時間。
-- `segment_10s_s`：使用目前 reader 讀取資料並選出前 10 秒所需時間。
+- `first_display_s`：第一次建立多通道 memmap 與 raw coarse 所需時間。
+- `channel_switch_s`：從已建立的全通道 coarse 切換至第二個 channel 所需時間。
+- `segment_10s_s`：從 memmap 以 sample index 讀取前 10 秒原始解析度資料所需時間。
 - `peak_memory_bytes`：benchmark process 的 peak resident working set。
-- `background_cancel_s`：送出取消通知至串流產生執行緒結束所需時間。
+- `background_cancel_s`：送出取消通知至 cache conversion 背景執行緒結束所需時間。
 
 輸出的 `observations` 也會記錄首次顯示及 10 秒 segment 的資料列數，方便確認
-不同版本量測的是相同資料範圍。
+不同版本量測的是相同資料範圍。`background_cancel_observed` 應為 `true`。
+
+benchmark 走正式程式使用的 `LfpDataset`／`SignalDataSource`，不是另外以 Pandas
+完整讀取 CSV。因此可用相同參數各執行一次修改前與修改後版本，再比較兩份
+`--result` JSON。
 
 ## 執行自動測試
 

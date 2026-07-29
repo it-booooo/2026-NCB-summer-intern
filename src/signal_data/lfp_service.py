@@ -1,4 +1,3 @@
-from .lfp_dataset import LfpDataset
 from .lfp_processing import LfpFilterSettings
 
 
@@ -13,18 +12,14 @@ class LfpAnalysisService:
         return None if value is None else int(value)
 
     def available_channels(self):
-        info = self.data_state.lfp_info or {}
-        return [int(channel) for channel in info.get("channels", [])]
+        dataset = self.data_state.lfp_dataset
+        return [] if dataset is None else dataset.channels
 
     def filter_settings(self):
         return LfpFilterSettings(**dict(self.data_state.lfp_filter_settings))
 
     def dataset(self):
-        info = self.data_state.lfp_info
-        if not (info and info.get("path")):
-            raise ValueError("Please import LFP CSV data first.")
         dataset = self.data_state.lfp_dataset
-        if dataset is None or dataset.info.get("path") != info.get("path"):
-            dataset = LfpDataset.from_csv(info)
-            self.data_state.lfp_dataset = dataset
+        if dataset is None:
+            raise ValueError("Please import LFP CSV data first.")
         return dataset
