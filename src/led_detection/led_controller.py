@@ -1,6 +1,7 @@
 from PySide6.QtCore import QObject
 from PySide6.QtWidgets import QMessageBox
 
+from ..markers import MarkerKind
 from .led_worker import LedDetectionWorker, coarse_scan_step_for_fps
 from .status_text import format_led_detection_status
 
@@ -86,26 +87,12 @@ class LedController(QObject):
             ),
         )
 
-    def select_led_roi(self):
-        """Select led roi.
-
-        Args:
-            None.
-        """
-        if not self.video_player.has_video():
-            QMessageBox.warning(
-                self.dialog_parent, "No video", "Please import a video first."
-            )
-            return
-        self.video_player.start_roi_selection()
-
     def set_led_roi(self, roi):
         """Set led roi.
 
         Args:
             roi: LED region of interest as (x, y, width, height).
         """
-        self.led_state.roi = roi
         self.led_analysis_panel.set_led_roi(roi)
         self.start_led_detection()
 
@@ -141,25 +128,18 @@ class LedController(QObject):
             )
             return
 
-        detect_multiple = self.led_analysis_panel.detect_multiple_led_events()
-        max_events = 1
-        if detect_multiple:
-            if not self.marker_store.by_kind("TTL"):
-                QMessageBox.warning(
-                    self.dialog_parent,
-                    "TTL marker required",
-                    "Please import TTL CSV before detecting multiple LED events.",
-                )
-                return
+        ttl_markers = self.marker_store.by_kind(MarkerKind.TTL)
+        if not ttl_markers:
+            QMessageBox.warning(
+                self.dialog_parent,
+                "TTL marker required",
+                "Please add or import at least one TTL marker before detecting "
+                "LED events. "
+                "LED detection uses TTL markers to determine the expected event count.",
+            )
+            return
 
-            max_events = len(self.marker_store.by_kind("TTL"))
-            if max_events <= 0:
-                QMessageBox.warning(
-                    self.dialog_parent,
-                    "TTL marker required",
-                    "The imported TTL CSV does not contain any TTL events.",
-                )
-                return
+        max_events = len(ttl_markers)
 
         if (
             self.led_worker is not None
@@ -190,7 +170,6 @@ class LedController(QObject):
             fps=self.video_state.metadata.using_fps,
             scan_start_frame=scan_start_frame,
             scan_end_frame=scan_end_frame,
-            detect_multiple=detect_multiple,
             max_events=max_events,
             cached_points=cached_points,
         )

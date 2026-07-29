@@ -2,7 +2,6 @@ from typing import ClassVar
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
-    QCheckBox,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -105,7 +104,6 @@ class LedAnalysisPanel(MarkerViewPanel):
         self.led_scan_end_input.setPlaceholderText("00:30.000")
         self.led_scan_end_input.setToolTip("LED scan end time. Blank = full video end.")
         self.led_scan_end_input.setFixedWidth(88)
-        self.detect_multiple_led_checkbox = QCheckBox("Detect multiple LED events")
         self.led_detection_label = QLabel("LED detection: Not analyzed")
         self.led_progress_bar = QProgressBar()
         self.led_progress_bar.setRange(0, 100)
@@ -165,7 +163,6 @@ class LedAnalysisPanel(MarkerViewPanel):
         scan_range_layout.addWidget(self.led_scan_start_input)
         scan_range_layout.addWidget(QLabel("to"))
         scan_range_layout.addWidget(self.led_scan_end_input)
-        scan_range_layout.addWidget(self.detect_multiple_led_checkbox)
         scan_range_layout.addStretch()
         info_grid.addLayout(scan_range_layout, 1, 0, 1, 2)
 
@@ -220,9 +217,6 @@ class LedAnalysisPanel(MarkerViewPanel):
 
     def accepts_marker(self, marker):
         return marker.source == MarkerSource.LED_DETECTION
-
-    def refresh_markers(self):
-        pass
 
     def select_led_roi(self):
         if self.video_player is None or not self.video_player.has_video():
@@ -313,14 +307,6 @@ class LedAnalysisPanel(MarkerViewPanel):
 
         self.mark_scan_range_valid(True)
         return start_sec, end_sec, scan_start_frame, scan_end_frame
-
-    def detect_multiple_led_events(self):
-        """Detect multiple led events.
-
-        Args:
-            None.
-        """
-        return self.detect_multiple_led_checkbox.isChecked()
 
     def set_roi_plot_idle(self):
         """Set roi plot idle.
@@ -444,8 +430,7 @@ class LedAnalysisPanel(MarkerViewPanel):
             "interval",
             "scan frames=",
             "points=",
-            "single",
-            "multiple",
+            "requested=",
             "threshold=",
             "duration=",
             "scan=",
@@ -529,6 +514,4 @@ class LedAnalysisPanel(MarkerViewPanel):
         """
         self.led_detection_label.setText(text)
         self.led_detection_label.setToolTip(text)
-
-
 

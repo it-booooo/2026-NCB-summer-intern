@@ -146,6 +146,8 @@ TTL CSV 建議包含：
 
 ### 5. LED 自動偵測
 
+使用前必須先新增或匯入至少一個 TTL。新版不再區分單一或多事件模式；程式會自動以 TTL 數量作為上限，尋找相同數量以內的 LED On／Off 區間。
+
 1. 將 Sync Area 切換到「LED Analysis」。
 2. 視需要輸入 LED scan range。
 3. 按「Select LED」，然後在影片畫面上拖曳框選 LED 區域。
@@ -154,7 +156,9 @@ TTL CSV 建議包含：
 
 **提醒：LED 偵測結果相當仰賴人工框選的精確度。請盡量貼合 LED 範圍，避免包含會移動、反光或明暗變化明顯的背景；框選過大或偏離 LED 都可能造成誤判或漏判。**
 
-若勾選「Detect multiple LED events」，必須先匯入 TTL；程式會依 TTL 數量限制要尋找的事件數。可在「Settings > Check OpenCL GPU」確認 GPU 加速狀態，沒有可用裝置時會自動使用 CPU，處理時間可能較長。
+目前偵測會配對 LED On 與 LED Off，尋找亮起時間約為 0.6 至 1.5 秒的區間。若掃描完成後沒有找到事件，請重新精確框選 ROI、調整掃描範圍，或改用 Video 頁面手動新增 LED 標記。
+
+可在「Settings > Check OpenCL GPU」確認 GPU 加速狀態；沒有可用裝置時會自動使用 CPU，處理時間可能較長。
 
 變更 ROI、影片旋轉角度或掃描範圍後，應重新執行偵測。
 
