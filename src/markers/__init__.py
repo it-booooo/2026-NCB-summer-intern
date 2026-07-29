@@ -1,3 +1,4 @@
+from .lfp_peaks import peak_records_to_markers
 from .models import (
     Marker,
     MarkerKind,
@@ -28,4 +29,5 @@ __all__ = [
     "marker_record_time",
     "marker_to_dict",
     "marker_video_time",
+    "peak_records_to_markers",
 ]

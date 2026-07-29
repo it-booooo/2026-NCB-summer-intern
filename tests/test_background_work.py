@@ -8,6 +8,11 @@ from pathlib import Path
 from benchmarks.signal_csv_fixture import SignalFixtureConfig, generate_signal_csv
 from src.background_requests import request_matches
 from src.data_validation import check
+from src.markers import (
+    RecordPosition,
+    marker_video_time,
+    peak_records_to_markers,
+)
 from src.signal_data import (
     LfpAnalysisWorker,
     LfpDataset,
@@ -216,6 +221,50 @@ class PureSignalWorkerTests(unittest.TestCase):
                 for record in completed[0]["records"]
             )
         )
+
+    def test_peak_chunks_are_size_independent_and_boundary_safe(self):
+        results = []
+        for chunk_samples in (17, 50, 73, 500):
+            worker = PeakDetectionWorker(
+                f"peaks-{chunk_samples}",
+                self.dataset,
+                2,
+                0.0,
+                1.9,
+                LfpFilterSettings(show_filtered=False),
+                height_sigma=2.0,
+                prominence_sigma=1.0,
+                min_distance_sec=0.1,
+                chunk_samples=chunk_samples,
+            )
+            completed = []
+            worker.completed.connect(
+                lambda _request_id, _identity, result: completed.append(result)
+            )
+            worker.run()
+            results.append(completed[0]["records"])
+
+        for records in results[1:]:
+            self.assertEqual(records, results[0])
+        record_times = [record["record_time_s"] for record in results[0]]
+        self.assertEqual(len(record_times), len(set(record_times)))
+        self.assertTrue(any(abs(time_s - 0.5) < 1e-9 for time_s in record_times))
+        self.assertTrue(any(abs(time_s - 1.5) < 1e-9 for time_s in record_times))
+
+    def test_peak_marker_record_video_time_and_payload(self):
+        records = [
+            {
+                "record_time_s": 1.25,
+                "value": 8.5,
+                "negative": False,
+            }
+        ]
+        marker = peak_records_to_markers(260, records)[0]
+
+        self.assertIsInstance(marker.position, RecordPosition)
+        self.assertEqual(marker.position.time_sec, 1.25)
+        self.assertEqual(marker_video_time(marker, 0.75), 2.0)
+        self.assertEqual(marker.payload, {"channel": 260, "value": 8.5})
 
     def test_export_worker_prepares_all_requested_numeric_data(self):
         worker = LfpExportDataWorker(

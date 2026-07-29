@@ -52,6 +52,23 @@ discontinuity 即使剛好落在兩個 chunk 之間也能被偵測。報告採�
 報告的 `line N` 使用原始 CSV 的一基底行號，包含 metadata 與資料 header，
 可以直接對照文字編輯器所顯示的原始檔案行數。
 
+## 全時段 peak detection
+
+全時段 LFP peak detection 採兩遍 chunk streaming：
+
+1. 第一遍以可合併的 count、mean、M2 計算全域 mean/std。
+2. 第二遍以相同全域 threshold 對帶有 overlap 的 chunk 執行
+   `scipy.signal.find_peaks()`。
+
+這裡明確使用全域 mean/std，不使用各 chunk 自己的 baseline。Overlap 至少
+包含 minimum distance 與 2 秒 prominence context；`wlen` 也使用相同的
+有限 context，使演算法不需要為 prominence 載入完整訊號。
+
+每個 peak 以不重疊的 core 區間決定所有權，因此 overlap 內的結果不會重複
+輸出。最後再按全域 sample index 與 prominence 執行 minimum-distance
+去重。只有 worker 成功完成後，GUI 才會一次替換該 channel 的舊 markers；
+取消或失敗不會先清空舊結果。
+
 ## 進度
 
 長時間工作會顯示非 modal 進度視窗，所以載入期間主視窗仍可移動、取消

@@ -24,11 +24,10 @@ from PySide6.QtWidgets import (
 
 from ..background_requests import widget_is_valid
 from ..markers import (
-    Marker,
     MarkerKind,
     MarkerSource,
-    RecordPosition,
     marker_video_time,
+    peak_records_to_markers,
 )
 from ..signal_data import PeakDetectionWorker
 from ..synchronization import relative_time
@@ -431,19 +430,7 @@ class FindPeakPanel(MarkerViewPanel):
         if not self._peak_result_is_current(request_id, identity):
             return
         channel = int(result["channel"])
-        markers = [
-            Marker(
-                kind=MarkerKind.LFP_PEAK,
-                source=MarkerSource.LFP_DETECTION,
-                position=RecordPosition(record["record_time_s"]),
-                note=(
-                    f"channel={channel}, value={record['value']:.6g}, "
-                    f"{'negative' if record['negative'] else 'positive'} peak"
-                ),
-                payload={"channel": channel, "value": record["value"]},
-            )
-            for record in result["records"]
-        ]
+        markers = peak_records_to_markers(channel, result["records"])
         retained = [
             marker
             for marker in self.marker_store.all()
