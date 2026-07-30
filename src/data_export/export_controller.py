@@ -238,8 +238,8 @@ class ExportController:
             ).encode("utf-8")
             state_bytes = json.dumps(
                 state,
-                indent=2,
                 ensure_ascii=False,
+                separators=(",", ":"),
                 default=record,
             ).encode("utf-8")
             validate_project_json_sizes(manifest_bytes, state_bytes)

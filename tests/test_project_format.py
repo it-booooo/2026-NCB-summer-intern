@@ -95,6 +95,32 @@ class AnalysisSettingsTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "state.json is too large"):
                 validate_project_json_sizes(b"{}", b"1234")
 
+    def test_compact_json_preserves_project_state(self):
+        state = {
+            "markers": [
+                {
+                    "marker_id": "marker-1",
+                    "kind": "led_on",
+                    "source": "led_detection",
+                    "position": {
+                        "domain": "video",
+                        "time_sec": 1.25,
+                        "frame_index": 30,
+                    },
+                    "note": "",
+                    "payload": {},
+                }
+            ]
+        }
+
+        pretty = json.dumps(state, indent=2, ensure_ascii=False).encode("utf-8")
+        compact = json.dumps(
+            state, ensure_ascii=False, separators=(",", ":")
+        ).encode("utf-8")
+
+        self.assertEqual(json.loads(compact), state)
+        self.assertLess(len(compact), len(pretty))
+
     def test_project_validation_rejects_invalid_minimum_distance(self):
         with self.assertRaises(ValueError):
             validate_state(
