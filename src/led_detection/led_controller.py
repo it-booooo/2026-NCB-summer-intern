@@ -154,7 +154,7 @@ class LedController(QObject):
             return
 
         cache_key = self.led_cache_key(scan_start_frame, scan_end_frame)
-        cached_points = self.led_state.brightness_cache.get(cache_key)
+        cached_points = self.led_state.cached_brightness_points(cache_key)
 
         self.led_analysis_panel.set_led_detection_status(
             "LED detection: using cached ROI brightness data."
@@ -238,14 +238,14 @@ class LedController(QObject):
             points: Brightness or analysis points used by the operation.
             events: Event records to display, analyze, or export.
         """
-        if self.led_worker is not None and worker is not self.led_worker:
+        if worker is not self.led_worker:
             return
 
         cache_hit = worker.cached_points is not None
         stats = dict(stats or {})
         stats["scan_outcome"] = "events_found" if events else "no_events"
         if points and cache_key is not None and not cache_hit:
-            self.led_state.brightness_cache[cache_key] = points
+            self.led_state.cache_brightness_points(cache_key, points)
 
         status = format_led_detection_status(points, threshold, events, stats)
         if cache_hit:
@@ -275,7 +275,7 @@ class LedController(QObject):
 
     def update_led_detection_progress(self, worker, current_frame, total_frames):
         """Update led detection progress."""
-        if self.led_worker is not None and worker is not self.led_worker:
+        if worker is not self.led_worker:
             return
 
         self.led_analysis_panel.update_led_detection_progress(current_frame, total_frames)
@@ -286,14 +286,14 @@ class LedController(QObject):
         Args:
             text: Text displayed to the user.
         """
-        if self.led_worker is not None and worker is not self.led_worker:
+        if worker is not self.led_worker:
             return
 
         self.led_analysis_panel.set_led_detection_stage(text)
 
     def fail_led_detection(self, worker, message):
         """Report failure for led detection."""
-        if self.led_worker is not None and worker is not self.led_worker:
+        if worker is not self.led_worker:
             return
 
         self.led_analysis_panel.fail_led_detection_progress()

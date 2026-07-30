@@ -563,7 +563,10 @@ class ImportController:
                 int(cache.get("end_frame", 0)),
                 int(cache.get("coarse_step", 1)),
             )
-            self.led_state.brightness_cache[cache_key] = list(cache.get("points", []))
+            self.led_state.cache_brightness_points(
+                cache_key,
+                list(cache.get("points", [])),
+            )
 
     def actions(self):
         """Create and return the actions exposed by this controller.
