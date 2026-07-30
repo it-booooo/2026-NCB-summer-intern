@@ -149,77 +149,83 @@ def compute_led_brightness_curve(
     cap, decode_backend, decode_fallback_reason = open_video_capture(cv2, video_path)
 
     if not cap.isOpened():
+        cap.release()
         raise ValueError(f"Could not open video: {video_path}")
-    if acceleration_info is not None:
-        acceleration_info.update(
-            {
-                "video_decode_backend": decode_backend,
-                "video_decode_fallback_reason": decode_fallback_reason,
-            }
-        )
-
-    fps = float(using_fps or cap.get(cv2.CAP_PROP_FPS) or 30.0)
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
-    frame_step = max(int(frame_step), 1)
-    start_frame = max(int(start_frame), 0)
-    if end_frame is None:
-        end_frame = max(total_frames - 1, 0)
-    end_frame = min(max(int(end_frame), start_frame), max(total_frames - 1, 0))
-
-    if start_frame > 0:
-        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
-
-    points = []
-    frame_index = start_frame
-    scan_total_frames = max(end_frame - start_frame + 1, 1)
-
-    if progress_callback is not None:
-        progress_callback(0, scan_total_frames)
-
-    while frame_index <= end_frame:
-        if should_stop is not None and should_stop():
-            break
-
-        success, frame = cap.read()
-        if not success:
-            break
-
-        frame = apply_frame_rotation(cv2, frame, rotation_degrees)
-
-        points.append(
-            LedBrightnessPoint(
-                frame_index=frame_index,
-                video_time_sec=frame_index / fps,
-                brightness=mean_brightness(frame, roi=roi),
+    try:
+        if acceleration_info is not None:
+            acceleration_info.update(
+                {
+                    "video_decode_backend": decode_backend,
+                    "video_decode_fallback_reason": decode_fallback_reason,
+                }
             )
-        )
 
-        frame_index += 1
+        fps = float(using_fps or cap.get(cv2.CAP_PROP_FPS) or 30.0)
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+        frame_step = max(int(frame_step), 1)
+        start_frame = max(int(start_frame), 0)
+        if end_frame is None:
+            end_frame = max(total_frames - 1, 0)
+        end_frame = min(max(int(end_frame), start_frame), max(total_frames - 1, 0))
 
-        skipped = 0
-        while skipped < frame_step - 1 and frame_index <= end_frame:
-            if should_stop is not None and should_stop():
-                break
-            if not cap.grab():
-                frame_index = end_frame + 1
-                break
-            frame_index += 1
-            skipped += 1
+        if start_frame > 0:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+
+        points = []
+        frame_index = start_frame
+        scan_total_frames = max(end_frame - start_frame + 1, 1)
 
         if progress_callback is not None:
-            completed_frames = min(max(frame_index - start_frame, 0), scan_total_frames)
+            progress_callback(0, scan_total_frames)
+
+        while frame_index <= end_frame:
+            if should_stop is not None and should_stop():
+                break
+
+            success, frame = cap.read()
+            if not success:
+                break
+
+            frame = apply_frame_rotation(cv2, frame, rotation_degrees)
+
+            points.append(
+                LedBrightnessPoint(
+                    frame_index=frame_index,
+                    video_time_sec=frame_index / fps,
+                    brightness=mean_brightness(frame, roi=roi),
+                )
+            )
+
+            frame_index += 1
+
+            skipped = 0
+            while skipped < frame_step - 1 and frame_index <= end_frame:
+                if should_stop is not None and should_stop():
+                    break
+                if not cap.grab():
+                    frame_index = end_frame + 1
+                    break
+                frame_index += 1
+                skipped += 1
+
+            if progress_callback is not None:
+                completed_frames = min(
+                    max(frame_index - start_frame, 0), scan_total_frames
+                )
+                progress_callback(completed_frames, scan_total_frames)
+
+        if acceleration_info is not None:
+            acceleration_info.setdefault("brightness_backend", "cpu")
+
+        if progress_callback is not None:
+            completed_frames = min(
+                max(frame_index - start_frame, 0), scan_total_frames
+            )
             progress_callback(completed_frames, scan_total_frames)
 
-    cap.release()
-
-    if acceleration_info is not None:
-        acceleration_info.setdefault("brightness_backend", "cpu")
-
-    if progress_callback is not None:
-        completed_frames = min(max(frame_index - start_frame, 0), scan_total_frames)
-        progress_callback(completed_frames, scan_total_frames)
-
-    return points
+        return points
+    finally:
+        cap.release()
 
 
 def compute_frame_deltas(points):
