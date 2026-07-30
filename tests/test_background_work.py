@@ -1,4 +1,5 @@
 import csv
+import struct
 import tempfile
 import threading
 import tracemalloc
@@ -169,7 +170,7 @@ class PureSignalWorkerTests(unittest.TestCase):
         _SOURCES.clear()
         self.directory.cleanup()
 
-    def test_analysis_worker_returns_arrays_without_figures(self):
+    def test_analysis_worker_returns_metadata_without_segment(self):
         worker = LfpAnalysisWorker(
             "analysis-1",
             self.dataset,
@@ -189,11 +190,51 @@ class PureSignalWorkerTests(unittest.TestCase):
 
         self.assertEqual(len(completed), 1)
         self.assertEqual(completed[0][0], "analysis-1")
-        self.assertIn("segment", completed[0][2])
-        self.assertIn("frequencies", completed[0][2])
+        result = completed[0][2]
+        self.assertNotIn("segment", result)
         self.assertFalse(
-            any(key in completed[0][2] for key in ("figure", "widget", "canvas"))
+            any(
+                key in result
+                for key in ("values", "time_us", "record_time_s")
+            )
         )
+        self.assertEqual(result["sample_count"], 191)
+        self.assertEqual(result["sample_rate_hz"], 100.0)
+        self.assertEqual(result["start_time_s"], 0.0)
+        self.assertEqual(result["end_time_s"], 1.9)
+        self.assertTrue(result["image_png"].startswith(b"\x89PNG"))
+        width, height = struct.unpack(">II", result["image_png"][16:24])
+        self.assertEqual((width, height), (2280, 1320))
+        self.assertNotIn("frequencies", result)
+        self.assertNotIn("power", result)
+        self.assertFalse(
+            any(key in result for key in ("figure", "widget", "canvas"))
+        )
+
+    def test_spectrogram_worker_returns_static_image_and_metadata(self):
+        worker = LfpAnalysisWorker(
+            "analysis-spectrogram",
+            self.dataset,
+            2,
+            0.0,
+            1.9,
+            LfpFilterSettings(show_filtered=False),
+            "spectrogram",
+        )
+        completed = []
+        worker.completed.connect(
+            lambda _request_id, _identity, result: completed.append(result)
+        )
+        worker.run()
+
+        result = completed[0]
+        self.assertNotIn("segment", result)
+        self.assertEqual(result["sample_count"], 191)
+        self.assertEqual(result["sample_rate_hz"], 100.0)
+        self.assertTrue(result["image_png"].startswith(b"\x89PNG"))
+        self.assertNotIn("frequencies", result)
+        self.assertNotIn("times", result)
+        self.assertNotIn("power", result)
 
     def test_peak_worker_returns_pure_records(self):
         worker = PeakDetectionWorker(
@@ -266,7 +307,7 @@ class PureSignalWorkerTests(unittest.TestCase):
         self.assertEqual(marker_video_time(marker, 0.75), 2.0)
         self.assertEqual(marker.payload, {"channel": 260, "value": 8.5})
 
-    def test_export_worker_prepares_all_requested_numeric_data(self):
+    def test_export_worker_returns_waveform_and_static_spectral_images(self):
         worker = LfpExportDataWorker(
             "export-1",
             self.dataset,
@@ -284,7 +325,29 @@ class PureSignalWorkerTests(unittest.TestCase):
 
         self.assertEqual(
             set(completed[0]),
-            {"segment", "power_spectrum", "spectrogram"},
+            {
+                "sample_count",
+                "sample_rate_hz",
+                "start_time_s",
+                "end_time_s",
+                "waveform",
+                "rendered_images",
+            },
+        )
+        self.assertNotIn("segment", completed[0])
+        self.assertLessEqual(
+            completed[0]["waveform"].sample_count,
+            completed[0]["sample_count"],
+        )
+        self.assertEqual(
+            set(completed[0]["rendered_images"]),
+            {"power_spectrum", "spectrogram"},
+        )
+        self.assertTrue(
+            all(
+                image.startswith(b"\x89PNG")
+                for image in completed[0]["rendered_images"].values()
+            )
         )
         self.assertFalse(
             any(key in completed[0] for key in ("figure", "widget", "canvas"))

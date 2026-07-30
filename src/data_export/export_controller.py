@@ -731,6 +731,27 @@ class ExportController:
             return
         self._cancel_lfp_export_workers()
         request_id = uuid.uuid4().hex
+        panel = self.context.wave_panel
+        record_time_origin_sec = (
+            panel.sync_state.record_time_origin_sec
+        )
+        display_left = float(options.left)
+        display_right = float(options.right)
+        if record_time_origin_sec is not None:
+            display_left -= float(record_time_origin_sec)
+            display_right -= float(record_time_origin_sec)
+        info = self.data_state.lfp_info or {}
+        filename = info.get("filename", "LFP")
+        time_mode = (
+            "Sync time"
+            if record_time_origin_sec is not None
+            else "Time"
+        )
+        annotation = (
+            f"File: {filename} | Channel {options.channel} | "
+            f"{signal_data.filter_description(options.settings)}\n"
+            f"{time_mode}: {display_left:.3f}-{display_right:.3f} s"
+        )
         worker = signal_data.LfpExportDataWorker(
             request_id,
             dataset,
@@ -739,6 +760,9 @@ class ExportController:
             options.right,
             options.settings,
             options.image_types,
+            record_time_origin_sec,
+            options.dpi,
+            annotation,
         )
         self._lfp_export_request_id = request_id
         self._lfp_export_workers[request_id] = worker
@@ -807,53 +831,59 @@ class ExportController:
         paths,
     ):
         if not self._lfp_export_result_is_current(request_id, identity):
+            result.clear()
             return
         self._complete_lfp_export_request(request_id)
         panel = self.context.wave_panel
-        segment = result["segment"]
+        waveform = result.get("waveform")
+        rendered_images = result.get("rendered_images", {})
         time_mode = (
             "Sync time"
             if panel.sync_state.record_time_origin_sec is not None
             else "Time"
         )
-        figures = {}
         saved_paths = []
         try:
-            if "waveform" in options.image_types:
-                figures["waveform"] = panel.create_lfp_waveform_figure(
-                    options.channel,
-                    segment,
-                    options.settings,
-                    time_mode,
-                )
-            if "power_spectrum" in options.image_types:
-                frequencies, power = result["power_spectrum"]
-                figures["power_spectrum"] = panel.create_power_spectrum_figure(
-                    options.channel,
-                    frequencies,
-                    power,
-                )
-            if "spectrogram" in options.image_types:
-                frequencies, times, power = result["spectrogram"]
-                figures["spectrogram"] = panel.create_spectrogram_figure(
-                    options.channel,
-                    segment,
-                    frequencies,
-                    times,
-                    power,
-                    time_mode,
-                )
-            for figure in figures.values():
-                panel.annotate_lfp_figure(
-                    figure,
-                    options.channel,
-                    segment,
-                    options.settings,
-                )
             for image_type in options.image_types:
-                path = paths[image_type]
-                figures[image_type].savefig(str(path), dpi=options.dpi)
-                saved_paths.append(path)
+                figure = None
+                try:
+                    if image_type == "waveform":
+                        figure = panel.create_lfp_waveform_figure(
+                            options.channel,
+                            waveform,
+                            options.settings,
+                            time_mode,
+                        )
+                    elif image_type == "power_spectrum":
+                        path = paths[image_type]
+                        path.write_bytes(
+                            rendered_images.pop(image_type)
+                        )
+                        saved_paths.append(path)
+                        continue
+                    elif image_type == "spectrogram":
+                        path = paths[image_type]
+                        path.write_bytes(
+                            rendered_images.pop(image_type)
+                        )
+                        saved_paths.append(path)
+                        continue
+                    else:
+                        continue
+                    panel.annotate_lfp_figure(
+                        figure,
+                        options.channel,
+                        result["start_time_s"],
+                        result["end_time_s"],
+                        options.settings,
+                    )
+                    path = paths[image_type]
+                    figure.savefig(str(path), dpi=options.dpi)
+                    saved_paths.append(path)
+                finally:
+                    if figure is not None:
+                        panel._dispose_figure(figure)
+                        del figure
         except Exception as error:
             saved_message = ""
             if saved_paths:
@@ -864,10 +894,10 @@ class ExportController:
                 "Export LFP images failed",
                 f"{error}{saved_message}",
             )
+            result.clear()
             return
-        finally:
-            for figure in figures.values():
-                figure.clear()
+        waveform = None
+        result.clear()
         filenames = "\n".join(f"- {path.name}" for path in saved_paths)
         QMessageBox.information(
             self.parent,

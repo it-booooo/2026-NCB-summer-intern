@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import math
+import multiprocessing
+import os
+import sys
+import tempfile
 import threading
 
 import numpy as np
@@ -9,12 +14,106 @@ from PySide6.QtCore import QThread, Signal
 from scipy.signal import find_peaks
 
 from .lfp_processing import (
-    compute_power_spectrum,
-    compute_time_frequency,
+    LfpSegment,
     filter_padding_samples,
     prepare_lfp_signal,
 )
+from lfp_analysis_process import render_lfp_analysis
 from .source import CacheBuildCancelled
+
+
+MAX_EXPORT_WAVEFORM_POINTS = 200_000
+ANALYSIS_DISPLAY_DPI = 300
+_PROCESS_SPAWN_LOCK = threading.Lock()
+
+
+def _render_analysis_file(
+    *,
+    input_path,
+    dtype,
+    sample_count,
+    sample_rate_hz,
+    analysis_type,
+    channel,
+    start_time_s,
+    end_time_s,
+    record_time_origin_sec,
+    cancel_event,
+    dpi=100,
+    annotation=None,
+):
+    """Run one render process and return only its encoded static image."""
+    context = multiprocessing.get_context("spawn")
+    receiver, sender = context.Pipe(duplex=False)
+    process = context.Process(
+        target=render_lfp_analysis,
+        args=(
+            sender,
+            input_path,
+            dtype,
+            sample_count,
+            sample_rate_hz,
+            analysis_type,
+            channel,
+            start_time_s,
+            end_time_s,
+            record_time_origin_sec,
+            dpi,
+            annotation,
+        ),
+        name=f"lfp-{analysis_type}",
+        daemon=True,
+    )
+    payload = None
+    try:
+        with _PROCESS_SPAWN_LOCK:
+            original_sys_path = list(sys.path)
+            sys.path[:] = [
+                entry
+                for entry in original_sys_path
+                if os.path.basename(
+                    os.path.normpath(str(entry))
+                ).lower()
+                != "cv2"
+            ]
+            try:
+                process.start()
+            finally:
+                sys.path[:] = original_sys_path
+        sender.close()
+        while process.is_alive():
+            if cancel_event.is_set():
+                process.terminate()
+                process.join(timeout=5)
+                raise CacheBuildCancelled("LFP analysis was cancelled.")
+            if receiver.poll(0.05):
+                try:
+                    payload = receiver.recv()
+                except EOFError:
+                    payload = None
+                break
+        process.join()
+        if payload is None and receiver.poll():
+            try:
+                payload = receiver.recv()
+            except EOFError:
+                payload = None
+        if payload is None:
+            raise RuntimeError(
+                "LFP analysis process exited without a result "
+                f"(exit code {process.exitcode})."
+            )
+        if not payload.get("ok"):
+            raise RuntimeError(
+                payload.get("error", "LFP analysis process failed.")
+            )
+        return payload["image_png"]
+    finally:
+        sender.close()
+        receiver.close()
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=5)
 
 
 class SignalWorker(QThread):
@@ -61,6 +160,7 @@ class SignalWorker(QThread):
             )
             return
         self.completed.emit(self.request_id, self.source_identity, result)
+        del result
 
 
 class LfpAnalysisWorker(SignalWorker):
@@ -75,6 +175,7 @@ class LfpAnalysisWorker(SignalWorker):
         end_s,
         settings,
         analysis_type,
+        record_time_origin_sec=None,
     ):
         super().__init__(request_id, dataset)
         self.channel = int(channel)
@@ -82,44 +183,77 @@ class LfpAnalysisWorker(SignalWorker):
         self.end_s = float(end_s)
         self.settings = settings
         self.analysis_type = analysis_type
+        self.record_time_origin_sec = record_time_origin_sec
 
     def execute(self):
         self.report(5)
-        segment = self.dataset.segment(
-            self.channel,
-            self.start_s,
-            self.end_s,
-            self.settings,
-            self.cancel_event,
-            lambda value: self.report(5 + round(value * 50)),
+        descriptor, input_path = tempfile.mkstemp(
+            prefix="lfp-analysis-",
+            suffix=".bin",
         )
-        self.check_cancel()
-        self.report(60)
-        if self.analysis_type == "power_spectrum":
-            frequencies, power = compute_power_spectrum(
-                segment.values,
-                segment.sample_rate_hz,
+        os.close(descriptor)
+        try:
+            (
+                sample_count,
+                sample_rate_hz,
+                start_time_s,
+                end_time_s,
+                dtype,
+            ) = self.dataset.write_analysis_values(
+                input_path,
+                self.channel,
+                self.start_s,
+                self.end_s,
+                self.settings,
+                self.cancel_event,
+                lambda value: self.report(5 + round(value * 45)),
             )
-            result = {
-                "segment": segment,
-                "frequencies": frequencies,
-                "power": power,
-            }
-        elif self.analysis_type == "spectrogram":
-            frequencies, times, power = compute_time_frequency(
-                segment.values,
-                segment.sample_rate_hz,
+            self.check_cancel()
+            self.report(55)
+            image_png = self._render_in_process(
+                input_path,
+                dtype,
+                sample_count,
+                sample_rate_hz,
+                start_time_s,
+                end_time_s,
             )
-            result = {
-                "segment": segment,
-                "frequencies": frequencies,
-                "times": times,
-                "power": power,
+            self.report(100)
+            return {
+                "sample_count": sample_count,
+                "sample_rate_hz": sample_rate_hz,
+                "start_time_s": start_time_s,
+                "end_time_s": end_time_s,
+                "image_png": image_png,
             }
-        else:
-            raise ValueError(f"Unsupported LFP analysis: {self.analysis_type}")
-        self.report(100)
-        return result
+        finally:
+            try:
+                os.unlink(input_path)
+            except FileNotFoundError:
+                pass
+
+    def _render_in_process(
+        self,
+        input_path,
+        dtype,
+        sample_count,
+        sample_rate_hz,
+        start_time_s,
+        end_time_s,
+    ):
+        return _render_analysis_file(
+            input_path=input_path,
+            dtype=dtype,
+            sample_count=sample_count,
+            sample_rate_hz=sample_rate_hz,
+            analysis_type=self.analysis_type,
+            channel=self.channel,
+            start_time_s=start_time_s,
+            end_time_s=end_time_s,
+            record_time_origin_sec=self.record_time_origin_sec,
+            cancel_event=self.cancel_event,
+            dpi=ANALYSIS_DISPLAY_DPI,
+        )
 
 
 class LfpSegmentWorker(SignalWorker):
@@ -166,6 +300,9 @@ class LfpExportDataWorker(SignalWorker):
         end_s,
         settings,
         image_types,
+        record_time_origin_sec=None,
+        image_dpi=300,
+        annotation=None,
     ):
         super().__init__(request_id, dataset)
         self.channel = int(channel)
@@ -173,34 +310,113 @@ class LfpExportDataWorker(SignalWorker):
         self.end_s = float(end_s)
         self.settings = settings
         self.image_types = frozenset(image_types)
+        self.record_time_origin_sec = record_time_origin_sec
+        self.image_dpi = int(image_dpi)
+        self.annotation = annotation
 
     def execute(self):
         self.report(5)
-        segment = self.dataset.segment(
-            self.channel,
-            self.start_s,
-            self.end_s,
-            self.settings,
-            self.cancel_event,
-            lambda value: self.report(5 + round(value * 55)),
+        descriptor, input_path = tempfile.mkstemp(
+            prefix="lfp-export-",
+            suffix=".bin",
         )
-        result = {"segment": segment}
-        self.check_cancel()
-        if "power_spectrum" in self.image_types:
-            result["power_spectrum"] = compute_power_spectrum(
-                segment.values,
-                segment.sample_rate_hz,
+        os.close(descriptor)
+        try:
+            (
+                sample_count,
+                sample_rate_hz,
+                start_time_s,
+                end_time_s,
+                dtype,
+            ) = self.dataset.write_analysis_values(
+                input_path,
+                self.channel,
+                self.start_s,
+                self.end_s,
+                self.settings,
+                self.cancel_event,
+                lambda value: self.report(5 + round(value * 55)),
             )
-        self.check_cancel()
-        self.report(80)
-        if "spectrogram" in self.image_types:
-            result["spectrogram"] = compute_time_frequency(
-                segment.values,
-                segment.sample_rate_hz,
-            )
-        self.check_cancel()
-        self.report(100)
-        return result
+            result = {
+                "sample_count": sample_count,
+                "sample_rate_hz": sample_rate_hz,
+                "start_time_s": start_time_s,
+                "end_time_s": end_time_s,
+            }
+            self.check_cancel()
+            if "waveform" in self.image_types:
+                stride = max(
+                    1,
+                    math.ceil(
+                        sample_count / MAX_EXPORT_WAVEFORM_POINTS
+                    ),
+                )
+                sampled = self.dataset.source.sampled_segment(
+                    self.channel,
+                    round(self.start_s * 1_000_000.0),
+                    round(self.end_s * 1_000_000.0),
+                    stride,
+                    self.cancel_event,
+                )
+                values = np.memmap(
+                    input_path,
+                    dtype=np.dtype(dtype),
+                    mode="r",
+                    shape=(sample_count,),
+                )
+                waveform_values = np.asarray(
+                    values[::stride],
+                    dtype="<f4",
+                ).copy()
+                del values
+                usable = min(
+                    sampled.time_us.size,
+                    waveform_values.size,
+                )
+                result["waveform"] = LfpSegment(
+                    time_us=np.asarray(sampled.time_us[:usable]),
+                    record_time_s=np.asarray(
+                        sampled.time_us[:usable] / 1_000_000.0
+                    ),
+                    values=waveform_values[:usable],
+                    sample_rate_hz=sample_rate_hz,
+                )
+                del sampled, waveform_values
+
+            rendered_images = {}
+            spectral_types = [
+                image_type
+                for image_type in ("power_spectrum", "spectrogram")
+                if image_type in self.image_types
+            ]
+            for index, image_type in enumerate(spectral_types):
+                self.check_cancel()
+                rendered_images[image_type] = _render_analysis_file(
+                    input_path=input_path,
+                    dtype=dtype,
+                    sample_count=sample_count,
+                    sample_rate_hz=sample_rate_hz,
+                    analysis_type=image_type,
+                    channel=self.channel,
+                    start_time_s=start_time_s,
+                    end_time_s=end_time_s,
+                    record_time_origin_sec=self.record_time_origin_sec,
+                    cancel_event=self.cancel_event,
+                    dpi=self.image_dpi,
+                    annotation=self.annotation,
+                )
+                self.report(
+                    65 + round(35 * (index + 1) / len(spectral_types))
+                )
+            if rendered_images:
+                result["rendered_images"] = rendered_images
+            self.report(100)
+            return result
+        finally:
+            try:
+                os.unlink(input_path)
+            except FileNotFoundError:
+                pass
 
 
 class PeakDetectionWorker(SignalWorker):

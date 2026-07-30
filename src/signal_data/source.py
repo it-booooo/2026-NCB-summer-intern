@@ -368,6 +368,64 @@ class SignalDataSource:
             del times
             del values
 
+    def indexed_values(
+        self,
+        channel_id: int,
+        left_index: int,
+        right_index: int,
+        cancel_event: threading.Event | None = None,
+    ) -> np.ndarray:
+        """Read only values for numeric analysis, without copying timestamps."""
+        self._check_cancel(cancel_event)
+        path, metadata = self._cache_metadata(channel_id, cancel_event)
+        count = int(metadata["sample_count"])
+        left_index = max(min(int(left_index), count), 0)
+        right_index = max(min(int(right_index), count), left_index)
+        values = np.memmap(
+            path / self._value_name(channel_id),
+            dtype="<f4",
+            mode="r",
+            shape=(count,),
+        )
+        try:
+            self._check_cancel(cancel_event)
+            return np.asarray(
+                values[left_index:right_index],
+                dtype="<f4",
+            ).copy()
+        finally:
+            del values
+
+    def indexed_bounds_us(
+        self,
+        channel_id: int,
+        left_index: int,
+        right_index: int,
+        cancel_event: threading.Event | None = None,
+    ) -> tuple[float, float]:
+        """Read only the first and last timestamps for an indexed interval."""
+        self._check_cancel(cancel_event)
+        path, metadata = self._cache_metadata(channel_id, cancel_event)
+        count = int(metadata["sample_count"])
+        left_index = max(min(int(left_index), count), 0)
+        right_index = max(min(int(right_index), count), left_index)
+        if right_index <= left_index:
+            raise ValueError("Selected time range contains no samples.")
+        times = np.memmap(
+            path / "time_us.bin",
+            dtype="<f8",
+            mode="r",
+            shape=(count,),
+        )
+        try:
+            self._check_cancel(cancel_event)
+            return (
+                float(times[left_index]),
+                float(times[right_index - 1]),
+            )
+        finally:
+            del times
+
     def segment(
         self,
         channel_id: int,

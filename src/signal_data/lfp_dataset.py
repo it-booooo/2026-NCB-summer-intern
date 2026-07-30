@@ -204,6 +204,208 @@ class LfpDataset(SignalDataset):
         self._store_filtered_segment(cache_key, result)
         return result
 
+    def analysis_values(
+        self,
+        channel: int,
+        start_s: float,
+        end_s: float,
+        settings: LfpFilterSettings | None,
+        cancel_event: threading.Event | None = None,
+        progress_callback=None,
+    ) -> tuple[np.ndarray, int, float, float, float]:
+        """Load analysis values without full timestamp arrays or RAM caches."""
+        channel = int(channel)
+        start_s, end_s = sorted((float(start_s), float(end_s)))
+        if not np.isfinite(start_s) or not np.isfinite(end_s):
+            raise ValueError("Selected time range must be finite.")
+        if start_s == end_s:
+            raise ValueError("Selected time range is too short.")
+
+        left_index, right_index = self.source.segment_indices(
+            channel,
+            int(round(start_s * 1_000_000.0)),
+            int(round(end_s * 1_000_000.0)),
+            cancel_event,
+        )
+        sample_count = right_index - left_index
+        if sample_count < 2:
+            raise ValueError("Selected time range is too short for analysis.")
+        first_us, last_us = self.source.indexed_bounds_us(
+            channel,
+            left_index,
+            right_index,
+            cancel_event,
+        )
+        sample_rate_hz = float(self.sample_rate_hz(channel))
+        effective_settings = (
+            settings if settings is not None and settings.show_filtered else None
+        )
+        if effective_settings is None:
+            values = self.source.indexed_values(
+                channel,
+                left_index,
+                right_index,
+                cancel_event,
+            )
+            if progress_callback is not None:
+                progress_callback(1.0)
+            return (
+                values,
+                sample_count,
+                sample_rate_hz,
+                first_us / 1_000_000.0,
+                last_us / 1_000_000.0,
+            )
+
+        padding = filter_padding_samples(effective_settings, sample_rate_hz)
+        source_count = self.source.sample_count(channel)
+        result_values = np.empty(sample_count, dtype="<f8")
+        for block_offset in range(0, sample_count, FILTER_BLOCK_SAMPLES):
+            if cancel_event is not None and cancel_event.is_set():
+                raise CacheBuildCancelled("Segment filtering was cancelled.")
+            block_left = left_index + block_offset
+            block_right = min(
+                block_left + FILTER_BLOCK_SAMPLES,
+                right_index,
+            )
+            loaded_left = max(block_left - padding, 0)
+            loaded_right = min(block_right + padding, source_count)
+            loaded_values = self.source.indexed_values(
+                channel,
+                loaded_left,
+                loaded_right,
+                cancel_event,
+            )
+            filtered_values = prepare_lfp_signal(
+                loaded_values,
+                sample_rate_hz,
+                effective_settings,
+            )
+            crop_left = block_left - loaded_left
+            crop_right = crop_left + (block_right - block_left)
+            output_left = block_left - left_index
+            output_right = block_right - left_index
+            result_values[output_left:output_right] = filtered_values[
+                crop_left:crop_right
+            ]
+            del loaded_values, filtered_values
+            if progress_callback is not None:
+                progress_callback(output_right / sample_count)
+
+        return (
+            result_values,
+            sample_count,
+            sample_rate_hz,
+            first_us / 1_000_000.0,
+            last_us / 1_000_000.0,
+        )
+
+    def write_analysis_values(
+        self,
+        output_path,
+        channel: int,
+        start_s: float,
+        end_s: float,
+        settings: LfpFilterSettings | None,
+        cancel_event: threading.Event | None = None,
+        progress_callback=None,
+    ) -> tuple[int, float, float, float, str]:
+        """Write analysis values to a temporary memmap without a full RAM array."""
+        channel = int(channel)
+        start_s, end_s = sorted((float(start_s), float(end_s)))
+        if not np.isfinite(start_s) or not np.isfinite(end_s):
+            raise ValueError("Selected time range must be finite.")
+        if start_s == end_s:
+            raise ValueError("Selected time range is too short.")
+
+        left_index, right_index = self.source.segment_indices(
+            channel,
+            int(round(start_s * 1_000_000.0)),
+            int(round(end_s * 1_000_000.0)),
+            cancel_event,
+        )
+        sample_count = right_index - left_index
+        if sample_count < 2:
+            raise ValueError("Selected time range is too short for analysis.")
+        first_us, last_us = self.source.indexed_bounds_us(
+            channel,
+            left_index,
+            right_index,
+            cancel_event,
+        )
+        sample_rate_hz = float(self.sample_rate_hz(channel))
+        effective_settings = (
+            settings if settings is not None and settings.show_filtered else None
+        )
+        dtype = np.dtype("<f8" if effective_settings is not None else "<f4")
+        output = np.memmap(
+            output_path,
+            dtype=dtype,
+            mode="w+",
+            shape=(sample_count,),
+        )
+        try:
+            padding = (
+                filter_padding_samples(effective_settings, sample_rate_hz)
+                if effective_settings is not None
+                else 0
+            )
+            source_count = self.source.sample_count(channel)
+            for block_offset in range(
+                0,
+                sample_count,
+                FILTER_BLOCK_SAMPLES,
+            ):
+                if cancel_event is not None and cancel_event.is_set():
+                    raise CacheBuildCancelled(
+                        "Segment preparation was cancelled."
+                    )
+                block_left = left_index + block_offset
+                block_right = min(
+                    block_left + FILTER_BLOCK_SAMPLES,
+                    right_index,
+                )
+                loaded_left = max(block_left - padding, 0)
+                loaded_right = min(
+                    block_right + padding,
+                    source_count,
+                )
+                loaded_values = self.source.indexed_values(
+                    channel,
+                    loaded_left,
+                    loaded_right,
+                    cancel_event,
+                )
+                if effective_settings is not None:
+                    prepared_values = prepare_lfp_signal(
+                        loaded_values,
+                        sample_rate_hz,
+                        effective_settings,
+                    )
+                else:
+                    prepared_values = loaded_values
+                crop_left = block_left - loaded_left
+                crop_right = crop_left + (block_right - block_left)
+                output_left = block_left - left_index
+                output_right = block_right - left_index
+                output[output_left:output_right] = prepared_values[
+                    crop_left:crop_right
+                ]
+                del loaded_values, prepared_values
+                if progress_callback is not None:
+                    progress_callback(output_right / sample_count)
+            output.flush()
+        finally:
+            del output
+
+        return (
+            sample_count,
+            sample_rate_hz,
+            first_us / 1_000_000.0,
+            last_us / 1_000_000.0,
+            dtype.str,
+        )
+
     def update_playback_window(
         self,
         record_time_s: float,
@@ -388,6 +590,59 @@ class LfpDataset(SignalDataset):
             self._segment_cache_bytes = 0
             self._filtered_segment_cache.clear()
             self._filtered_segment_cache_bytes = 0
+
+    def release_analysis_segment(
+        self,
+        channel: int,
+        start_s: float,
+        end_s: float,
+        settings: LfpFilterSettings | None,
+    ) -> None:
+        """Drop RAM entries that supplied one completed analysis request."""
+        channel = int(channel)
+        start_s, end_s = sorted((float(start_s), float(end_s)))
+        raw_key = self._segment_key(channel, start_s, end_s)
+        left_index, right_index = self.source.segment_indices(
+            channel,
+            raw_key[1],
+            raw_key[2],
+        )
+        effective_settings = (
+            settings if settings is not None and settings.show_filtered else None
+        )
+        identity = self.source.identity_token()
+
+        with self._segment_lock:
+            for key in list(self._segment_cache):
+                if (
+                    key[0] == channel
+                    and key[1] <= raw_key[1]
+                    and key[2] >= raw_key[2]
+                ):
+                    removed = self._segment_cache.pop(key)
+                    self._segment_cache_bytes -= int(
+                        removed.time_us.nbytes + removed.values.nbytes
+                    )
+
+            if effective_settings is not None:
+                for key in list(self._filtered_segment_cache):
+                    if (
+                        key[0] == identity
+                        and key[1] == channel
+                        and key[2] <= left_index
+                        and key[3] >= right_index
+                        and key[4] == effective_settings
+                    ):
+                        removed = self._filtered_segment_cache.pop(key)
+                        self._filtered_segment_cache_bytes -= (
+                            self._lfp_segment_bytes(removed)
+                        )
+
+            self._segment_cache_bytes = max(self._segment_cache_bytes, 0)
+            self._filtered_segment_cache_bytes = max(
+                self._filtered_segment_cache_bytes,
+                0,
+            )
 
     def _store_filtered_segment(self, key: tuple, segment: LfpSegment) -> None:
         size = int(

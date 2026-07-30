@@ -199,6 +199,175 @@ class SegmentFilteringTests(unittest.TestCase):
             10 * 1024 * 1024,
         )
 
+    def test_release_analysis_segment_is_precise_and_updates_bytes(self):
+        settings = self.settings()
+        other_settings = self.settings(10.0)
+        self.dataset.segment(2, 2.0, 4.0, None)
+        self.dataset.segment(2, 2.0, 4.0, settings)
+        self.dataset.segment(2, 6.0, 8.0, None)
+        self.dataset.segment(2, 6.0, 8.0, settings)
+        self.dataset.segment(2, 2.0, 4.0, other_settings)
+        self.dataset.segment(5, 2.0, 4.0, None)
+        self.dataset.segment(5, 2.0, 4.0, settings)
+        disk_entries = set(Path(self.info["_signal_cache_root"]).rglob("*"))
+
+        self.dataset.release_analysis_segment(2, 2.0, 4.0, settings)
+
+        target_raw = self.dataset._segment_key(2, 2.0, 4.0)
+        self.assertNotIn(target_raw, self.dataset._segment_cache)
+        self.assertTrue(
+            any(key[0] == 2 and key[1] == 6_000_000
+                for key in self.dataset._segment_cache)
+        )
+        self.assertTrue(
+            any(key[0] == 5 for key in self.dataset._segment_cache)
+        )
+        self.assertFalse(
+            any(
+                key[1] == 2
+                and key[4] == settings
+                and key[2] <= 2 * 625
+                and key[3] >= 4 * 625 + 1
+                for key in self.dataset._filtered_segment_cache
+            )
+        )
+        self.assertTrue(
+            any(
+                key[1] == 2 and key[4] == other_settings
+                for key in self.dataset._filtered_segment_cache
+            )
+        )
+        self.assertEqual(
+            self.dataset._segment_cache_bytes,
+            sum(
+                item.time_us.nbytes + item.values.nbytes
+                for item in self.dataset._segment_cache.values()
+            ),
+        )
+        self.assertEqual(
+            self.dataset._filtered_segment_cache_bytes,
+            sum(
+                self.dataset._lfp_segment_bytes(item)
+                for item in self.dataset._filtered_segment_cache.values()
+            ),
+        )
+        self.assertEqual(
+            set(Path(self.info["_signal_cache_root"]).rglob("*")),
+            disk_entries,
+        )
+
+    def test_analysis_values_avoids_timestamp_arrays_and_ram_caches(self):
+        with (
+            patch.object(
+                self.dataset.source,
+                "indexed_segment",
+                wraps=self.dataset.source.indexed_segment,
+            ) as indexed_segment,
+            patch.object(
+                self.dataset.source,
+                "indexed_values",
+                wraps=self.dataset.source.indexed_values,
+            ) as indexed_values,
+        ):
+            values, count, rate, start_s, end_s = (
+                self.dataset.analysis_values(2, 2.0, 4.0, None)
+            )
+
+        indexed_segment.assert_not_called()
+        indexed_values.assert_called_once()
+        self.assertEqual(values.dtype, np.float32)
+        self.assertEqual(values.size, count)
+        self.assertEqual(rate, 625.0)
+        self.assertEqual(start_s, 2.0)
+        self.assertEqual(end_s, 4.0)
+        self.assertFalse(self.dataset._segment_cache)
+        self.assertFalse(self.dataset._filtered_segment_cache)
+        self.assertEqual(self.dataset._segment_cache_bytes, 0)
+        self.assertEqual(self.dataset._filtered_segment_cache_bytes, 0)
+
+    def test_analysis_values_preserves_existing_playback_caches(self):
+        settings = self.settings()
+        self.dataset.update_playback_window(10.0, settings)
+        self.assertTrue(self.dataset.wait_for_playback_cache())
+        raw_keys = list(self.dataset._segment_cache)
+        filtered_keys = list(self.dataset._filtered_segment_cache)
+        raw_bytes = self.dataset._segment_cache_bytes
+        filtered_bytes = self.dataset._filtered_segment_cache_bytes
+
+        values, count, *_metadata = self.dataset.analysis_values(
+            2,
+            5.0,
+            10.0,
+            settings,
+        )
+
+        self.assertEqual(values.size, count)
+        self.assertEqual(list(self.dataset._segment_cache), raw_keys)
+        self.assertEqual(
+            list(self.dataset._filtered_segment_cache),
+            filtered_keys,
+        )
+        self.assertEqual(self.dataset._segment_cache_bytes, raw_bytes)
+        self.assertEqual(
+            self.dataset._filtered_segment_cache_bytes,
+            filtered_bytes,
+        )
+
+    def test_filtered_analysis_values_match_regular_segment(self):
+        settings = self.settings()
+        expected = self.dataset.segment(2, 5.0, 10.0, settings)
+
+        values, count, rate, start_s, end_s = (
+            self.dataset.analysis_values(2, 5.0, 10.0, settings)
+        )
+
+        self.assertEqual(count, expected.sample_count)
+        self.assertEqual(rate, expected.sample_rate_hz)
+        self.assertEqual(start_s, float(expected.record_time_s[0]))
+        self.assertEqual(end_s, float(expected.record_time_s[-1]))
+        np.testing.assert_allclose(
+            values,
+            expected.values,
+            rtol=1e-5,
+            atol=1e-5,
+        )
+
+    def test_analysis_file_matches_regular_segment_without_new_cache(self):
+        settings = self.settings()
+        expected = self.dataset.segment(2, 5.0, 10.0, settings)
+        raw_keys = list(self.dataset._segment_cache)
+        filtered_keys = list(self.dataset._filtered_segment_cache)
+        output_path = Path(self.directory.name) / "analysis-values.bin"
+
+        count, rate, start_s, end_s, dtype = (
+            self.dataset.write_analysis_values(
+                output_path,
+                2,
+                5.0,
+                10.0,
+                settings,
+            )
+        )
+        actual = np.memmap(
+            output_path,
+            dtype=np.dtype(dtype),
+            mode="r",
+            shape=(count,),
+        )
+        try:
+            np.testing.assert_array_equal(actual, expected.values)
+        finally:
+            del actual
+
+        self.assertEqual(rate, expected.sample_rate_hz)
+        self.assertEqual(start_s, float(expected.record_time_s[0]))
+        self.assertEqual(end_s, float(expected.record_time_s[-1]))
+        self.assertEqual(list(self.dataset._segment_cache), raw_keys)
+        self.assertEqual(
+            list(self.dataset._filtered_segment_cache),
+            filtered_keys,
+        )
+
     def test_large_filter_checks_cancellation_between_blocks(self):
         settings = self.settings()
         cancel = threading.Event()

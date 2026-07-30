@@ -5,6 +5,7 @@ import uuid
 import numpy as np
 from matplotlib.figure import Figure
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
     QDialog,
     QDoubleSpinBox,
@@ -19,6 +20,48 @@ from .. import signal_data as signal_func
 from ..background_requests import widget_is_valid
 from ..charts.chart_helpers import format_signal_label, resolve_plot_step
 from ..synchronization.time_conversion import relative_time
+
+
+class _HorizontalPixmapScrollArea(QScrollArea):
+    """Fit a high-resolution plot vertically and scroll it only horizontally."""
+
+    def __init__(self, pixmap, parent=None):
+        super().__init__(parent)
+        self._source_pixmap = pixmap
+        self.image_label = QLabel()
+        self.image_label.setPixmap(pixmap)
+        self.image_label.setScaledContents(True)
+        self.setWidget(self.image_label)
+        self.setWidgetResizable(False)
+        self.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.fit_pixmap_height()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.fit_pixmap_height()
+
+    def fit_pixmap_height(self):
+        """Scale the label to the viewport height while preserving aspect ratio."""
+        if self._source_pixmap.isNull():
+            return
+        target_height = max(1, self.viewport().height())
+        aspect_ratio = (
+            self._source_pixmap.width() / self._source_pixmap.height()
+        )
+        target_width = max(1, round(target_height * aspect_ratio))
+        self.image_label.setFixedSize(target_width, target_height)
+
+    def clear_pixmap(self):
+        self.image_label.clear()
+        self._source_pixmap = QPixmap()
 
 
 class LfpAnalysisMixin:
@@ -130,6 +173,7 @@ class LfpAnalysisMixin:
             right,
             settings,
             analysis_type,
+            self.sync_state.record_time_origin_sec,
         )
         workers = getattr(self, "_lfp_analysis_workers", {})
         self._lfp_analysis_workers = workers
@@ -226,41 +270,36 @@ class LfpAnalysisMixin:
         settings,
     ):
         if not self._analysis_result_is_current(request_id, identity):
+            result.clear()
             return
+        sample_count = result["sample_count"]
+        sample_rate_hz = result["sample_rate_hz"]
+        start_time_s = result["start_time_s"]
+        end_time_s = result["end_time_s"]
         try:
-            segment = result["segment"]
-            if analysis_type == "power_spectrum":
-                figure = self.create_power_spectrum_figure(
-                    channel,
-                    result["frequencies"],
-                    result["power"],
-                )
-            else:
-                figure = self.create_spectrogram_figure(
-                    channel,
-                    segment,
-                    result["frequencies"],
-                    result["times"],
-                    result["power"],
-                    (
-                        "sync time"
-                        if self.sync_state.record_time_origin_sec is not None
-                        else "time"
-                    ),
-                )
+            image_png = result.pop("image_png")
+            image = QImage.fromData(image_png, "PNG")
+            del image_png
+            if image.isNull():
+                raise ValueError("Analysis process returned an invalid image.")
+            pixmap = QPixmap.fromImage(image)
+            del image
         except Exception as error:
+            result.clear()
             self._complete_lfp_analysis_request(request_id)
             QMessageBox.warning(self, failure_title, str(error))
             return
+        result.clear()
         self._complete_lfp_analysis_request(request_id)
         self.open_lfp_analysis_dialog(
             f"{dialog_title} - Channel {channel}",
             channel,
             left,
             right,
-            segment,
+            sample_count,
+            sample_rate_hz,
             settings,
-            figure,
+            pixmap,
             dialog_size,
         )
 
@@ -303,9 +342,10 @@ class LfpAnalysisMixin:
         channel,
         left,
         right,
-        segment,
+        sample_count,
+        sample_rate_hz,
         settings,
-        figure,
+        pixmap,
         size,
     ):
         """Open lfp analysis dialog.
@@ -313,10 +353,8 @@ class LfpAnalysisMixin:
         Args:
             title: Dialog title displayed to the user.
             channel: LFP channel identifier.
-            figure: Matplotlib figure to use or update.
+            pixmap: Static rendering of the completed Matplotlib figure.
         """
-        from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
-    
         dialog = QDialog(self)
         dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         dialog.setModal(False)
@@ -328,43 +366,79 @@ class LfpAnalysisMixin:
         status = QLabel(
             f"Channel {channel} | {signal_func.filter_description(settings)} | "
             f"{time_mode}: {display_left:.2f}-{display_right:.2f} s | "
-            f"samples={segment.sample_count} | Fs={segment.sample_rate_hz:g} Hz"
+            f"samples={sample_count} | Fs={sample_rate_hz:g} Hz"
         )
-    
-        canvas = FigureCanvas(figure)
-        canvas_width = round(figure.get_figwidth() * figure.dpi)
-        canvas_height = round(figure.get_figheight() * figure.dpi)
-        canvas.setMinimumSize(canvas_width, canvas_height)
 
-        scroll_area = QScrollArea()
-        scroll_area.setWidget(canvas)
-        scroll_area.setWidgetResizable(False)
+        scroll_area = _HorizontalPixmapScrollArea(pixmap)
+        image_label = scroll_area.image_label
 
         layout = QVBoxLayout()
         layout.addWidget(status)
         layout.addWidget(scroll_area)
         dialog.setLayout(layout)
+        dialog._lfp_image_label = image_label
+        dialog._lfp_scroll_area = scroll_area
 
         available = dialog.screen().availableGeometry()
-        desired_width = canvas_width + 50
-        desired_height = canvas_height + status.sizeHint().height() + 70
         dialog.resize(
-            min(desired_width, max(size[0], round(available.width() * 0.9))),
-            min(desired_height, max(size[1], round(available.height() * 0.9))),
+            min(size[0], round(available.width() * 0.9)),
+            min(size[1], round(available.height() * 0.9)),
         )
     
         self.spectrum_dialogs.append(dialog)
-        dialog.finished.connect(
-            lambda _result, item=dialog: self.forget_spectrum_dialog(item)
-        )
+        dialog.finished.connect(self.forget_spectrum_dialog)
         dialog.show()
+        scroll_area.fit_pixmap_height()
         dialog.raise_()
         dialog.activateWindow()
     
-    def forget_spectrum_dialog(self, dialog):
-        """Remove the reference to spectrum dialog."""
+    def forget_spectrum_dialog(self, dialog_or_result=0):
+        """Release the static image and every owned dialog reference."""
+        dialog = (
+            dialog_or_result
+            if isinstance(dialog_or_result, QDialog)
+            else self.sender()
+        )
+        if dialog is None:
+            return
         if dialog in self.spectrum_dialogs:
             self.spectrum_dialogs.remove(dialog)
+        image_label = getattr(dialog, "_lfp_image_label", None)
+        if image_label is not None:
+            image_label.clear()
+            image_label.deleteLater()
+        scroll_area = getattr(dialog, "_lfp_scroll_area", None)
+        if scroll_area is not None:
+            scroll_area.clear_pixmap()
+            scroll_area.takeWidget()
+            scroll_area.deleteLater()
+        dialog._lfp_image_label = None
+        dialog._lfp_scroll_area = None
+
+    @staticmethod
+    def _figure_to_pixmap(figure):
+        """Render a Figure to an owning Qt image without retaining Matplotlib."""
+        from matplotlib.backends.backend_agg import FigureCanvasAgg
+
+        canvas = FigureCanvasAgg(figure)
+        canvas.draw()
+        width, height = canvas.get_width_height()
+        image = QImage(
+            canvas.buffer_rgba(),
+            width,
+            height,
+            QImage.Format.Format_RGBA8888,
+        ).copy()
+        return QPixmap.fromImage(image)
+
+    @staticmethod
+    def _dispose_figure(figure):
+        """Clear artists and detach the renderer's Figure reference cycle."""
+        canvas = figure.canvas
+        figure.clear()
+        figure.set_canvas(None)
+        if canvas is not None:
+            canvas.figure = None
     
     def create_power_spectrum_figure(self, channel, frequencies, power):
         """Create power spectrum figure.
@@ -374,7 +448,11 @@ class LfpAnalysisMixin:
         """
         figure = Figure(figsize=(7.6, 4.4), constrained_layout=True)
         ax = figure.add_subplot(111)
-        power_db = 10.0 * np.log10(np.maximum(power, np.finfo(float).tiny))
+        power_db = np.array(power, copy=True)
+        tiny = np.finfo(power_db.dtype).tiny
+        np.maximum(power_db, tiny, out=power_db)
+        np.log10(power_db, out=power_db)
+        power_db *= 10.0
         ax.plot(frequencies, power_db, linewidth=0.8, color="#1f77b4")
         ax.set_title(f"LFP Power Spectrum - Channel {channel}")
         ax.set_xlabel("Frequency (Hz)")
@@ -419,14 +497,21 @@ class LfpAnalysisMixin:
         ax.grid(True, linewidth=0.4, alpha=0.35)
         return figure
     
-    def annotate_lfp_figure(self, figure, channel, segment, settings):
+    def annotate_lfp_figure(
+        self,
+        figure,
+        channel,
+        start_time_s,
+        end_time_s,
+        settings,
+    ):
         filename = self.data_state.lfp_info.get("filename", "LFP") if self.data_state.lfp_info else "LFP"
         time_mode = "Sync time" if self.sync_state.record_time_origin_sec is not None else "Time"
         display_left = relative_time(
-            float(segment.record_time_s[0]), self.sync_state.record_time_origin_sec
+            float(start_time_s), self.sync_state.record_time_origin_sec
         )
         display_right = relative_time(
-            float(segment.record_time_s[-1]), self.sync_state.record_time_origin_sec
+            float(end_time_s), self.sync_state.record_time_origin_sec
         )
         processing = signal_func.filter_description(settings)
         figure.suptitle(
@@ -438,7 +523,8 @@ class LfpAnalysisMixin:
     def create_spectrogram_figure(
         self,
         channel,
-        segment,
+        start_time_s,
+        end_time_s,
         frequencies,
         times,
         power,
@@ -450,15 +536,19 @@ class LfpAnalysisMixin:
             channel: LFP channel identifier.
         """
         duration_sec = abs(
-            float(segment.record_time_s[-1]) - float(segment.record_time_s[0])
+            float(end_time_s) - float(start_time_s)
         )
         figure_width = min(24.0, 8.0 + duration_sec / 120.0)
         figure = Figure(figsize=(figure_width, 4.8), constrained_layout=True)
         ax = figure.add_subplot(111)
         plot_times = times + relative_time(
-            float(segment.record_time_s[0]), self.sync_state.record_time_origin_sec
+            float(start_time_s), self.sync_state.record_time_origin_sec
         )
-        power_db = 10.0 * np.log10(np.maximum(power, np.finfo(float).tiny))
+        power_db = np.array(power, copy=True)
+        tiny = np.finfo(power_db.dtype).tiny
+        np.maximum(power_db, tiny, out=power_db)
+        np.log10(power_db, out=power_db)
+        power_db *= 10.0
         mesh = ax.pcolormesh(
             plot_times,
             frequencies,

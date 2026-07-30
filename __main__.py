@@ -1,15 +1,16 @@
+import multiprocessing
 import sys
 from pathlib import Path
-
-from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QApplication
-
-from src.main_window import MainWindow
-from src.ui.style import APP_STYLE
 
 
 def main():
     """Start the desktop synchronization application."""
+    from PySide6.QtGui import QIcon
+    from PySide6.QtWidgets import QApplication
+
+    from src.main_window import MainWindow
+    from src.ui.style import APP_STYLE
+
     if sys.platform == "win32":
         import ctypes
 
@@ -28,4 +29,5 @@ def main():
 
 
 if __name__ == "__main__":
+    multiprocessing.freeze_support()
     main()
