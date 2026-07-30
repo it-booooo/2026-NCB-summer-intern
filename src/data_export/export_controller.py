@@ -31,7 +31,12 @@ from ..markers import (
     marker_to_dict,
     marker_video_time,
 )
-from ..project_format import PROJECT_FORMAT, PROJECT_VERSION, file_fingerprint
+from ..project_format import (
+    PROJECT_FORMAT,
+    PROJECT_VERSION,
+    file_fingerprint,
+    validate_project_json_sizes,
+)
 from .file_writers import (
     export_events_csv,
     export_events_excel,
@@ -110,7 +115,6 @@ class ExportController:
         error_message = None
         temporary_path = None
         QApplication.setOverrideCursor(Qt.WaitCursor)
-        QApplication.processEvents()
         try:
             sources = {}
             source_candidates = {
@@ -234,10 +238,11 @@ class ExportController:
             ).encode("utf-8")
             state_bytes = json.dumps(
                 state,
-                indent=2,
                 ensure_ascii=False,
+                separators=(",", ":"),
                 default=record,
             ).encode("utf-8")
+            validate_project_json_sizes(manifest_bytes, state_bytes)
             output_path.parent.mkdir(parents=True, exist_ok=True)
             with tempfile.NamedTemporaryFile(
                 prefix=f"{output_path.name}.",

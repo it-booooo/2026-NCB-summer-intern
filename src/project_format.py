@@ -17,6 +17,14 @@ MAX_TEXT_LENGTH = 100_000
 FINGERPRINT_CHUNK_BYTES = 1024 * 1024
 
 
+def validate_project_json_sizes(manifest_bytes, state_bytes):
+    """Reject JSON payloads that the archive loader would refuse to reopen."""
+    if len(manifest_bytes) > MAX_MANIFEST_BYTES:
+        raise ValueError("Project manifest.json is too large.")
+    if len(state_bytes) > MAX_STATE_BYTES:
+        raise ValueError("Project state.json is too large.")
+
+
 def file_fingerprint(path):
     """Return a fast content identity using file size and sampled SHA-256."""
     file_path = Path(path)
@@ -160,12 +168,39 @@ def validate_state(state):
         or roi[3] <= 0
     ):
         raise ValueError("Project LED ROI is invalid.")
-    for name in ("analysis_points", "brightness_cache"):
-        value = led.get(name)
-        if value is not None and (
-            not isinstance(value, list) or len(value) > MAX_EVENTS
-        ):
-            raise ValueError(f"Project LED {name} is invalid or too large.")
+    analysis_points = led.get("analysis_points")
+    if analysis_points is not None:
+        _validate_led_points(analysis_points, "analysis_points")
+
+    brightness_cache = led.get("brightness_cache")
+    if brightness_cache is not None:
+        if not isinstance(brightness_cache, list) or len(brightness_cache) > MAX_EVENTS:
+            raise ValueError("Project LED brightness_cache is invalid or too large.")
+        total_points = 0
+        for cache in brightness_cache:
+            if not isinstance(cache, dict):
+                raise ValueError("Project LED brightness cache entry is invalid.")
+            cache_roi = cache.get("roi")
+            if cache_roi is not None:
+                _validate_led_roi(cache_roi, "brightness cache ROI")
+            rotation = cache.get("rotation_degrees")
+            if rotation is not None and rotation not in {0, 90, 180, 270}:
+                raise ValueError("Project LED brightness cache rotation is invalid.")
+            _validate_optional_led_number(cache, "fps", minimum=0.0)
+            _validate_optional_led_int(cache, "start_frame", minimum=0)
+            _validate_optional_led_int(cache, "end_frame", minimum=0)
+            _validate_optional_led_int(cache, "coarse_step", minimum=1)
+            if (
+                "start_frame" in cache
+                and "end_frame" in cache
+                and cache["start_frame"] > cache["end_frame"]
+            ):
+                raise ValueError("Project LED brightness cache frame range is invalid.")
+            points = cache.get("points", [])
+            _validate_led_points(points, "brightness cache points")
+            total_points += len(points)
+            if total_points > MAX_EVENTS:
+                raise ValueError("Project LED brightness cache contains too many points.")
     return state
 
 
@@ -217,6 +252,55 @@ def _finite_number(value):
         and not isinstance(value, bool)
         and math.isfinite(float(value))
     )
+
+
+def _validate_led_roi(roi, label):
+    if (
+        not isinstance(roi, (list, tuple))
+        or len(roi) != 4
+        or any(not isinstance(value, int) or isinstance(value, bool) for value in roi)
+        or roi[0] < 0
+        or roi[1] < 0
+        or roi[2] <= 0
+        or roi[3] <= 0
+    ):
+        raise ValueError(f"Project LED {label} is invalid.")
+
+
+def _validate_optional_led_number(data, name, minimum=None):
+    if name not in data:
+        return
+    value = data[name]
+    if not _finite_number(value) or (minimum is not None and float(value) < minimum):
+        raise ValueError(f"Project LED brightness cache {name} is invalid.")
+
+
+def _validate_optional_led_int(data, name, minimum=None):
+    if name not in data:
+        return
+    value = data[name]
+    if (
+        not isinstance(value, int)
+        or isinstance(value, bool)
+        or (minimum is not None and value < minimum)
+    ):
+        raise ValueError(f"Project LED brightness cache {name} is invalid.")
+
+
+def _validate_led_points(points, label):
+    if not isinstance(points, list) or len(points) > MAX_EVENTS:
+        raise ValueError(f"Project LED {label} is invalid or too large.")
+    required = {"frame_index", "video_time_sec", "brightness"}
+    for point in points:
+        if not isinstance(point, dict) or not required.issubset(point):
+            raise ValueError(f"Project LED {label} entry is invalid.")
+        frame_index = point["frame_index"]
+        if not isinstance(frame_index, int) or isinstance(frame_index, bool) or frame_index < 0:
+            raise ValueError(f"Project LED {label} frame index is invalid.")
+        if not _finite_number(point["video_time_sec"]):
+            raise ValueError(f"Project LED {label} video time is invalid.")
+        if not _finite_number(point["brightness"]):
+            raise ValueError(f"Project LED {label} brightness is invalid.")
 
 
 def _validate_marker(marker):

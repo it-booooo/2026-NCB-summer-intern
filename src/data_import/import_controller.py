@@ -126,7 +126,6 @@ class ImportController:
             return
 
         QApplication.setOverrideCursor(Qt.WaitCursor)
-        QApplication.processEvents()
         worker = ProjectLoadWorker(path, self.parent)
         self.project_load_worker = worker
         worker.loaded.connect(
@@ -313,7 +312,7 @@ class ImportController:
                 self.project_load_worker,
                 self._project_signal_worker,
             )
-            if worker is not None and worker.isRunning()
+            if widget_is_valid(worker) and worker.isRunning()
         ]
         for worker in workers:
             cancel = getattr(worker, "cancel", None)
@@ -565,7 +564,10 @@ class ImportController:
                 int(cache.get("end_frame", 0)),
                 int(cache.get("coarse_step", 1)),
             )
-            self.led_state.brightness_cache[cache_key] = list(cache.get("points", []))
+            self.led_state.cache_brightness_points(
+                cache_key,
+                list(cache.get("points", [])),
+            )
 
     def actions(self):
         """Create and return the actions exposed by this controller.

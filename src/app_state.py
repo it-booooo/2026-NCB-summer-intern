@@ -9,7 +9,7 @@ signals and slots.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from .markers.models import Marker
 
@@ -123,12 +123,27 @@ class TtlState:
 class LedState:
     """LED selection, reusable brightness data, and latest analysis result."""
 
+    BRIGHTNESS_CACHE_MAX_ENTRIES: ClassVar[int] = 5
+
     roi: tuple[int, int, int, int] | None = None
     brightness_cache: dict[tuple[Any, ...], Any] = field(default_factory=dict)
     analysis_points: list[Any] | None = None
     analysis_threshold: float = 0.0
     analysis_stats: dict[str, Any] | None = None
     analysis_status: str | None = None
+
+    def cached_brightness_points(self, key):
+        points = self.brightness_cache.pop(key, None)
+        if points is not None:
+            self.brightness_cache[key] = points
+        return points
+
+    def cache_brightness_points(self, key, points):
+        self.brightness_cache.pop(key, None)
+        self.brightness_cache[key] = points
+        while len(self.brightness_cache) > self.BRIGHTNESS_CACHE_MAX_ENTRIES:
+            oldest_key = next(iter(self.brightness_cache))
+            del self.brightness_cache[oldest_key]
 
 
 @dataclass

@@ -142,6 +142,7 @@ class NoteEditor(QLineEdit):
 
     def __init__(self, text=""):
         super().__init__(text)
+        self._row_style_state = None
         self.setFrame(False)
         self.setPlaceholderText("Add note...")
         self.setClearButtonEnabled(True)
@@ -152,11 +153,17 @@ class NoteEditor(QLineEdit):
 
     def set_row_selected(self, selected, sync_reference=False):
         if selected:
+            state = "selected"
             style = "background-color: #dcecff; border: 1px solid #2f80ed;"
         elif sync_reference:
+            state = "sync-reference"
             style = "background-color: #d8f3dc; border: 1px solid #40916c;"
         else:
+            state = "default"
             style = "background-color: #ffffff; border: none;"
+        if state == self._row_style_state:
+            return
+        self._row_style_state = state
         self.setStyleSheet(f"{style} color: #111111;")
 
 

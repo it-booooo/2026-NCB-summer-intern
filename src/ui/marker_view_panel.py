@@ -17,9 +17,6 @@ class MarkerViewPanel(QWidget):
             marker for marker in self.marker_store.all() if self.accepts_marker(marker)
         )
 
-    def delete_marker(self, marker_id):
-        self.marker_store.delete(marker_id)
-
     def refresh_markers(self):
         """Refresh the panel after a shared marker change."""
 

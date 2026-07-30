@@ -1,8 +1,6 @@
 from collections.abc import Callable
 from pathlib import Path
-from typing import cast
 
-import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
@@ -89,13 +87,9 @@ def LFP(
 
     show_filtered = bool(filter_settings and filter_settings.show_filtered)
 
-    fig = cast(
-        LfpFigure,
-        plt.figure(
-            figsize=(16, 5),
-            constrained_layout=False,
-            FigureClass=LfpFigure,
-        ),
+    fig = LfpFigure(
+        figsize=(16, 5),
+        constrained_layout=False,
     )
     ax = fig.add_axes((0.08, 0.22, 0.90, 0.62))
 

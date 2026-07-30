@@ -19,6 +19,7 @@ from ..app_state import SyncState, TtlState, VideoState
 from ..markers import Marker, MarkerKind, MarkerSource, RecordPosition
 from ..synchronization import resolve_sync_reference_markers
 from ..synchronization.time_conversion import record_time_parts
+from ..video_player.video_helpers import parse_time_decimal
 from .marker_view_panel import MarkerViewPanel
 
 
@@ -148,25 +149,12 @@ class TtlPanel(MarkerViewPanel):
             self.record_time_selected.emit(float(record_time_sec))
 
     def parse_record_time_us(self, text):
-        if not text:
-            raise ValueError("Please enter a TTL record time.")
-        try:
-            if ":" not in text:
-                seconds = Decimal(text)
-            else:
-                parts = text.split(":")
-                if len(parts) != 3:
-                    raise ValueError
-                hours, minutes, seconds_part = map(Decimal, parts)
-                if minutes >= 60 or seconds_part >= 60:
-                    raise ValueError
-                seconds = hours * 3600 + minutes * 60 + seconds_part
-        except (InvalidOperation, ValueError):
+        seconds = parse_time_decimal(text)
+        if seconds is None:
             raise ValueError(
-                "Use seconds or HH:MM:SS.ffffff, for example 12.345678."
-            ) from None
-        if seconds < 0:
-            raise ValueError("TTL record time cannot be negative.")
+                "Use signed seconds, MM:SS, or HH:MM:SS.ffffff, "
+                "for example -00:00:01.250000."
+            )
         return int((seconds * 1_000_000).to_integral_value(rounding=ROUND_HALF_UP))
 
     def refresh_table(self):

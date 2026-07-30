@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 from types import SimpleNamespace
 from zipfile import ZIP_DEFLATED, ZipFile
@@ -18,7 +19,11 @@ from src.markers import (
 )
 from src.project_archive import load_project_archive
 from src.project_format import PROJECT_FORMAT, PROJECT_VERSION
-from src.project_format import validate_state, validate_video_bounds
+from src.project_format import (
+    validate_project_json_sizes,
+    validate_state,
+    validate_video_bounds,
+)
 
 
 class AnalysisSettingsTests(unittest.TestCase):
@@ -39,6 +44,82 @@ class AnalysisSettingsTests(unittest.TestCase):
         }
 
         self.assertIs(validate_state(state), state)
+
+    def test_project_validation_accepts_valid_led_cache(self):
+        point = {"frame_index": 10, "video_time_sec": 0.5, "brightness": 0.8}
+        state = {
+            "led": {
+                "analysis_points": [dict(point)],
+                "brightness_cache": [
+                    {
+                        "roi": [1, 2, 30, 40],
+                        "rotation_degrees": 180,
+                        "fps": 30.0,
+                        "start_frame": 0,
+                        "end_frame": 100,
+                        "coarse_step": 20,
+                        "points": [dict(point)],
+                    }
+                ],
+            }
+        }
+
+        self.assertIs(validate_state(state), state)
+
+    def test_project_validation_rejects_malformed_led_cache_point(self):
+        state = {
+            "led": {
+                "brightness_cache": [
+                    {"points": [{"frame_index": 1, "brightness": 0.8}]}
+                ]
+            }
+        }
+
+        with self.assertRaisesRegex(ValueError, "entry is invalid"):
+            validate_state(state)
+
+    def test_project_validation_rejects_invalid_led_cache_range(self):
+        state = {
+            "led": {
+                "brightness_cache": [
+                    {"start_frame": 20, "end_frame": 10, "points": []}
+                ]
+            }
+        }
+
+        with self.assertRaisesRegex(ValueError, "frame range"):
+            validate_state(state)
+
+    def test_serialized_project_must_fit_loader_limits(self):
+        with patch("src.project_format.MAX_STATE_BYTES", 3):
+            with self.assertRaisesRegex(ValueError, "state.json is too large"):
+                validate_project_json_sizes(b"{}", b"1234")
+
+    def test_compact_json_preserves_project_state(self):
+        state = {
+            "markers": [
+                {
+                    "marker_id": "marker-1",
+                    "kind": "led_on",
+                    "source": "led_detection",
+                    "position": {
+                        "domain": "video",
+                        "time_sec": 1.25,
+                        "frame_index": 30,
+                    },
+                    "note": "",
+                    "payload": {},
+                }
+            ]
+        }
+
+        pretty = json.dumps(state, indent=2, ensure_ascii=False).encode("utf-8")
+        compact = json.dumps(
+            state, ensure_ascii=False, separators=(",", ":")
+        ).encode("utf-8")
+
+        self.assertEqual(json.loads(compact), state)
+        self.assertLess(len(compact), len(pretty))
 
     def test_project_validation_rejects_invalid_minimum_distance(self):
         with self.assertRaises(ValueError):

@@ -1,4 +1,6 @@
+import math
 import os
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from ..app_state import VideoMetadata
@@ -153,28 +155,49 @@ def time_sec_to_frame(time_sec, fps, total_frames=None):
     return frame_index
 
 
-def parse_time_input(text):
-    """Parse seconds, MM:SS, or HH:MM:SS text into seconds."""
-    text = text.strip()
-    if not text:
+def parse_time_decimal(text):
+    """Parse signed seconds, MM:SS, or HH:MM:SS without losing precision."""
+    value = str(text).strip()
+    if not value:
+        return None
+
+    sign = Decimal(-1) if value.startswith("-") else Decimal(1)
+    if value[:1] in {"-", "+"}:
+        value = value[1:]
+    if not value:
         return None
 
     try:
-        if ":" not in text:
-            return float(text)
+        if ":" not in value:
+            seconds = Decimal(value)
+            return sign * seconds if seconds.is_finite() else None
 
-        parts = [float(part) for part in text.split(":")]
+        parts = [Decimal(part) for part in value.split(":")]
+        if len(parts) not in {2, 3} or any(part < 0 for part in parts):
+            return None
+        if parts[-1] >= 60 or (len(parts) == 3 and parts[-2] >= 60):
+            return None
         if len(parts) == 2:
             minutes, seconds = parts
-            return minutes * 60 + seconds
-
-        if len(parts) == 3:
+            total = minutes * 60 + seconds
+        else:
             hours, minutes, seconds = parts
-            return hours * 3600 + minutes * 60 + seconds
-    except ValueError:
+            total = hours * 3600 + minutes * 60 + seconds
+        return sign * total if total.is_finite() else None
+    except (InvalidOperation, ValueError):
         return None
 
-    return None
+
+def parse_time_input(text):
+    """Parse signed seconds, MM:SS, or HH:MM:SS text into seconds."""
+    value = parse_time_decimal(text)
+    if value is None:
+        return None
+    try:
+        result = float(value)
+    except (OverflowError, ValueError):
+        return None
+    return result if math.isfinite(result) else None
 
 
 def format_time(seconds):

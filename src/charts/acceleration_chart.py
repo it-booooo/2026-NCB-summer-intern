@@ -1,8 +1,6 @@
 from collections.abc import Callable
 from pathlib import Path
-from typing import cast
 
-import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 
 from ..signal_data import SignalDataset
@@ -56,13 +54,9 @@ def accelerator(
 
     overview = dataset.overview(260)
 
-    fig = cast(
-        AcceleratorFigure,
-        plt.figure(
-            figsize=(8, 2.2) if compact else (16, 4),
-            constrained_layout=False,
-            FigureClass=AcceleratorFigure,
-        ),
+    fig = AcceleratorFigure(
+        figsize=(8, 2.2) if compact else (16, 4),
+        constrained_layout=False,
     )
     if compact:
         ax = fig.add_axes((0.08, 0.24, 0.90, 0.68))
