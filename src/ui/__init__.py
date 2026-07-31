@@ -1,6 +1,6 @@
 """Qt widgets and application panels."""
 
-from .event_table import EventTable, MarkerTable
+from .marker_table import MarkerTable
 from .lfp_peak_panel import LfpPeakPanel
 from .led_panel import LedAnalysisPanel
 from .wave_panel import WavePanel
@@ -12,7 +12,6 @@ from .ttl_panel import TtlPanel
 
 __all__ = [
     "APP_STYLE",
-    "EventTable",
     "LfpPeakPanel",
     "LedAnalysisPanel",
     "WavePanel",

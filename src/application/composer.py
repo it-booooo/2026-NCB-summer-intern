@@ -34,7 +34,7 @@ class ApplicationComposer:
         lfp_service = LfpAnalysisService(state.data)
 
         video_player = VideoPlayer(state.video, state.sync, state.led)
-        event_table = MarkerTable(marker_store, state.video, state.sync)
+        marker_table = MarkerTable(marker_store, state.video, state.sync)
         wave_panel = WavePanel(state.data, state.sync, marker_store)
         sync_panel = SyncPanel()
         led_analysis_panel = LedAnalysisPanel(
@@ -49,7 +49,7 @@ class ApplicationComposer:
         )
         marker_panel = MarkerPanel(
             marker_store,
-            event_table,
+            marker_table,
             video_player,
             state.video,
             state.sync,
@@ -78,7 +78,7 @@ class ApplicationComposer:
             video_state=state.video,
             marker_store=marker_store,
             video_player=video_player,
-            event_table=event_table,
+            marker_table=marker_table,
             wave_panel=wave_panel,
             ttl_panel=ttl_panel,
             marker_panel=marker_panel,
@@ -98,7 +98,7 @@ class ApplicationComposer:
             parent=self.window,
             marker_store=marker_store,
             video_player=video_player,
-            event_table=event_table,
+            marker_table=marker_table,
             wave_panel=wave_panel,
             ttl_panel=ttl_panel,
             sync_panel=sync_panel,
@@ -129,7 +129,7 @@ class ApplicationComposer:
             marker_store=marker_store,
             lfp_service=lfp_service,
             video_player=video_player,
-            event_table=event_table,
+            marker_table=marker_table,
             wave_panel=wave_panel,
             sync_panel=sync_panel,
             led_analysis_panel=led_analysis_panel,
@@ -154,7 +154,7 @@ class ApplicationComposer:
         )
         sync_controller.connect_signals()
         led_controller.connect_signals()
-        event_table.events_changed.connect(wave_panel.update_lfp_peak_artist)
+        marker_table.markers_changed.connect(wave_panel.update_lfp_peak_artist)
 
         MenuBuilder(
             window=self.window,

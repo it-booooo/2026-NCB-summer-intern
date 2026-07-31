@@ -173,13 +173,13 @@ class MarkerPanel(MarkerViewPanel):
     def __init__(
         self,
         marker_store,
-        event_table,
+        marker_table,
         video_player,
         video_state=None,
         sync_state=None,
     ):
         super().__init__(marker_store)
-        self.event_table = event_table
+        self.marker_table = marker_table
         self.video_player = video_player
         self.video_state = video_state or VideoState()
         self.sync_state = sync_state or SyncState()
@@ -200,8 +200,8 @@ class MarkerPanel(MarkerViewPanel):
         edit_button = QPushButton("Edit Selected")
         delete_button = QPushButton("Delete Selected")
         sync_button = QPushButton("Select Sync Events...")
-        edit_button.clicked.connect(self.event_table.edit_selected_event)
-        delete_button.clicked.connect(self.event_table.delete_selected_rows)
+        edit_button.clicked.connect(self.marker_table.edit_selected_marker)
+        delete_button.clicked.connect(self.marker_table.delete_selected_marker)
         sync_button.clicked.connect(self.open_sync_event_dialog)
 
         self.sync_selection_label = QLabel()
@@ -232,7 +232,7 @@ class MarkerPanel(MarkerViewPanel):
         layout.addLayout(button_layout)
         layout.addWidget(self.sync_selection_label)
         layout.addWidget(self.interval_warning_label)
-        layout.addWidget(self.event_table)
+        layout.addWidget(self.marker_table)
         self.update_sync_selection_status()
         self.update_interval_warning()
 

@@ -29,7 +29,7 @@ from ..synchronization.time_conversion import relative_time
 VIDEO_MARKER_KINDS = [kind for kind in MarkerKind if kind != MarkerKind.TTL]
 
 
-class EventEditDialog(QDialog):
+class MarkerEditDialog(QDialog):
     def __init__(
         self,
         marker,
@@ -49,10 +49,10 @@ class EventEditDialog(QDialog):
         self.marker_number_input.setRange(1, max(int(marker_count), 1))
         self.marker_number_input.setValue(int(marker_number))
 
-        self.event_type_input = QComboBox()
-        self.event_type_input.setEditable(True)
-        self.event_type_input.addItems([kind.value for kind in VIDEO_MARKER_KINDS])
-        self.event_type_input.setCurrentText(marker.kind.value)
+        self.marker_type_input = QComboBox()
+        self.marker_type_input.setEditable(True)
+        self.marker_type_input.addItems([kind.value for kind in VIDEO_MARKER_KINDS])
+        self.marker_type_input.setCurrentText(marker.kind.value)
 
         self.video_time_input = QDoubleSpinBox()
         self.video_time_input.setDecimals(6)
@@ -74,8 +74,8 @@ class EventEditDialog(QDialog):
 
         self.note_input = QLineEdit(marker.note)
         form = QFormLayout()
-        form.addRow("Event number", self.marker_number_input)
-        form.addRow("Marker type", self.event_type_input)
+        form.addRow("Marker number", self.marker_number_input)
+        form.addRow("Marker type", self.marker_type_input)
         form.addRow("Video time", self.video_time_input)
         form.addRow("Frame index", self.frame_input)
         form.addRow("Note", self.note_input)
@@ -117,7 +117,7 @@ class EventEditDialog(QDialog):
 
     def accept(self):
         try:
-            MarkerKind(self.event_type_input.currentText().strip())
+            MarkerKind(self.marker_type_input.currentText().strip())
         except ValueError:
             QMessageBox.warning(self, "Invalid marker type", "Select a known marker type.")
             return
@@ -125,7 +125,7 @@ class EventEditDialog(QDialog):
 
     def values(self):
         return {
-            "kind": MarkerKind(self.event_type_input.currentText().strip()),
+            "kind": MarkerKind(self.marker_type_input.currentText().strip()),
             "position": VideoPosition(
                 float(self.video_time_input.value()),
                 int(self.frame_input.value()),
@@ -171,7 +171,7 @@ class MarkerTable(QTableWidget):
     """Video-marker view backed by the shared ``MarkerStore``."""
 
     DISPLAY_HEADERS: ClassVar[list[str]] = ["#", "marker type", "video time", "note"]
-    events_changed = Signal()
+    markers_changed = Signal()
     video_time_selected = Signal(float)
     MARKER_ID_ROLE = Qt.UserRole + 1
     VIDEO_TIME_ROLE = Qt.UserRole + 2
@@ -216,7 +216,7 @@ class MarkerTable(QTableWidget):
 
     def _store_changed(self):
         self.refresh()
-        self.events_changed.emit()
+        self.markers_changed.emit()
 
     def refresh(self):
         current_id = self.selected_marker_id()
@@ -324,7 +324,7 @@ class MarkerTable(QTableWidget):
                     marker_id == sync_marker_id,
                 )
 
-    def edit_selected_event(self):
+    def edit_selected_marker(self):
         marker_id = self.selected_marker_id()
         if marker_id is None:
             QMessageBox.information(self, "Edit Marker", "Please select a marker.")
@@ -337,7 +337,7 @@ class MarkerTable(QTableWidget):
             if item.marker_id == marker_id
         )
         metadata = self.video_state.metadata
-        dialog = EventEditDialog(
+        dialog = MarkerEditDialog(
             marker,
             marker_number=marker_number,
             marker_count=len(video_markers),
@@ -379,10 +379,8 @@ class MarkerTable(QTableWidget):
         )
         return updated
 
-    def delete_selected_rows(self):
+    def delete_selected_marker(self):
         marker_id = self.selected_marker_id()
         if marker_id is not None:
             self.marker_store.delete(marker_id)
 
-# Backward-compatible import name for external callers.
-EventTable = MarkerTable

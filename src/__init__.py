@@ -11,7 +11,7 @@ from .app_state import (
 )
 
 _LAZY_EXPORTS = {
-    "EventTable": (".ui", "EventTable"),
+    "MarkerTable": (".ui", "MarkerTable"),
     "export_events_csv": (".data_export", "export_events_csv"),
     "export_events_excel": (".data_export", "export_events_excel"),
     "WavePanel": (".ui", "WavePanel"),
@@ -32,7 +32,7 @@ def __getattr__(name):
 __all__ = [
     "AppState",
     "DataState",
-    "EventTable",
+    "MarkerTable",
     "LedState",
     "WavePanel",
     "MarkerPanel",

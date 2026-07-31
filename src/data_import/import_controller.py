@@ -38,7 +38,7 @@ if TYPE_CHECKING:
     from src.led_detection.led_controller import LedController
     from src.markers.store import MarkerStore
     from src.synchronization.sync_controller import SyncController
-    from src.ui.event_table import EventTable
+    from src.ui.marker_table import MarkerTable
     from src.ui.led_panel import LedAnalysisPanel
     from src.ui.sync_panel import SyncPanel
     from src.ui.ttl_panel import TtlPanel
@@ -51,7 +51,7 @@ class ImportContext:
     parent: object
     marker_store: MarkerStore
     video_player: VideoPlayer
-    event_table: EventTable
+    marker_table: MarkerTable
     wave_panel: WavePanel
     ttl_panel: TtlPanel
     sync_panel: SyncPanel
@@ -442,7 +442,7 @@ class ImportController:
                     self.sync_state.loading_video = False
                 self.led_state.brightness_cache.clear()
                 context.sync_controller.reset_sync_state_for_new_video()
-                context.event_table.set_video_timing(
+                context.marker_table.set_video_timing(
                     self.video_state.metadata.using_fps,
                     self.video_state.metadata.total_frames,
                 )
@@ -634,7 +634,7 @@ class ImportController:
         if loaded:
             self.led_state.brightness_cache.clear()
             context.sync_controller.reset_sync_state_for_new_video()
-            context.event_table.set_video_timing(
+            context.marker_table.set_video_timing(
                 self.video_state.metadata.using_fps,
                 self.video_state.metadata.total_frames,
             )

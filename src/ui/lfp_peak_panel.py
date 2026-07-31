@@ -31,7 +31,7 @@ from ..markers import (
 )
 from ..signal_data import PeakDetectionWorker
 from ..synchronization import relative_time
-from .event_table import NoteEditor
+from .marker_table import NoteEditor
 from .marker_view_panel import MarkerViewPanel
 
 

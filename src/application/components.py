@@ -15,7 +15,7 @@ class ApplicationComponents:
     marker_store: MarkerStore
     lfp_service: LfpAnalysisService
     video_player: object
-    event_table: object
+    marker_table: object
     wave_panel: object
     sync_panel: object
     led_analysis_panel: object
