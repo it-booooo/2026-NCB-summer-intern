@@ -4,7 +4,7 @@ from .csv_loader import (
     parse_lfp_csv_info,
     parse_signal_csv_metadata,
     parse_signal_csv_units,
-    parse_time_marker_csv_info,
+    parse_ttl_marker_csv_info,
     read_csv_preview,
 )
 from .background_workers import (
@@ -58,7 +58,7 @@ __all__ = [
     "parse_lfp_csv_info",
     "parse_signal_csv_metadata",
     "parse_signal_csv_units",
-    "parse_time_marker_csv_info",
+    "parse_ttl_marker_csv_info",
     "prepare_lfp_segment",
     "prepare_lfp_signal",
     "read_csv_preview",

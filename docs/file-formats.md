@@ -308,7 +308,7 @@ time_offset_sec = first_video_led_sec - first_ttl_record_sec
 metadata: dict[str, Any] | None
 ```
 
-由 `parse_time_marker_csv_info()` 產生：
+由 `parse_ttl_marker_csv_info()` 產生：
 
 ```python
 {
@@ -560,7 +560,7 @@ CSV
 
 ```text
 TTL CSV
- → parse_time_marker_csv_info()
+ → parse_ttl_marker_csv_info()
  → TtlState.metadata
  → legacy TTL dict 轉 Marker
  → MarkerStore

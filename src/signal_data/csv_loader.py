@@ -141,7 +141,7 @@ def normalize_unit(unit):
     return replacements.get(unit, re.sub(r"\s+", " ", unit))
 
 
-def _time_marker_info(path, time_column_name=None, markers=None):
+def _ttl_marker_info(path, time_column_name=None, markers=None):
     markers = list(markers or [])
     return {
         "path": path,
@@ -155,8 +155,8 @@ def _time_marker_info(path, time_column_name=None, markers=None):
     }
 
 
-def parse_time_marker_csv_info(path):
-    """Parse time marker csv info.
+def parse_ttl_marker_csv_info(path):
+    """Parse TTL marker CSV information.
 
     Args:
         path: File path to read from or write to.
@@ -166,7 +166,7 @@ def parse_time_marker_csv_info(path):
         rows = list(csv.reader(csv_file))
 
     if len(rows) < 2:
-        return _time_marker_info(path)
+        return _ttl_marker_info(path)
 
     header = [column.strip() for column in rows[0]]
 
@@ -199,7 +199,7 @@ def parse_time_marker_csv_info(path):
     markers = []
 
     if abs_time_column_index is None or record_time_column_index is None:
-        return _time_marker_info(path, time_column_name)
+        return _ttl_marker_info(path, time_column_name)
 
     for row in rows[1:]:
         if (
@@ -230,4 +230,4 @@ def parse_time_marker_csv_info(path):
             }
         )
 
-    return _time_marker_info(path, time_column_name, markers)
+    return _ttl_marker_info(path, time_column_name, markers)

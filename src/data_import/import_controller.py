@@ -592,9 +592,9 @@ class ImportController:
                 "Load three-axis sensor data from a CSV file and display its waveforms.",
             ),
             (
-                "Import Time Marker (.csv)",
-                self.import_time_marker,
-                "Load TTL time markers from a CSV file for video and signal synchronization.",
+                "Import TTL Markers (.csv)",
+                self.import_ttl_markers,
+                "Load TTL markers from a CSV file for video and signal synchronization.",
             ),
         ]
 
@@ -744,12 +744,12 @@ class ImportController:
         worker.start()
         progress.show()
 
-    def import_time_marker(self):
+    def import_ttl_markers(self):
         context = self.context
-        path = self.open_csv_file("Import Time Marker (.csv)")
+        path = self.open_csv_file("Import TTL Markers (.csv)")
         if not path:
             return
-        info = signal_data.parse_time_marker_csv_info(path)
+        info = signal_data.parse_ttl_marker_csv_info(path)
         markers = [marker_from_legacy_ttl(item) for item in info.get("markers", [])]
         metadata = {
             key: value

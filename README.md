@@ -61,7 +61,7 @@ Time[us] 必須是有效數字，時間順序不可往回遞減，且資料區�
 
 目前三軸顯示流程會使用 channel 260，因此三軸資料應包含該 channel。
 
-### TTL Time Marker CSV
+### TTL Marker CSV
 
 TTL CSV 建議包含：
 
@@ -122,7 +122,7 @@ TTL CSV 建議包含：
 
 ### 3. 建立或匯入 TTL
 
-可使用「File > Import > Import Time Marker (.csv)」匯入 TTL；匯入後 Sync Area 會切換至「TTL」頁面。
+可使用「File > Import > Import TTL Markers (.csv)」匯入 TTL；匯入後 Sync Area 會切換至「TTL」頁面。
 
 也可手動新增：
 
