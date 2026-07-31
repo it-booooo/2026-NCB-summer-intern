@@ -21,7 +21,7 @@ class ApplicationComponents:
     led_analysis_panel: object
     ttl_panel: object
     marker_panel: object
-    find_peak_panel: object
+    lfp_peak_panel: object
     workspace: object
     sync_controller: object
     led_controller: object

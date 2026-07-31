@@ -77,7 +77,7 @@ TTL CSV 建議包含：
 主畫面分為三區：
 
 - **Waveform Area**：LFP、三軸訊號與共用時間軸。
-- **Sync Area**：可切換「TTL」、「Video」、「Find Peak」、「LED Analysis」四個頁面。
+- **Sync Area**：可切換「TTL」、「Video」、「LFP Peak」、「LED Analysis」四個頁面。
 - **Behavior Video**：影片畫面、時間／影格資訊、跳轉欄位及播放控制。
 
 功能表包含：
@@ -182,9 +182,9 @@ TTL CSV 建議包含：
 
 1. 匯入影片及 LFP。
 2. 完成影片與 TTL 同步。
-3. 在「Find Peak」頁面選擇要分析的 LFP channel。
+3. 在「LFP Peak」頁面選擇要分析的 LFP channel。
 4. 到「Settings > Set LFP peak thresholds」設定高度、prominence 與最小間距門檻。
-5. 切換至「Find Peak」，按「Find Peak」。
+5. 切換至「LFP Peak」，按「Detect LFP Peaks」。
 
 程式只在與影片時間重疊的訊號範圍尋找峰值，並以訊號基準線區分正向峰值與負向峰值。正向與負向峰值都會加入表格，note 中會標示 positive peak 或 negative peak。偵測期間會顯示進度，需要時可按「Cancel」中止。再次對同一個 channel 執行會取代該 channel 先前自動偵測出的 LFP peak；其他 channel 的峰值會保留。表格內可編輯 note、點選峰值跳轉影片，或刪除選定峰值。
 
@@ -198,7 +198,7 @@ TTL CSV 建議包含：
 
 - 「TTL」：CSV 或 Excel。
 - 「Video」：CSV 或 Excel，包含 event type、video time、frame index、note。
-- 「Find Peak」：CSV 或 Excel。
+- 「LFP Peak」：CSV 或 Excel。
 - 「LED Analysis」：PNG 或 JPG 分析圖。
 
 ### Export Check Results

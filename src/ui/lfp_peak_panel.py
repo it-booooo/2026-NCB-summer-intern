@@ -35,7 +35,7 @@ from .event_table import NoteEditor
 from .marker_view_panel import MarkerViewPanel
 
 
-class FindPeakPanel(MarkerViewPanel):
+class LfpPeakPanel(MarkerViewPanel):
     DISPLAY_HEADERS: ClassVar[list[str]] = ["marker type", "video time", "note"]
     video_time_selected = Signal(float)
     VIDEO_TIME_ROLE = Qt.UserRole + 1
@@ -65,17 +65,17 @@ class FindPeakPanel(MarkerViewPanel):
         self.channel_selector = QComboBox()
         self.channel_selector.setMinimumContentsLength(12)
         self.channel_selector.currentIndexChanged.connect(self.refresh_table)
-        self.find_peaks_button = QPushButton("Find Peak")
+        self.detect_lfp_peaks_button = QPushButton("Detect LFP Peaks")
         self.delete_selected_button = QPushButton("Delete Selected")
         self.analysis_button = QPushButton("Analyze Peaks")
         for button in (
-            self.find_peaks_button,
+            self.detect_lfp_peaks_button,
             self.delete_selected_button,
             self.analysis_button,
         ):
             button.setFixedHeight(26)
             button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.find_peaks_button.clicked.connect(self.add_lfp_peaks)
+        self.detect_lfp_peaks_button.clicked.connect(self.detect_lfp_peaks)
         self.delete_selected_button.clicked.connect(self.delete_selected_peak)
         self.analysis_button.clicked.connect(self.analyze_peaks)
         self.delete_selected_button.setEnabled(False)
@@ -100,7 +100,7 @@ class FindPeakPanel(MarkerViewPanel):
         channel_layout.addWidget(self.channel_selector, stretch=1)
         layout.addLayout(channel_layout)
         button_layout = QHBoxLayout()
-        button_layout.addWidget(self.find_peaks_button, stretch=1)
+        button_layout.addWidget(self.detect_lfp_peaks_button, stretch=1)
         button_layout.addWidget(self.delete_selected_button, stretch=1)
         button_layout.addWidget(self.analysis_button, stretch=1)
         layout.addLayout(button_layout)
@@ -352,7 +352,7 @@ class FindPeakPanel(MarkerViewPanel):
             if self.table.rowCount() > 0:
                 self.table.selectRow(min(row, self.table.rowCount() - 1))
 
-    def add_lfp_peaks(self):
+    def detect_lfp_peaks(self):
         if not self.video_player.has_video():
             QMessageBox.warning(self, "No video", "Please import a video first.")
             return

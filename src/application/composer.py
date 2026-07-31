@@ -5,7 +5,7 @@ from ..markers import MarkerStore
 from ..signal_data import LfpAnalysisService
 from ..synchronization import SyncController
 from ..ui import (
-    FindPeakPanel,
+    LfpPeakPanel,
     LedAnalysisPanel,
     MarkerPanel,
     MarkerTable,
@@ -54,7 +54,7 @@ class ApplicationComposer:
             state.video,
             state.sync,
         )
-        find_peak_panel = FindPeakPanel(
+        lfp_peak_panel = LfpPeakPanel(
             marker_store,
             lfp_service,
             state.sync,
@@ -65,7 +65,7 @@ class ApplicationComposer:
         sync_panel.set_marker_panels(
             ttl_panel,
             marker_panel,
-            find_peak_panel,
+            lfp_peak_panel,
             led_analysis_panel,
         )
         workspace = WorkspaceView(wave_panel, sync_panel, video_player)
@@ -82,7 +82,7 @@ class ApplicationComposer:
             wave_panel=wave_panel,
             ttl_panel=ttl_panel,
             marker_panel=marker_panel,
-            find_peak_panel=find_peak_panel,
+            lfp_peak_panel=lfp_peak_panel,
             led_analysis_panel=led_analysis_panel,
         )
         led_controller = LedController(
@@ -114,7 +114,7 @@ class ApplicationComposer:
             led_analysis_panel=led_analysis_panel,
             led_controller=led_controller,
             project_controller=project_controller,
-            find_peak_panel=find_peak_panel,
+            lfp_peak_panel=lfp_peak_panel,
         )
         import_controller = ImportController(import_context, state)
         export_controller = ExportController(export_context, state)
@@ -135,7 +135,7 @@ class ApplicationComposer:
             led_analysis_panel=led_analysis_panel,
             ttl_panel=ttl_panel,
             marker_panel=marker_panel,
-            find_peak_panel=find_peak_panel,
+            lfp_peak_panel=lfp_peak_panel,
             workspace=workspace,
             sync_controller=sync_controller,
             led_controller=led_controller,

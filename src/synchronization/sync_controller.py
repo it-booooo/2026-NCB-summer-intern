@@ -95,7 +95,7 @@ class SyncController:
         wave_panel,
         ttl_panel,
         marker_panel,
-        find_peak_panel,
+        lfp_peak_panel,
         led_analysis_panel,
     ):
         self.sync_state = sync_state
@@ -108,7 +108,7 @@ class SyncController:
         self.wave_panel = wave_panel
         self.ttl_panel = ttl_panel
         self.marker_panel = marker_panel
-        self.find_peak_panel = find_peak_panel
+        self.lfp_peak_panel = lfp_peak_panel
         self.led_analysis_panel = led_analysis_panel
 
     def connect_signals(self):
@@ -121,7 +121,7 @@ class SyncController:
         self.event_table.events_changed.connect(self.update_time_offset)
         self.event_table.video_time_selected.connect(self.seek_video_marker_time)
         self.marker_panel.sync_selection_changed.connect(self.set_sync_selection)
-        self.find_peak_panel.video_time_selected.connect(
+        self.lfp_peak_panel.video_time_selected.connect(
             self.seek_video_marker_time
         )
 
@@ -145,7 +145,7 @@ class SyncController:
         self.event_table.set_sync_time_origin(None)
         self.video_player.set_sync_time_origin(None)
         self.wave_panel.set_sync_time_origin(None)
-        self.find_peak_panel.refresh_table()
+        self.lfp_peak_panel.refresh_table()
         self.wave_panel.clear_current_time_marker()
         self.wave_panel.set_event_intervals([])
 
@@ -224,7 +224,7 @@ class SyncController:
         self.video_player.set_sync_time_origin(None)
         self.wave_panel.set_sync_time_origin(None)
         self.event_table.set_sync_time_origin(None)
-        self.find_peak_panel.refresh_table()
+        self.lfp_peak_panel.refresh_table()
         self.wave_panel.clear_current_time_marker()
         self.update_event_intervals()
         self.marker_panel.update_sync_selection_status()
@@ -248,7 +248,7 @@ class SyncController:
         self.video_player.set_sync_time_origin(video_marker_sec)
         self.wave_panel.set_sync_time_origin(ttl_marker_sec)
         self.event_table.set_sync_time_origin(video_marker_sec)
-        self.find_peak_panel.refresh_table()
+        self.lfp_peak_panel.refresh_table()
         self.video_player.update_time_offset_display()
         if (
             previous_video_origin_sec is None

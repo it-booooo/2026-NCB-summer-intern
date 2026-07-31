@@ -54,7 +54,7 @@ class MainWindow(QMainWindow):
 
         background_stopped = (
             self.components.wave_panel.stop_background_work(wait=True)
-            and self.components.find_peak_panel.cancel_peak_detection(wait=True)
+            and self.components.lfp_peak_panel.cancel_peak_detection(wait=True)
             and self.components.export_controller.stop_background_work(wait=True)
         )
         if not background_stopped:

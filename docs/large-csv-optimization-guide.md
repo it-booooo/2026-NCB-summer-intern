@@ -49,7 +49,7 @@ ImportController.import_signal()
 | `src/charts/lfp_chart.py` | 建立 LFP 圖表 | 預先處理所有通道及兩種 signal |
 | `src/charts/acceleration_chart.py` | 讀取及繪製 3-axis | 重建圖表時重新讀完整 CSV |
 | `src/data_validation/input_checks.py` | 完整性檢查 | 再次完整讀取並產生大型 boolean array |
-| `src/ui/find_peak_panel.py` | 全時段 peak detection | 對完整時間軸與 signal 建立陣列 |
+| `src/ui/lfp_peak_panel.py` | 全時段 peak detection | 對完整時間軸與 signal 建立陣列 |
 
 ---
 
@@ -561,7 +561,7 @@ previous_chunk.last_timestamp -> current_chunk.first_timestamp
 
 ## Phase 7：全時段 peak detection 分塊
 
-`find_peak_panel.py` 目前會取得完整 signal 與完整 `video_times`。改成 chunk 時要處理演算法邊界。
+`lfp_peak_panel.py` 目前會取得完整 signal 與完整 `video_times`。改成 chunk 時要處理演算法邊界。
 
 ### 5.20 Chunk overlap
 

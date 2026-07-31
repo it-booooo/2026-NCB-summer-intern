@@ -54,7 +54,7 @@ class ExportContext:
     led_analysis_panel: object
     led_controller: object
     project_controller: object
-    find_peak_panel: object
+    lfp_peak_panel: object
 
 
 class ExportController:
@@ -331,7 +331,7 @@ class ExportController:
         marker_selector = QComboBox()
         marker_selector.addItem("TTL", "ttl")
         marker_selector.addItem("Video", "video")
-        marker_selector.addItem("Find Peak", "find_peak")
+        marker_selector.addItem("LFP Peak", "lfp_peak")
         marker_selector.addItem("LED Analysis", "led_analysis")
 
         file_type_selector = QComboBox()
@@ -389,11 +389,11 @@ class ExportController:
                 if file_type == "csv"
                 else export_ttl_markers_excel
             )
-        elif marker_type == "find_peak":
+        elif marker_type == "lfp_peak":
             markers = self.exportable_video_marker_rows(
                 self.marker_store.by_kind(MarkerKind.LFP_PEAK)
             )
-            filename_stem = "find_peak_markers"
+            filename_stem = "lfp_peak_markers"
             writer = export_events_csv if file_type == "csv" else export_events_excel
         else:
             markers = self.exportable_video_marker_rows(
@@ -955,10 +955,10 @@ class ExportController:
         Args:
             None.
         """
-        panel = self.context.find_peak_panel
+        panel = self.context.lfp_peak_panel
         if panel is None:
             QMessageBox.information(
-                self.parent, "No Find Peak panel", "Please open the Find Peak panel first."
+                self.parent, "No LFP Peak panel", "Please open the LFP Peak panel first."
             )
             return
 
@@ -973,7 +973,7 @@ class ExportController:
         labels = [f"Channel {channel}" for channel in channels]
         label, accepted = QInputDialog.getItem(
             self.parent,
-            "Export Find Peak Image",
+            "Export LFP Peak Image",
             "Channel",
             labels,
             default_index,
@@ -985,8 +985,8 @@ class ExportController:
 
         path, _ = QFileDialog.getSaveFileName(
             self.parent,
-            "Export Find Peak Image",
-            f"find_peak_channel_{channel}.png",
+            "Export LFP Peak Image",
+            f"lfp_peak_channel_{channel}.png",
             "PNG Images (*.png);;All Files (*)",
         )
 
@@ -1007,7 +1007,7 @@ class ExportController:
             figure.savefig(path, dpi=300)
         except Exception as error:
             QMessageBox.warning(
-                self.parent, "Export Find Peak image failed", str(error)
+                self.parent, "Export LFP Peak image failed", str(error)
             )
             return
         finally:
@@ -1016,6 +1016,6 @@ class ExportController:
 
         QMessageBox.information(
             self.parent,
-            "Find Peak Image Exported",
-            f"Find Peak image exported to:\n{path}",
+            "LFP Peak Image Exported",
+            f"LFP Peak image exported to:\n{path}",
         )

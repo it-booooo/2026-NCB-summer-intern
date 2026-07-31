@@ -9,7 +9,7 @@ class SyncPanel(QWidget):
     PANEL_NAMES: ClassVar[list[str]] = [
         "TTL",
         "Video",
-        "Find Peak",
+        "LFP Peak",
         "LED Analysis",
     ]
 
@@ -32,7 +32,7 @@ class SyncPanel(QWidget):
         self,
         ttl_panel,
         video_marker_panel,
-        find_peak_panel,
+        lfp_peak_panel,
         led_analysis_panel,
     ):
         while self.marker_stack.count():
@@ -42,7 +42,7 @@ class SyncPanel(QWidget):
         for panel in (
             ttl_panel,
             video_marker_panel,
-            find_peak_panel,
+            lfp_peak_panel,
             led_analysis_panel,
         ):
             self.marker_stack.addWidget(panel)

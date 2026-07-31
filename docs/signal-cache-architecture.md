@@ -37,7 +37,7 @@ raw 與 filtered coarse 使用相同的全域 sample index：
 
 filtered coarse 的順序是「原始解析度濾波，再依相同 step 取樣」，不是先降採樣再濾波。第一次建立某組 filter settings 時會為所有 channel 建立同一組 coarse；之後切換 channel 可直接重用。
 
-coarse 只供波形顯示與時間導航，不可作為頻譜、spectrogram、find peak 或其他精確分析的輸入。
+coarse 只供波形顯示與時間導航，不可作為頻譜、spectrogram、LFP peak detection 或其他精確分析的輸入。
 
 ## 播放區間 fine cache
 
