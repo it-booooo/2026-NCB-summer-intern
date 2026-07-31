@@ -129,7 +129,7 @@ class LedAnalysisPanel(MarkerViewPanel):
 
         self.roi_plot_indicator = RoiPlotIndicator(self)
 
-        self.select_roi_button = QPushButton("Select LED")
+        self.select_roi_button = QPushButton("Select LED ROI")
         self.select_roi_button.setFixedHeight(24)
         self.select_roi_button.clicked.connect(self.select_led_roi)
 

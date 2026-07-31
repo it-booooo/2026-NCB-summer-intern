@@ -150,7 +150,7 @@ TTL CSV 建議包含：
 
 1. 將 Sync Area 切換到「LED Analysis」。
 2. 視需要輸入 LED scan range。
-3. 按「Select LED」，然後在影片畫面上拖曳框選 LED 區域。
+3. 按「Select LED ROI」，然後在影片畫面上拖曳框選 LED 區域。
 4. 完成框選後，程式會自動在背景分析 ROI 的影格亮度變化。
 5. 等待進度完成，確認分析圖、門檻及建立的 LED On／Off 標記。
 
