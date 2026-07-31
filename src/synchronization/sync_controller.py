@@ -10,7 +10,7 @@ from ..markers import (
 
 
 SYNC_VIDEO_REFERENCE_KINDS = frozenset(
-    {MarkerKind.LED_ON, MarkerKind.BEHAVIOR_START}
+    {MarkerKind.LED_ON, MarkerKind.ACTION_START}
 )
 
 
@@ -289,9 +289,9 @@ class SyncController:
         video_intervals = [
             *pair_event_intervals(
                 markers,
-                MarkerKind.BEHAVIOR_START,
-                MarkerKind.BEHAVIOR_END,
-                "behavior",
+                MarkerKind.ACTION_START,
+                MarkerKind.ACTION_END,
+                "action",
                 self.sync_state.time_offset_sec,
             ),
             *pair_event_intervals(

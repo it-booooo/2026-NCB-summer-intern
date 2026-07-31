@@ -277,7 +277,7 @@ time_offset_sec = first_video_led_sec - first_ttl_record_sec
 
 ```python
 {
-    "event_type": "behavior" | "led",
+    "event_type": "action" | "led",
     "video_start_sec": float,
     "video_end_sec": float,
     "record_start_sec": float,
@@ -449,8 +449,8 @@ Marker(
 | `TTL` | `TTL` |
 | `LED_ON` | `LED_on` |
 | `LED_OFF` | `LED_off` |
-| `BEHAVIOR_START` | `behavior_start` |
-| `BEHAVIOR_END` | `behavior_end` |
+| `ACTION_START` | `action_start` |
+| `ACTION_END` | `action_end` |
 | `SEIZURE_LIKE` | `seizure_like_event` |
 | `LFP_PEAK` | `LFP_peak` |
 

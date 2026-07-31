@@ -10,8 +10,8 @@ class MarkerKind(str, Enum):
     TTL = "TTL"
     LED_ON = "LED_on"
     LED_OFF = "LED_off"
-    BEHAVIOR_START = "behavior_start"
-    BEHAVIOR_END = "behavior_end"
+    ACTION_START = "action_start"
+    ACTION_END = "action_end"
     SEIZURE_LIKE = "seizure_like_event"
     LFP_PEAK = "LFP_peak"
 

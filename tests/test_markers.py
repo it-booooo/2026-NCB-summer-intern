@@ -47,6 +47,10 @@ class MarkerModelTests(unittest.TestCase):
 
         self.assertEqual(restored, marker)
 
+    def test_action_marker_values_are_consistent(self):
+        self.assertEqual(MarkerKind.ACTION_START.value, "action_start")
+        self.assertEqual(MarkerKind.ACTION_END.value, "action_end")
+
     def test_legacy_records_migrate_to_markers(self):
         event = marker_from_legacy_event(
             {
@@ -118,7 +122,7 @@ class MarkerStoreTests(unittest.TestCase):
 
     def test_updates_and_deletes_use_marker_id(self):
         marker = Marker(
-            kind=MarkerKind.BEHAVIOR_START,
+            kind=MarkerKind.ACTION_START,
             source=MarkerSource.MANUAL,
             position=VideoPosition(1.0, 30),
         )
@@ -135,12 +139,12 @@ class MarkerIntervalTests(unittest.TestCase):
     def test_interval_pairing_accepts_unified_markers(self):
         markers = [
             Marker(
-                kind=MarkerKind.BEHAVIOR_START,
+                kind=MarkerKind.ACTION_START,
                 source=MarkerSource.MANUAL,
                 position=VideoPosition(5.0, 150),
             ),
             Marker(
-                kind=MarkerKind.BEHAVIOR_END,
+                kind=MarkerKind.ACTION_END,
                 source=MarkerSource.MANUAL,
                 position=VideoPosition(8.0, 240),
             ),
@@ -148,14 +152,15 @@ class MarkerIntervalTests(unittest.TestCase):
 
         intervals = pair_event_intervals(
             markers,
-            MarkerKind.BEHAVIOR_START,
-            MarkerKind.BEHAVIOR_END,
-            "behavior",
+            MarkerKind.ACTION_START,
+            MarkerKind.ACTION_END,
+            "action",
             2.0,
         )
 
         self.assertEqual(intervals[0]["video_start_sec"], 5.0)
         self.assertEqual(intervals[0]["video_end_sec"], 8.0)
+        self.assertEqual(intervals[0]["event_type"], "action")
 
 
 if __name__ == "__main__":

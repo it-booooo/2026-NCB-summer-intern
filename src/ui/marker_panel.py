@@ -19,7 +19,7 @@ from .marker_view_panel import MarkerViewPanel
 
 SYNC_VIDEO_LABELS = {
     MarkerKind.LED_ON: "LED On",
-    MarkerKind.BEHAVIOR_START: "Action Start",
+    MarkerKind.ACTION_START: "Action Start",
 }
 
 
@@ -127,7 +127,7 @@ class SyncEventDialog(QDialog):
         return mode, self.ttl_input.currentData(), self.video_input.currentData()
 
 
-def behavior_interval_warning(markers):
+def action_interval_warning(markers):
     pending_start = None
     pending_led_on = None
     video_number = 0
@@ -150,9 +150,9 @@ def behavior_interval_warning(markers):
                     f"Event #{led_on_number} LED On time."
                 )
             pending_led_on = None
-        elif marker.kind == MarkerKind.BEHAVIOR_START:
+        elif marker.kind == MarkerKind.ACTION_START:
             pending_start = (video_number, marker)
-        elif marker.kind == MarkerKind.BEHAVIOR_END:
+        elif marker.kind == MarkerKind.ACTION_END:
             if pending_start is None:
                 return f"Event #{video_number} Action End has no preceding Action Start."
             start_number, start_marker = pending_start
@@ -187,8 +187,8 @@ class MarkerPanel(MarkerViewPanel):
         button_specs = [
             ("LED On", MarkerKind.LED_ON),
             ("LED Off", MarkerKind.LED_OFF),
-            ("Action Start", MarkerKind.BEHAVIOR_START),
-            ("Action End", MarkerKind.BEHAVIOR_END),
+            ("Action Start", MarkerKind.ACTION_START),
+            ("Action End", MarkerKind.ACTION_END),
             ("Seizure-like", MarkerKind.SEIZURE_LIKE),
         ]
         marker_buttons = []
@@ -240,7 +240,7 @@ class MarkerPanel(MarkerViewPanel):
         return isinstance(marker.position, VideoPosition)
 
     def update_interval_warning(self):
-        warning = behavior_interval_warning(self.marker_store.all())
+        warning = action_interval_warning(self.marker_store.all())
         self.interval_warning_label.setText(warning)
         self.interval_warning_label.setVisible(bool(warning))
 

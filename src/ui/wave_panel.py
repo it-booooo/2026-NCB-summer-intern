@@ -761,7 +761,7 @@ class WavePanel(LfpAnalysisMixin, QWidget):
 
             ax = fig.axes[0]
             for interval in self.sync_state.event_intervals:
-                event_type = interval.get("event_type", "behavior")
+                event_type = interval.get("event_type", "action")
                 if event_type == "ttl":
                     self.event_interval_artists.append(
                         ax.axvline(
