@@ -9,7 +9,7 @@ def format_led_detection_status(points, threshold, events, stats):
     interval_count = stats.get("event_count", len(events or []) // 2)
     mode_label = stats.get("mode_label", "Frame delta")
     status_prefix = (
-        "LED scan completed: no events found"
+        "LED detection completed: no events found"
         if stats.get("scan_outcome") == "no_events"
         else "LED detection"
     )

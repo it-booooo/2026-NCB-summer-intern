@@ -113,7 +113,7 @@ def compute_led_brightness_curve(
 
     try:
         if rotation_degrees not in {0, 180}:
-            raise ValueError("OpenCL LED analysis does not support 90-degree rotation")
+            raise ValueError("OpenCL LED detection does not support 90-degree rotation")
 
         from .led_opencl import compute_led_brightness_curve_opencl
 

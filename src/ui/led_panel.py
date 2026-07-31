@@ -28,10 +28,10 @@ class RoiPlotIndicator(QLabel):
     SPINNER_FRAMES = ("◜", "◝", "◞", "◟")
     STATE_TOOLTIPS: ClassVar[dict[str, str]] = {
         "idle": "ROI plot has not been generated.",
-        "rendering": "Analyzing LED ROI...",
+        "rendering": "Running LED detection...",
         "done": "ROI plot generated.",
         "empty": "ROI plot generated without brightness data.",
-        "failed": "LED analysis failed.",
+        "failed": "LED detection failed.",
     }
 
     def __init__(self, parent=None):
@@ -104,14 +104,14 @@ class LedAnalysisPanel(MarkerViewPanel):
         self.led_scan_end_input.setPlaceholderText("00:30.000")
         self.led_scan_end_input.setToolTip("LED scan end time. Blank = full video end.")
         self.led_scan_end_input.setFixedWidth(88)
-        self.led_detection_label = QLabel("LED detection: Not analyzed")
-        self.led_progress_bar = QProgressBar()
-        self.led_progress_bar.setRange(0, 100)
-        self.led_progress_bar.setValue(0)
-        self.led_progress_bar.setTextVisible(False)
-        self.led_progress_bar.setFixedHeight(6)
-        self.led_progress_bar.setFixedWidth(300)
-        self.led_progress_bar.setStyleSheet(
+        self.led_detection_label = QLabel("LED detection: Not started")
+        self.led_detection_progress_bar = QProgressBar()
+        self.led_detection_progress_bar.setRange(0, 100)
+        self.led_detection_progress_bar.setValue(0)
+        self.led_detection_progress_bar.setTextVisible(False)
+        self.led_detection_progress_bar.setFixedHeight(6)
+        self.led_detection_progress_bar.setFixedWidth(300)
+        self.led_detection_progress_bar.setStyleSheet(
             """
             QProgressBar {
                 background-color: #ffffff;
@@ -124,8 +124,8 @@ class LedAnalysisPanel(MarkerViewPanel):
             }
             """
         )
-        self.led_progress_label = QLabel("LED analysis: Not started")
-        self.led_progress_label.setWordWrap(False)
+        self.led_detection_progress_label = QLabel("LED detection: Not started")
+        self.led_detection_progress_label.setWordWrap(False)
 
         self.roi_plot_indicator = RoiPlotIndicator(self)
 
@@ -175,8 +175,8 @@ class LedAnalysisPanel(MarkerViewPanel):
         progress_layout = QHBoxLayout()
         progress_layout.setContentsMargins(0, 0, 0, 0)
         progress_layout.setSpacing(6)
-        progress_layout.addWidget(self.led_progress_bar)
-        progress_layout.addWidget(self.led_progress_label, stretch=1)
+        progress_layout.addWidget(self.led_detection_progress_bar)
+        progress_layout.addWidget(self.led_detection_progress_label, stretch=1)
         info_grid.addLayout(progress_layout, 3, 0, 1, 2)
 
         self.video_marker_controls = QWidget()
@@ -320,9 +320,9 @@ class LedAnalysisPanel(MarkerViewPanel):
         self.led_state.analysis_status = None
         self.clear_analysis_details()
         self.roi_plot_indicator.set_state("idle")
-        self.led_progress_bar.setRange(0, 100)
-        self.led_progress_bar.setValue(0)
-        self.led_progress_label.setText("LED analysis: Not started")
+        self.led_detection_progress_bar.setRange(0, 100)
+        self.led_detection_progress_bar.setValue(0)
+        self.led_detection_progress_label.setText("LED detection: Not started")
 
     def set_led_analysis(self, points, threshold, events, stats=None, status=None):
         """Set led analysis.
@@ -455,34 +455,34 @@ class LedAnalysisPanel(MarkerViewPanel):
         """
         self.set_roi_plot_idle()
         self.roi_plot_indicator.set_state("rendering")
-        self.led_progress_bar.setRange(0, 100)
-        self.led_progress_bar.setValue(0)
-        self.led_progress_label.setText("Analyzing LED ROI: 0%")
+        self.led_detection_progress_bar.setRange(0, 100)
+        self.led_detection_progress_bar.setValue(0)
+        self.led_detection_progress_label.setText("LED detection: 0%")
 
     def update_led_detection_progress(self, current_frame, total_frames):
         """Update led detection progress."""
         if total_frames <= 0:
-            self.led_progress_bar.setRange(0, 0)
-            self.led_progress_label.setText(
-                f"Analyzing LED ROI: frame {current_frame}"
+            self.led_detection_progress_bar.setRange(0, 0)
+            self.led_detection_progress_label.setText(
+                f"LED detection: frame {current_frame}"
             )
             return
 
         progress = int(min(max(current_frame / total_frames, 0.0), 1.0) * 100)
-        self.led_progress_bar.setRange(0, 100)
-        self.led_progress_bar.setValue(progress)
-        self.led_progress_label.setText(
-            f"Analyzing LED ROI: {progress}% ({current_frame}/{total_frames})"
+        self.led_detection_progress_bar.setRange(0, 100)
+        self.led_detection_progress_bar.setValue(progress)
+        self.led_detection_progress_label.setText(
+            f"LED detection: {progress}% ({current_frame}/{total_frames})"
         )
 
     def finish_led_detection_progress(self, has_events=True):
         """Finish led detection progress."""
-        self.led_progress_bar.setRange(0, 100)
-        self.led_progress_bar.setValue(100)
-        self.led_progress_label.setText(
-            "LED analysis complete"
+        self.led_detection_progress_bar.setRange(0, 100)
+        self.led_detection_progress_bar.setValue(100)
+        self.led_detection_progress_label.setText(
+            "LED detection complete"
             if has_events
-            else "LED scan complete: no events found"
+            else "LED detection complete: no events found"
         )
 
     def set_led_detection_stage(self, text):
@@ -492,8 +492,8 @@ class LedAnalysisPanel(MarkerViewPanel):
             text: Text displayed to the user.
         """
         self.led_detection_label.setText(f"LED detection: {text}")
-        self.led_progress_bar.setRange(0, 0)
-        self.led_progress_label.setText(text)
+        self.led_detection_progress_bar.setRange(0, 0)
+        self.led_detection_progress_label.setText(text)
 
     def fail_led_detection_progress(self):
         """Report failure for led detection progress.
@@ -502,9 +502,9 @@ class LedAnalysisPanel(MarkerViewPanel):
             None.
         """
         self.roi_plot_indicator.set_state("failed")
-        self.led_progress_bar.setRange(0, 100)
-        self.led_progress_bar.setValue(0)
-        self.led_progress_label.setText("LED analysis failed")
+        self.led_detection_progress_bar.setRange(0, 100)
+        self.led_detection_progress_bar.setValue(0)
+        self.led_detection_progress_label.setText("LED detection failed")
 
     def set_led_detection_status(self, text):
         """Set led detection status.
@@ -514,4 +514,3 @@ class LedAnalysisPanel(MarkerViewPanel):
         """
         self.led_detection_label.setText(text)
         self.led_detection_label.setToolTip(text)
-

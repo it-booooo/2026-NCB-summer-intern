@@ -154,7 +154,7 @@ class SyncController:
         self.led_analysis_panel.led_roi_label.setText("LED ROI: Not selected")
         self.led_analysis_panel.set_roi_plot_idle()
         self.led_analysis_panel.set_led_detection_status(
-            "LED detection: Not analyzed"
+            "LED detection: Not started"
         )
 
     def seek_video_marker_time(self, video_time_sec):
