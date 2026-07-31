@@ -7,20 +7,20 @@ from uuid import uuid4
 
 
 class MarkerKind(str, Enum):
-    TTL = "TTL"
-    LED_ON = "LED_on"
-    LED_OFF = "LED_off"
+    TTL = "ttl"
+    LED_ON = "led_on"
+    LED_OFF = "led_off"
     ACTION_START = "action_start"
     ACTION_END = "action_end"
-    SEIZURE_LIKE = "seizure_like_event"
-    LFP_PEAK = "LFP_peak"
+    SEIZURE_LIKE = "seizure_like"
+    LFP_PEAK = "lfp_peak"
 
 
 class MarkerSource(str, Enum):
     MANUAL = "manual"
     TTL_IMPORT = "ttl_import"
     LED_DETECTION = "led_detection"
-    LFP_DETECTION = "lfp_peak"
+    LFP_DETECTION = "lfp_detection"
     PROJECT_IMPORT = "project_import"
 
 
@@ -55,7 +55,6 @@ def marker_source(value: MarkerSource | str) -> MarkerSource:
     if isinstance(value, MarkerSource):
         return value
     aliases = {
-        "lfp_detection": MarkerSource.LFP_DETECTION,
         "timeline": MarkerSource.TTL_IMPORT,
     }
     alias = aliases.get(str(value))

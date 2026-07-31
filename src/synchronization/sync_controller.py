@@ -327,7 +327,7 @@ class SyncController:
                 continue
             record_intervals.append(
                 {
-                    "event_type": "seizure_like_event",
+                    "event_type": "seizure_like",
                     "video_time_sec": video_time_sec,
                     "record_time_sec": record_time_sec,
                     "marker_id": marker.marker_id,

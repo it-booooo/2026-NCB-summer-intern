@@ -774,7 +774,7 @@ class WavePanel(LfpAnalysisMixin, QWidget):
                     )
                     continue
 
-                if event_type == "seizure_like_event":
+                if event_type == "seizure_like":
                     self.event_interval_artists.append(
                         ax.axvline(
                             float(interval["record_time_sec"]),

@@ -47,14 +47,25 @@ class MarkerModelTests(unittest.TestCase):
 
         self.assertEqual(restored, marker)
 
-    def test_action_marker_values_are_consistent(self):
-        self.assertEqual(MarkerKind.ACTION_START.value, "action_start")
-        self.assertEqual(MarkerKind.ACTION_END.value, "action_end")
+    def test_marker_values_use_canonical_snake_case(self):
+        self.assertEqual(
+            {kind.value for kind in MarkerKind},
+            {
+                "ttl",
+                "led_on",
+                "led_off",
+                "action_start",
+                "action_end",
+                "seizure_like",
+                "lfp_peak",
+            },
+        )
+        self.assertEqual(MarkerSource.LFP_DETECTION.value, "lfp_detection")
 
     def test_legacy_records_migrate_to_markers(self):
         event = marker_from_legacy_event(
             {
-                "event_type": "LED_on",
+                "event_type": "led_on",
                 "video_time_sec": 3.0,
                 "frame_index": 90,
                 "source": "manual",
@@ -70,10 +81,10 @@ class MarkerModelTests(unittest.TestCase):
     def test_legacy_peak_is_restored_on_record_timeline(self):
         peak = marker_from_legacy_event(
             {
-                "event_type": "LFP_peak",
+                "event_type": "lfp_peak",
                 "video_time_sec": 12.0,
                 "frame_index": 360,
-                "source": "lfp_peak",
+                "source": "lfp_detection",
             },
             offset_sec=2.0,
         )

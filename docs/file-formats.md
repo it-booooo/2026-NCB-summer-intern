@@ -291,7 +291,7 @@ time_offset_sec = first_video_led_sec - first_ttl_record_sec
 
 ```python
 {
-    "event_type": "seizure_like_event",
+    "event_type": "seizure_like",
     "video_time_sec": float,
     "record_time_sec": float,
     "marker_id": str,
@@ -446,13 +446,13 @@ Marker(
 
 | Enum | 實際字串 |
 | --- | --- |
-| `TTL` | `TTL` |
-| `LED_ON` | `LED_on` |
-| `LED_OFF` | `LED_off` |
+| `TTL` | `ttl` |
+| `LED_ON` | `led_on` |
+| `LED_OFF` | `led_off` |
 | `ACTION_START` | `action_start` |
 | `ACTION_END` | `action_end` |
-| `SEIZURE_LIKE` | `seizure_like_event` |
-| `LFP_PEAK` | `LFP_peak` |
+| `SEIZURE_LIKE` | `seizure_like` |
+| `LFP_PEAK` | `lfp_peak` |
 
 ### `MarkerSource`
 
@@ -461,7 +461,7 @@ Marker(
 | `MANUAL` | `manual` |
 | `TTL_IMPORT` | `ttl_import` |
 | `LED_DETECTION` | `led_detection` |
-| `LFP_DETECTION` | `lfp_peak` |
+| `LFP_DETECTION` | `lfp_detection` |
 | `PROJECT_IMPORT` | `project_import` |
 
 相容 alias：
@@ -694,7 +694,7 @@ Video domain：
 ```json
 {
   "marker_id": "uuid",
-  "kind": "LED_on",
+  "kind": "led_on",
   "source": "led_detection",
   "position": {
     "domain": "video",
@@ -713,7 +713,7 @@ Record domain：
 ```json
 {
   "marker_id": "uuid",
-  "kind": "TTL",
+  "kind": "ttl",
   "source": "ttl_import",
   "position": {
     "domain": "record",

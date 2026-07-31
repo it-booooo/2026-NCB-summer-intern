@@ -291,7 +291,7 @@ class MarkerPanel(MarkerViewPanel):
                     led_markers,
                     key=lambda item: item[1].position.time_sec,
                 )
-                text = f"Sync: Automatic (TTL #1 <-> Video #{video_number} LED_on)"
+                text = f"Sync: Automatic (TTL #1 <-> Video #{video_number} LED On)"
         self.sync_selection_label.setText(text)
         self.sync_selection_label.setStyleSheet("color: #555;")
 

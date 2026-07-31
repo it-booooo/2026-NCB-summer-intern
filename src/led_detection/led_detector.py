@@ -272,13 +272,13 @@ def event_pair_from_deltas(points, on_delta, off_delta):
 
     return [
         LedEvent(
-            event_type="LED_on",
+            event_type="led_on",
             video_time_sec=on_point.video_time_sec,
             frame_index=on_point.frame_index,
             brightness=on_point.brightness,
         ),
         LedEvent(
-            event_type="LED_off",
+            event_type="led_off",
             video_time_sec=off_point.video_time_sec,
             frame_index=off_point.frame_index,
             brightness=off_point.brightness,
