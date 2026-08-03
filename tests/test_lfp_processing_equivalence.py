@@ -9,7 +9,10 @@ from lfp_analysis_process import (
 from lfp_analysis_process import (
     _compute_time_frequency as process_time_frequency,
 )
+from lfp_analysis_process import _spectrogram_figure
+from src.signal_data.background_workers import _spectrogram_frequency_range
 from src.signal_data.lfp_processing import (
+    LfpFilterSettings,
     compute_power_spectrum,
     compute_time_frequency,
 )
@@ -75,6 +78,38 @@ class LfpProcessingEquivalenceTests(unittest.TestCase):
                 expected_array,
             )
         self.assertEqual(actual[2].shape, (257, 194))
+
+    def test_filtered_spectrogram_uses_active_bandpass_range(self):
+        settings = LfpFilterSettings(
+            show_filtered=True,
+            bandpass_enabled=True,
+            bandpass_low_hz=5.0,
+            bandpass_high_hz=40.0,
+        )
+        frequency_range = _spectrogram_frequency_range(settings)
+        figure = _spectrogram_figure(
+            2,
+            0.0,
+            1.0,
+            np.array([0.0, 25.0, 50.0]),
+            np.array([0.25, 0.75]),
+            np.ones((3, 2)),
+            None,
+            frequency_range,
+        )
+
+        self.assertEqual(frequency_range, (5.0, 40.0))
+        self.assertEqual(figure.axes[0].get_ylim(), (5.0, 40.0))
+
+    def test_raw_spectrogram_keeps_full_frequency_range(self):
+        settings = LfpFilterSettings(
+            show_filtered=False,
+            bandpass_enabled=True,
+            bandpass_low_hz=5.0,
+            bandpass_high_hz=40.0,
+        )
+
+        self.assertIsNone(_spectrogram_frequency_range(settings))
 
 
 if __name__ == "__main__":

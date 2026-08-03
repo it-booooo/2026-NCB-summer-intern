@@ -41,6 +41,7 @@ def _render_analysis_file(
     cancel_event,
     dpi=100,
     annotation=None,
+    frequency_range_hz=None,
 ):
     """Run one render process and return only its encoded static image."""
     context = multiprocessing.get_context("spawn")
@@ -60,6 +61,7 @@ def _render_analysis_file(
             record_time_origin_sec,
             dpi,
             annotation,
+            frequency_range_hz,
         ),
         name=f"lfp-{analysis_type}",
         daemon=True,
@@ -253,6 +255,7 @@ class LfpAnalysisWorker(SignalWorker):
             record_time_origin_sec=self.record_time_origin_sec,
             cancel_event=self.cancel_event,
             dpi=ANALYSIS_DISPLAY_DPI,
+            frequency_range_hz=_spectrogram_frequency_range(self.settings),
         )
 
 
@@ -404,6 +407,9 @@ class LfpExportDataWorker(SignalWorker):
                     cancel_event=self.cancel_event,
                     dpi=self.image_dpi,
                     annotation=self.annotation,
+                    frequency_range_hz=_spectrogram_frequency_range(
+                        self.settings
+                    ),
                 )
                 self.report(
                     65 + round(35 * (index + 1) / len(spectral_types))
@@ -417,6 +423,20 @@ class LfpExportDataWorker(SignalWorker):
                 os.unlink(input_path)
             except FileNotFoundError:
                 pass
+
+
+def _spectrogram_frequency_range(settings):
+    """Return the active bandpass bounds used by a filtered spectrogram."""
+    if (
+        settings is None
+        or not settings.show_filtered
+        or not settings.bandpass_enabled
+    ):
+        return None
+    return (
+        float(settings.bandpass_low_hz),
+        float(settings.bandpass_high_hz),
+    )
 
 
 class PeakDetectionWorker(SignalWorker):
