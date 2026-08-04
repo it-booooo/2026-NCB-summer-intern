@@ -23,6 +23,7 @@ def render_lfp_analysis(
     record_time_origin_sec,
     dpi=100,
     annotation=None,
+    frequency_range_hz=None,
 ):
     """Compute and render inside a disposable process."""
     figure = None
@@ -54,6 +55,7 @@ def render_lfp_analysis(
                 times,
                 power,
                 record_time_origin_sec,
+                frequency_range_hz,
             )
             del frequencies, times, power
         else:
@@ -176,6 +178,7 @@ def _spectrogram_figure(
     times,
     power,
     record_time_origin_sec,
+    frequency_range_hz=None,
 ):
     duration_sec = abs(float(end_time_s) - float(start_time_s))
     figure_width = min(24.0, 8.0 + duration_sec / 120.0)
@@ -204,4 +207,7 @@ def _spectrogram_figure(
     )
     ax.set_xlabel(f"{time_mode} (s)")
     ax.set_ylabel("Frequency (Hz)")
+    if frequency_range_hz is not None:
+        low_hz, high_hz = map(float, frequency_range_hz)
+        ax.set_ylim(low_hz, high_hz)
     return figure
