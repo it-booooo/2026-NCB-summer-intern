@@ -638,6 +638,7 @@ class PeakDetectionWorker(SignalWorker):
             raw.values,
             sample_rate_hz,
             effective_settings,
+            sample_offset=loaded_left,
         )
         crop_left = left_index - loaded_left
         crop_right = crop_left + (right_index - left_index)

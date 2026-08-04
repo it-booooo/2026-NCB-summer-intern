@@ -19,7 +19,7 @@ import numpy as np
 
 CACHE_FORMAT_VERSION = 3
 OVERVIEW_ALGORITHM_VERSION = 3
-FILTER_COARSE_ALGORITHM_VERSION = 1
+FILTER_COARSE_ALGORITHM_VERSION = 4
 DEFAULT_CHUNK_ROWS = 250_000
 DEFAULT_OVERVIEW_MAX_POINTS = 5_000
 DEFAULT_CACHE_MAX_BYTES = 20 * 1024 * 1024 * 1024
@@ -617,11 +617,16 @@ class SignalDataSource:
         return self._valid_coarse(path, identity)
 
     def _coarse_identity(self, step: int, settings) -> dict:
+        filter_settings = asdict(settings) if settings is not None else None
+        if filter_settings is not None:
+            filter_settings["line_noise_frequencies_hz"] = list(
+                filter_settings.get("line_noise_frequencies_hz", ())
+            )
         return {
             "source": self._identity(),
             "step": max(int(step), 1),
             "filter_algorithm_version": FILTER_COARSE_ALGORITHM_VERSION,
-            "filter_settings": asdict(settings) if settings is not None else None,
+            "filter_settings": filter_settings,
         }
 
     def _valid_coarse(self, path: Path, identity: dict) -> bool:
@@ -709,6 +714,7 @@ class SignalDataSource:
                                 ),
                                 sample_rate,
                                 settings,
+                                sample_offset=loaded_left,
                             )
                             relative = requested - loaded_left
                             selected = filtered[relative]

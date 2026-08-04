@@ -30,7 +30,7 @@ def ensure_output_is_replaceable():
             probe.rename(OUTPUT_EXE)
 
 
-def conda_runtime_binaries():
+def conda_runtime_binaries(*, include_cuda=False):
     """Collect conda DLLs required by stdlib extension modules at runtime."""
     search_dirs = [
         ENV_ROOT / "Library" / "bin",
@@ -44,6 +44,16 @@ def conda_runtime_binaries():
         "sqlite3.dll",
         "libsqlite3*.dll",
     )
+    if include_cuda:
+        patterns += (
+            "cublas*.dll",
+            "cudart*.dll",
+            "curand*.dll",
+            "cusolver*.dll",
+            "cusparse*.dll",
+            "nvJitLink*.dll",
+            "nvrtc*.dll",
+        )
 
     binaries = []
     seen = set()
@@ -58,6 +68,18 @@ def conda_runtime_binaries():
                 seen.add(dll)
                 binaries.extend(["--add-binary", f"{dll}{separator}."])
     return binaries
+
+
+def optional_cupy_bundle_args():
+    """Bundle CuPy and Conda CUDA DLLs when the build environment has them."""
+
+    if importlib.util.find_spec("cupy") is None:
+        print("CuPy is not installed; the executable will use the CPU fallback.")
+        return []
+    import cupy
+
+    print(f"Bundling CuPy {cupy.__version__} from {cupy.__file__}")
+    return ["--collect-all=cupy"]
 
 
 def main():
@@ -86,6 +108,7 @@ def main():
     print(f"Bundling pyopencl {pyopencl.VERSION_TEXT} from {pyopencl.__file__}")
 
     ensure_output_is_replaceable()
+    cupy_args = optional_cupy_bundle_args()
 
     env = os.environ.copy()
     if LOCAL_DEPS.exists():
@@ -104,9 +127,10 @@ def main():
         "--windowed",
         "--onefile",
         "--collect-all=pyopencl",
+        *cupy_args,
         "--add-data=input_data/icon.png;input_data",
         "--icon=input_data/icon.png",
-        *conda_runtime_binaries(),
+        *conda_runtime_binaries(include_cuda=bool(cupy_args)),
         "__main__.py",
     ]
     subprocess.run(cmd, cwd=ROOT, check=True, env=env)

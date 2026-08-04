@@ -98,12 +98,25 @@ class LfpAnalysisMixin:
         bandpass_checkbox,
         low_spin,
         high_spin,
-        notch_checkbox,
+        method_selector,
+        line_frequencies_edit,
+        notch_quality_spin,
+        regression_window_spin,
+        regression_overlap_spin,
+        regression_all_harmonics_checkbox,
     ):
         """Set tings from processing controls."""
-        line_noise_hz = self.data_state.line_noise_hz if notch_checkbox.isChecked() else None
-        if line_noise_hz is not None:
-            line_noise_hz = float(line_noise_hz)
+        method = str(method_selector.currentData())
+        frequencies = (
+            ()
+            if method == "none"
+            else signal_func.parse_line_noise_frequencies(
+                line_frequencies_edit.text()
+            )
+        )
+        if method != "none" and not frequencies:
+            raise ValueError("Enter at least one line-noise frequency.")
+        line_noise_hz = frequencies[0] if frequencies else None
     
         return signal_func.LfpFilterSettings(
             show_filtered=bool(signal_selector.currentData()),
@@ -111,6 +124,15 @@ class LfpAnalysisMixin:
             bandpass_low_hz=float(low_spin.value()),
             bandpass_high_hz=float(high_spin.value()),
             line_noise_hz=line_noise_hz,
+            notch_quality=float(notch_quality_spin.value()),
+            line_noise_method=method,
+            regression_window_seconds=float(regression_window_spin.value()),
+            regression_overlap=float(regression_overlap_spin.value()) / 100.0,
+            regression_harmonics=1,
+            regression_all_harmonics=(
+                regression_all_harmonics_checkbox.isChecked()
+            ),
+            line_noise_frequencies_hz=frequencies,
         )
     
     def _prepare_lfp_analysis(self, failure_title):

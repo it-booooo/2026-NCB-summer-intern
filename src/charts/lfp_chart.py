@@ -42,6 +42,24 @@ def _filter_settings_for_view(filter_settings, show_filtered):
         ),
         line_noise_hz=(filter_settings.line_noise_hz if filter_settings else None),
         notch_quality=(filter_settings.notch_quality if filter_settings else 30.0),
+        line_noise_method=(
+            filter_settings.line_noise_method if filter_settings else "notch"
+        ),
+        regression_window_seconds=(
+            filter_settings.regression_window_seconds if filter_settings else 4.0
+        ),
+        regression_overlap=(
+            filter_settings.regression_overlap if filter_settings else 0.5
+        ),
+        regression_harmonics=(
+            filter_settings.regression_harmonics if filter_settings else 1
+        ),
+        regression_all_harmonics=(
+            filter_settings.regression_all_harmonics if filter_settings else False
+        ),
+        line_noise_frequencies_hz=(
+            filter_settings.line_noise_frequencies_hz if filter_settings else ()
+        ),
     )
 
 

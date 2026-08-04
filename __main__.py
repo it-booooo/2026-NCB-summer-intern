@@ -5,6 +5,11 @@ from pathlib import Path
 
 def main():
     """Start the desktop synchronization application."""
+    from src.cupy_bootstrap import preload_cupy
+
+    # Load optional CUDA/NVRTC DLLs before Qt registers its own DLL paths.
+    preload_cupy()
+
     from PySide6.QtGui import QIcon
     from PySide6.QtWidgets import QApplication
 

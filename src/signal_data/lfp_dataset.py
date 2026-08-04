@@ -182,6 +182,7 @@ class LfpDataset(SignalDataset):
                 loaded.values,
                 sample_rate_hz,
                 effective_settings,
+                sample_offset=loaded_left,
             )
             crop_left = block_left - loaded_left
             crop_right = crop_left + (block_right - block_left)
@@ -280,6 +281,7 @@ class LfpDataset(SignalDataset):
                 loaded_values,
                 sample_rate_hz,
                 effective_settings,
+                sample_offset=loaded_left,
             )
             crop_left = block_left - loaded_left
             crop_right = crop_left + (block_right - block_left)
@@ -381,6 +383,7 @@ class LfpDataset(SignalDataset):
                         loaded_values,
                         sample_rate_hz,
                         effective_settings,
+                        sample_offset=loaded_left,
                     )
                 else:
                     prepared_values = loaded_values

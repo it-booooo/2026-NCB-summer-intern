@@ -6,7 +6,7 @@ Pig Behavior Sync 是一套用於動物行為實驗的 Windows 桌面工具，�
 
 - 播放 MP4 行為影片，支援逐格移動、跳至指定時間／影格，以及 90°、180° 旋轉。
 - 顯示 LFP 與三軸訊號，共用可拖曳的時間範圍。
-- 選擇 LFP channel，套用 band-pass 與電源雜訊 notch filter。
+- 選擇 LFP channel，套用 band-pass，以及 notch 或滑動視窗正弦波回歸電源雜訊移除。
 - 顯示 LFP power spectrum 與 spectrogram。
 - 匯入或手動新增 TTL 時間標記。
 - 在影片上建立 LED On、LED Off、Action Start、Action End 與 Seizure-like 標記。
@@ -116,7 +116,9 @@ TTL CSV 建議包含：
 
 若要釋放訊號暫存所占用的磁碟與記憶體，可使用「Settings > Clear signal cache」。此操作不會刪除原始 CSV，但下次使用相關訊號時需要重新建立暫存，因此第一次顯示或分析可能較慢。
 
-匯入 LFP 後可選擇 channel 與訊號顯示模式。勾選「Bandpass」後設定 Low／High cutoff；勾選 notch filter 可去除「Settings > Set power noise frequency」設定的電源雜訊。完成設定後按「confirm」套用。
+匯入 LFP 後可選擇 channel 與訊號顯示模式。勾選「Bandpass」後設定 Low／High cutoff；「Line noise」可選 None、Notch filter 或 Sinusoidal regression。Frequencies 可輸入一個或多個以逗號／空白分隔的頻率，例如 `60, 90`。Notch 使用同一個 Q 依序處理各頻率；正弦波回歸會在同一個 least-squares design matrix 中共同估計所有頻率。勾選「All harmonics」時，程式會自動加入每個輸入頻率的所有整數倍頻，僅處理嚴格低於目前 sample rate Nyquist frequency 的項目，重複的倍頻只估計一次；不會自動加入公因數。預設為 60 Hz、4 秒、50% overlap、只處理輸入頻率。完成設定後按「confirm」套用；波形、power spectrum、spectrogram 與 LFP 影像匯出會共用同一組已選處理設定。
+
+大型正弦波回歸區段會自動使用 CuPy／CUDA，將相同長度視窗合併成一次 batched least-squares；少於 100,000 samples 或無可用 CuPy／CUDA 時會安全改用 NumPy。可用環境變數 `PIG_LFP_COMPUTE_BACKEND=cpu|cupy|auto` 強制選擇，並以 `PIG_LFP_CUPY_MIN_SAMPLES` 調整自動啟用門檻。Windows Conda 環境會在 Qt 啟動前綁定配套的 CUDA DLL，CuPy cache 與暫存則寫入專案的 `.cupy_cache`、`.cupy_temp`。
 
 「Power spectrum」與「Spectrogram」會依目前所選 LFP channel、時間軸範圍及已套用的濾波設定產生分析結果。建立 filtered overview、power spectrum 或 spectrogram 時會顯示進度，需要時可按「Cancel」中止。「Follow video playback」開啟時，完成同步後的波形視窗會跟隨影片播放位置。
 
