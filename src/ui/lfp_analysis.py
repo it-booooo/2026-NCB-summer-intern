@@ -440,26 +440,6 @@ class LfpAnalysisMixin:
         if canvas is not None:
             canvas.figure = None
     
-    def create_power_spectrum_figure(self, channel, frequencies, power):
-        """Create power spectrum figure.
-
-        Args:
-            channel: LFP channel identifier.
-        """
-        figure = Figure(figsize=(7.6, 4.4), constrained_layout=True)
-        ax = figure.add_subplot(111)
-        power_db = np.array(power, copy=True)
-        tiny = np.finfo(power_db.dtype).tiny
-        np.maximum(power_db, tiny, out=power_db)
-        np.log10(power_db, out=power_db)
-        power_db *= 10.0
-        ax.plot(frequencies, power_db, linewidth=0.8, color="#1f77b4")
-        ax.set_title(f"LFP Power Spectrum - Channel {channel}")
-        ax.set_xlabel("Frequency (Hz)")
-        ax.set_ylabel("PSD (dB/Hz)")
-        ax.grid(True, linewidth=0.4, alpha=0.35)
-        return figure
-    
     def create_lfp_waveform_figure(self, channel, segment, settings, time_mode):
         """Create lfp waveform figure.
 
@@ -519,45 +499,3 @@ class LfpAnalysisMixin:
             f"{time_mode}: {display_left:.3f}-{display_right:.3f} s",
             fontsize=8,
         )
-    
-    def create_spectrogram_figure(
-        self,
-        channel,
-        start_time_s,
-        end_time_s,
-        frequencies,
-        times,
-        power,
-        time_mode,
-    ):
-        """Create spectrogram figure.
-
-        Args:
-            channel: LFP channel identifier.
-        """
-        duration_sec = abs(
-            float(end_time_s) - float(start_time_s)
-        )
-        figure_width = min(24.0, 8.0 + duration_sec / 120.0)
-        figure = Figure(figsize=(figure_width, 4.8), constrained_layout=True)
-        ax = figure.add_subplot(111)
-        plot_times = times + relative_time(
-            float(start_time_s), self.sync_state.record_time_origin_sec
-        )
-        power_db = np.array(power, copy=True)
-        tiny = np.finfo(power_db.dtype).tiny
-        np.maximum(power_db, tiny, out=power_db)
-        np.log10(power_db, out=power_db)
-        power_db *= 10.0
-        mesh = ax.pcolormesh(
-            plot_times,
-            frequencies,
-            power_db,
-            shading="auto",
-            cmap="viridis",
-        )
-        figure.colorbar(mesh, ax=ax, label="PSD (dB/Hz)")
-        ax.set_title(f"LFP Spectrogram - Channel {channel}")
-        ax.set_xlabel(f"{time_mode} (s)")
-        ax.set_ylabel("Frequency (Hz)")
-        return figure

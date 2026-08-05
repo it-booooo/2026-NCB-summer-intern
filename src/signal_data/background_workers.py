@@ -259,38 +259,6 @@ class LfpAnalysisWorker(SignalWorker):
         )
 
 
-class LfpSegmentWorker(SignalWorker):
-    """Load/filter a segment for a later GUI-side export."""
-
-    def __init__(
-        self,
-        request_id,
-        dataset,
-        channel,
-        start_s,
-        end_s,
-        settings,
-    ):
-        super().__init__(request_id, dataset)
-        self.channel = int(channel)
-        self.start_s = float(start_s)
-        self.end_s = float(end_s)
-        self.settings = settings
-
-    def execute(self):
-        self.report(5)
-        segment = self.dataset.segment(
-            self.channel,
-            self.start_s,
-            self.end_s,
-            self.settings,
-            self.cancel_event,
-            lambda value: self.report(round(value * 100)),
-        )
-        self.report(100)
-        return segment
-
-
 class LfpExportDataWorker(SignalWorker):
     """Prepare the numeric inputs required by an LFP image export."""
 

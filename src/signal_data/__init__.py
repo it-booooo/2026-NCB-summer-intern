@@ -11,7 +11,6 @@ from .background_workers import (
     LfpAnalysisWorker,
     LfpCoarseWorker,
     LfpExportDataWorker,
-    LfpSegmentWorker,
     PeakDetectionWorker,
 )
 from .lfp_dataset import LfpDataset
@@ -45,7 +44,6 @@ __all__ = [
     "LfpDataset",
     "LfpFilterSettings",
     "LfpSegment",
-    "LfpSegmentWorker",
     "PeakDetectionWorker",
     "RawSignalSegment",
     "SignalDataSource",

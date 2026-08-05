@@ -313,7 +313,7 @@ class ExportController:
                 "Configure and batch-export the LFP waveform, power spectrum, and spectrogram.",
             ),
             (
-                "Export Peak analyze Image",
+                "Export LFP Peak Analysis Image",
                 self.export_peak_image,
                 "Export the LFP peak analysis plot as a PNG image.",
             ),

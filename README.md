@@ -228,7 +228,7 @@ TTL CSV 建議包含：
 
 圖片固定以 300 DPI 輸出。檔名會自動包含原始檔名、channel、Raw／Filtered 及圖表類型。準備大量資料或多張圖片時會顯示進度，需要時可按「Cancel」中止。使用 Filtered＋Bandpass 匯出 Spectrogram 時，圖表只會顯示設定的頻率範圍。
 
-### Export Peak analyze Image
+### Export LFP Peak Analysis Image
 
 將 LFP peak 數量分析圖匯出為 PNG。使用前必須先完成同步與峰值偵測；匯出時可選擇要輸出的 LFP channel。
 
