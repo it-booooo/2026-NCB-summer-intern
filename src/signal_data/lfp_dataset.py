@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+import json
 import math
+import os
+import shutil
+import tempfile
 import threading
 import time
+import uuid
 from collections import OrderedDict
-from dataclasses import dataclass, field
+from contextlib import contextmanager
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
 
 import numpy as np
 
@@ -18,7 +25,12 @@ from .lfp_processing import (
     prepare_lfp_signal,
 )
 from .signal_dataset import SignalDataset
-from .source import CacheBuildCancelled, RawSignalSegment
+from .source import (
+    ANALYSIS_FILTER_CACHE_PREFIX,
+    CacheBuildCancelled,
+    RawSignalSegment,
+    cleanup_signal_cache,
+)
 
 SEGMENT_CACHE_MAX_BYTES = 128 * 1024 * 1024
 FILTERED_SEGMENT_CACHE_MAX_BYTES = 128 * 1024 * 1024
@@ -26,6 +38,42 @@ FILTERED_SEGMENT_CACHE_MAX_ENTRIES = 32
 PLAYBACK_WINDOW_SECONDS = 30.0
 MAX_FINE_PREFETCH_SECONDS = 120.0
 FILTER_BLOCK_SAMPLES = 250_000
+FILTERED_ANALYSIS_CACHE_ALGORITHM_VERSION = 1
+DEFAULT_FILTERED_ANALYSIS_CACHE_MAX_BYTES = 5 * 1024 * 1024 * 1024
+DEFAULT_FILTERED_ANALYSIS_CACHE_MAX_AGE_DAYS = 30
+FILTERED_ANALYSIS_CACHE_ENTRY_OVERHEAD_BYTES = 16 * 1024
+ANALYSIS_VALUES_FILENAME = "values.bin"
+
+
+def filtered_analysis_cache_max_bytes() -> int:
+    """Return the bounded disk budget for reusable filtered analysis values."""
+
+    try:
+        return max(
+            int(
+                os.environ.get(
+                    "PIG_LFP_ANALYSIS_CACHE_MAX_BYTES",
+                    DEFAULT_FILTERED_ANALYSIS_CACHE_MAX_BYTES,
+                )
+            ),
+            0,
+        )
+    except (TypeError, ValueError):
+        return DEFAULT_FILTERED_ANALYSIS_CACHE_MAX_BYTES
+
+
+@dataclass(frozen=True)
+class AnalysisValuesFile:
+    """Disk-backed full-resolution values leased for one analysis request."""
+
+    path: str
+    sample_count: int
+    sample_rate_hz: float
+    start_time_s: float
+    end_time_s: float
+    dtype: str
+    cache_hit: bool
+    persistent: bool
 
 
 @dataclass
@@ -407,6 +455,284 @@ class LfpDataset(SignalDataset):
             first_us / 1_000_000.0,
             last_us / 1_000_000.0,
             dtype.str,
+        )
+
+    @contextmanager
+    def analysis_values_file(
+        self,
+        channel: int,
+        start_s: float,
+        end_s: float,
+        settings: LfpFilterSettings | None,
+        cancel_event: threading.Event | None = None,
+        progress_callback=None,
+    ):
+        """Lease full-resolution values, reusing a bounded filtered disk cache."""
+
+        effective_settings = (
+            settings if settings is not None and settings.show_filtered else None
+        )
+        if effective_settings is None:
+            with self._temporary_analysis_values_file(
+                channel,
+                start_s,
+                end_s,
+                settings,
+                cancel_event,
+                progress_callback,
+            ) as prepared:
+                yield prepared
+            return
+
+        identity, expected_bytes = self._filtered_analysis_cache_identity(
+            channel,
+            start_s,
+            end_s,
+            effective_settings,
+            cancel_event,
+        )
+        byte_limit = filtered_analysis_cache_max_bytes()
+        if byte_limit <= 0 or expected_bytes > byte_limit:
+            with self._temporary_analysis_values_file(
+                channel,
+                start_s,
+                end_s,
+                effective_settings,
+                cancel_event,
+                progress_callback,
+            ) as prepared:
+                yield prepared
+            return
+
+        cache_path = self.source.derived_cache_path(
+            ANALYSIS_FILTER_CACHE_PREFIX,
+            identity,
+        )
+        with self.source.hold_cache_path(cache_path):
+            prepared = self._ensure_filtered_analysis_cache(
+                cache_path,
+                identity,
+                expected_bytes,
+                byte_limit,
+                channel,
+                start_s,
+                end_s,
+                effective_settings,
+                cancel_event,
+                progress_callback,
+            )
+            yield prepared
+
+    @contextmanager
+    def _temporary_analysis_values_file(
+        self,
+        channel,
+        start_s,
+        end_s,
+        settings,
+        cancel_event,
+        progress_callback,
+    ):
+        descriptor, input_path = tempfile.mkstemp(
+            prefix="lfp-analysis-values-",
+            suffix=".bin",
+        )
+        os.close(descriptor)
+        try:
+            metadata = self.write_analysis_values(
+                input_path,
+                channel,
+                start_s,
+                end_s,
+                settings,
+                cancel_event,
+                progress_callback,
+            )
+            yield AnalysisValuesFile(
+                input_path,
+                *metadata,
+                cache_hit=False,
+                persistent=False,
+            )
+        finally:
+            try:
+                os.unlink(input_path)
+            except FileNotFoundError:
+                pass
+
+    def _filtered_analysis_cache_identity(
+        self,
+        channel,
+        start_s,
+        end_s,
+        settings,
+        cancel_event,
+    ) -> tuple[dict, int]:
+        channel = int(channel)
+        start_s, end_s = sorted((float(start_s), float(end_s)))
+        if not np.isfinite(start_s) or not np.isfinite(end_s):
+            raise ValueError("Selected time range must be finite.")
+        if start_s == end_s:
+            raise ValueError("Selected time range is too short.")
+        left_index, right_index = self.source.segment_indices(
+            channel,
+            round(start_s * 1_000_000.0),
+            round(end_s * 1_000_000.0),
+            cancel_event,
+        )
+        sample_count = right_index - left_index
+        if sample_count < 2:
+            raise ValueError("Selected time range is too short for analysis.")
+        settings_data = asdict(settings)
+        settings_data["line_noise_frequencies_hz"] = list(
+            settings_data.get("line_noise_frequencies_hz", ())
+        )
+        identity = {
+            "analysis_filter_algorithm_version": (
+                FILTERED_ANALYSIS_CACHE_ALGORITHM_VERSION
+            ),
+            "source": self.source.cache_identity(),
+            "channel": channel,
+            "left_index": left_index,
+            "right_index": right_index,
+            "sample_rate_hz": float(self.sample_rate_hz(channel)),
+            "filter_settings": settings_data,
+        }
+        expected_bytes = (
+            sample_count * np.dtype("<f8").itemsize
+            + FILTERED_ANALYSIS_CACHE_ENTRY_OVERHEAD_BYTES
+        )
+        return identity, expected_bytes
+
+    def _ensure_filtered_analysis_cache(
+        self,
+        cache_path,
+        identity,
+        expected_bytes,
+        byte_limit,
+        channel,
+        start_s,
+        end_s,
+        settings,
+        cancel_event,
+        progress_callback,
+    ) -> AnalysisValuesFile:
+        with self.source.cache_build_lock():
+            cached = self._read_filtered_analysis_cache(cache_path, identity)
+            if cached is not None:
+                self.source.touch_cache_path(cache_path)
+                if progress_callback is not None:
+                    progress_callback(1.0)
+                self._prune_filtered_analysis_cache(byte_limit, cache_path)
+                return cached
+
+            self.source.cache_root.mkdir(parents=True, exist_ok=True)
+            cleanup_signal_cache(
+                self.source.cache_root,
+                max_bytes=max(byte_limit - expected_bytes, 0),
+                max_age_days=DEFAULT_FILTERED_ANALYSIS_CACHE_MAX_AGE_DAYS,
+                protected_paths=(cache_path,),
+                cache_prefixes=(ANALYSIS_FILTER_CACHE_PREFIX,),
+            )
+            temporary = self.source.cache_root / (
+                f".{cache_path.name}.{uuid.uuid4().hex}.tmp"
+            )
+            temporary.mkdir()
+            try:
+                metadata = self.write_analysis_values(
+                    temporary / ANALYSIS_VALUES_FILENAME,
+                    channel,
+                    start_s,
+                    end_s,
+                    settings,
+                    cancel_event,
+                    progress_callback,
+                )
+                if cancel_event is not None and cancel_event.is_set():
+                    raise CacheBuildCancelled("LFP analysis was cancelled.")
+                cache_metadata = {
+                    "complete": True,
+                    "identity": identity,
+                    "sample_count": metadata[0],
+                    "sample_rate_hz": metadata[1],
+                    "start_time_s": metadata[2],
+                    "end_time_s": metadata[3],
+                    "dtype": metadata[4],
+                }
+                (temporary / "metadata.json").write_text(
+                    json.dumps(cache_metadata, indent=2, sort_keys=True) + "\n",
+                    encoding="utf-8",
+                )
+                (temporary / "COMPLETE").write_text(
+                    "complete\n",
+                    encoding="ascii",
+                )
+                self.source.commit_cache_directory(temporary, cache_path)
+            except Exception:
+                shutil.rmtree(temporary, ignore_errors=True)
+                raise
+
+            self._prune_filtered_analysis_cache(byte_limit, cache_path)
+            self.source.prune_cache({cache_path})
+            prepared = self._read_filtered_analysis_cache(cache_path, identity)
+            if prepared is None:
+                raise RuntimeError("Filtered LFP analysis cache was not committed.")
+            return AnalysisValuesFile(
+                prepared.path,
+                prepared.sample_count,
+                prepared.sample_rate_hz,
+                prepared.start_time_s,
+                prepared.end_time_s,
+                prepared.dtype,
+                cache_hit=False,
+                persistent=True,
+            )
+
+    def _read_filtered_analysis_cache(
+        self,
+        cache_path: Path,
+        identity: dict,
+    ) -> AnalysisValuesFile | None:
+        try:
+            metadata = json.loads(
+                (cache_path / "metadata.json").read_text("utf-8")
+            )
+            sample_count = int(metadata["sample_count"])
+            dtype = np.dtype(metadata["dtype"])
+            values_path = cache_path / ANALYSIS_VALUES_FILENAME
+            if not (
+                metadata.get("complete") is True
+                and metadata.get("identity") == identity
+                and sample_count >= 2
+                and dtype == np.dtype("<f8")
+                and (cache_path / "COMPLETE").is_file()
+                and values_path.stat().st_size == sample_count * dtype.itemsize
+            ):
+                return None
+            return AnalysisValuesFile(
+                str(values_path),
+                sample_count,
+                float(metadata["sample_rate_hz"]),
+                float(metadata["start_time_s"]),
+                float(metadata["end_time_s"]),
+                dtype.str,
+                cache_hit=True,
+                persistent=True,
+            )
+        except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError):
+            return None
+
+    def _prune_filtered_analysis_cache(
+        self,
+        byte_limit: int,
+        protected_path: Path,
+    ) -> None:
+        cleanup_signal_cache(
+            self.source.cache_root,
+            max_bytes=byte_limit,
+            max_age_days=DEFAULT_FILTERED_ANALYSIS_CACHE_MAX_AGE_DAYS,
+            protected_paths=(protected_path,),
+            cache_prefixes=(ANALYSIS_FILTER_CACHE_PREFIX,),
         )
 
     def update_playback_window(

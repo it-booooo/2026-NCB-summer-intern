@@ -6,7 +6,6 @@ import math
 import multiprocessing
 import os
 import sys
-import tempfile
 import threading
 import time
 from collections import OrderedDict
@@ -16,15 +15,8 @@ from PySide6.QtCore import QThread, Signal
 from scipy.signal import find_peaks, peak_prominences
 from scipy.signal._peak_finding_utils import _select_by_peak_distance
 
-from .lfp_processing import (
-    LfpSegment,
-    filter_padding_samples,
-    line_noise_frequencies,
-    prepare_lfp_signal,
-)
 from lfp_analysis_process import render_lfp_analysis
-from .source import CacheBuildCancelled
-from .peak_display import load_peak_display_samples
+
 from .gpu_backend import (
     chunk_statistics_opencl,
     configured_backend,
@@ -33,7 +25,14 @@ from .gpu_backend import (
     peak_candidate_masks_opencl,
     peak_opencl_minimum_samples,
 )
-
+from .lfp_processing import (
+    LfpSegment,
+    filter_padding_samples,
+    line_noise_frequencies,
+    prepare_lfp_signal,
+)
+from .peak_display import load_peak_display_samples
+from .source import CacheBuildCancelled
 
 MAX_EXPORT_WAVEFORM_POINTS = 200_000
 ANALYSIS_DISPLAY_DPI = 300
@@ -339,50 +338,32 @@ class LfpAnalysisWorker(SignalWorker):
 
     def execute(self):
         self.report(5)
-        descriptor, input_path = tempfile.mkstemp(
-            prefix="lfp-analysis-",
-            suffix=".bin",
-        )
-        os.close(descriptor)
-        try:
-            (
-                sample_count,
-                sample_rate_hz,
-                start_time_s,
-                end_time_s,
-                dtype,
-            ) = self.dataset.write_analysis_values(
-                input_path,
-                self.channel,
-                self.start_s,
-                self.end_s,
-                self.settings,
-                self.cancel_event,
-                lambda value: self.report(5 + round(value * 45)),
-            )
+        with self.dataset.analysis_values_file(
+            self.channel,
+            self.start_s,
+            self.end_s,
+            self.settings,
+            self.cancel_event,
+            lambda value: self.report(5 + round(value * 45)),
+        ) as prepared:
             self.check_cancel()
             self.report(55)
             image_png = self._render_in_process(
-                input_path,
-                dtype,
-                sample_count,
-                sample_rate_hz,
-                start_time_s,
-                end_time_s,
+                prepared.path,
+                prepared.dtype,
+                prepared.sample_count,
+                prepared.sample_rate_hz,
+                prepared.start_time_s,
+                prepared.end_time_s,
             )
             self.report(100)
             return {
-                "sample_count": sample_count,
-                "sample_rate_hz": sample_rate_hz,
-                "start_time_s": start_time_s,
-                "end_time_s": end_time_s,
+                "sample_count": prepared.sample_count,
+                "sample_rate_hz": prepared.sample_rate_hz,
+                "start_time_s": prepared.start_time_s,
+                "end_time_s": prepared.end_time_s,
                 "image_png": image_png,
             }
-        finally:
-            try:
-                os.unlink(input_path)
-            except FileNotFoundError:
-                pass
 
     def _render_in_process(
         self,
@@ -470,27 +451,18 @@ class LfpExportDataWorker(SignalWorker):
 
     def execute(self):
         self.report(5)
-        descriptor, input_path = tempfile.mkstemp(
-            prefix="lfp-export-",
-            suffix=".bin",
-        )
-        os.close(descriptor)
-        try:
-            (
-                sample_count,
-                sample_rate_hz,
-                start_time_s,
-                end_time_s,
-                dtype,
-            ) = self.dataset.write_analysis_values(
-                input_path,
-                self.channel,
-                self.start_s,
-                self.end_s,
-                self.settings,
-                self.cancel_event,
-                lambda value: self.report(5 + round(value * 55)),
-            )
+        with self.dataset.analysis_values_file(
+            self.channel,
+            self.start_s,
+            self.end_s,
+            self.settings,
+            self.cancel_event,
+            lambda value: self.report(5 + round(value * 55)),
+        ) as prepared:
+            sample_count = prepared.sample_count
+            sample_rate_hz = prepared.sample_rate_hz
+            start_time_s = prepared.start_time_s
+            end_time_s = prepared.end_time_s
             result = {
                 "sample_count": sample_count,
                 "sample_rate_hz": sample_rate_hz,
@@ -513,8 +485,8 @@ class LfpExportDataWorker(SignalWorker):
                     self.cancel_event,
                 )
                 values = np.memmap(
-                    input_path,
-                    dtype=np.dtype(dtype),
+                    prepared.path,
+                    dtype=np.dtype(prepared.dtype),
                     mode="r",
                     shape=(sample_count,),
                 )
@@ -546,8 +518,8 @@ class LfpExportDataWorker(SignalWorker):
             for index, image_type in enumerate(spectral_types):
                 self.check_cancel()
                 rendered_images[image_type] = _render_analysis_file(
-                    input_path=input_path,
-                    dtype=dtype,
+                    input_path=prepared.path,
+                    dtype=prepared.dtype,
                     sample_count=sample_count,
                     sample_rate_hz=sample_rate_hz,
                     analysis_type=image_type,
@@ -572,11 +544,6 @@ class LfpExportDataWorker(SignalWorker):
                 result["rendered_images"] = rendered_images
             self.report(100)
             return result
-        finally:
-            try:
-                os.unlink(input_path)
-            except FileNotFoundError:
-                pass
 
 
 def _spectrogram_frequency_range(settings):

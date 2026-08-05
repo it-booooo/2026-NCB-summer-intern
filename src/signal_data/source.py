@@ -10,7 +10,7 @@ import tempfile
 import threading
 import time
 import uuid
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 from dataclasses import asdict, dataclass
 from importlib import import_module
 from pathlib import Path
@@ -25,9 +25,16 @@ DEFAULT_OVERVIEW_MAX_POINTS = 5_000
 DEFAULT_CACHE_MAX_BYTES = 20 * 1024 * 1024 * 1024
 DEFAULT_CACHE_MAX_AGE_DAYS = 30
 DAY_SECONDS = 24 * 60 * 60
+ANALYSIS_FILTER_CACHE_PREFIX = "analysis-filter-"
+SIGNAL_CACHE_PREFIXES = (
+    "signal-",
+    "coarse-",
+    ANALYSIS_FILTER_CACHE_PREFIX,
+)
 
 _CACHE_CLEANUP_LOCK = threading.RLock()
 _CLEANED_CACHE_ROOTS: set[str] = set()
+_ACTIVE_CACHE_PATHS: dict[str, int] = {}
 
 
 def _remove_cache_directory(path: Path) -> bool:
@@ -47,6 +54,7 @@ def cleanup_signal_cache(
     max_age_days: int = DEFAULT_CACHE_MAX_AGE_DAYS,
     protected_paths: tuple[Path, ...] = (),
     now: float | None = None,
+    cache_prefixes: tuple[str, ...] | None = None,
 ) -> None:
     """Remove abandoned, expired, and oldest excess signal caches."""
     root = Path(cache_root)
@@ -57,8 +65,14 @@ def cleanup_signal_cache(
     protected = {str(Path(path).resolve()) for path in protected_paths}
     abandoned_cutoff = current_time - DAY_SECONDS
     age_cutoff = current_time - max(int(max_age_days), 0) * DAY_SECONDS
+    accepted_prefixes = (
+        SIGNAL_CACHE_PREFIXES
+        if cache_prefixes is None
+        else tuple(cache_prefixes)
+    )
 
     with _CACHE_CLEANUP_LOCK:
+        protected.update(_ACTIVE_CACHE_PATHS)
         try:
             children = list(root.iterdir())
         except OSError:
@@ -73,10 +87,19 @@ def cleanup_signal_cache(
                 if path.name.startswith(".") and path.name.endswith(
                     (".tmp", ".stale")
                 ):
-                    if not is_protected and path.stat().st_mtime <= abandoned_cutoff:
+                    temporary_name = path.name[1:]
+                    matching_temporary = cache_prefixes is None or any(
+                        temporary_name.startswith(prefix)
+                        for prefix in accepted_prefixes
+                    )
+                    if (
+                        matching_temporary
+                        and not is_protected
+                        and path.stat().st_mtime <= abandoned_cutoff
+                    ):
                         shutil.rmtree(path, ignore_errors=True)
                     continue
-                if not path.name.startswith(("signal-", "coarse-")):
+                if not path.name.startswith(accepted_prefixes):
                     continue
                 complete = path / "COMPLETE"
                 if not complete.is_file():
@@ -764,6 +787,21 @@ class SignalDataSource:
         stat = Path(self.path).stat()
         return self.path, int(stat.st_size), int(stat.st_mtime_ns)
 
+    def cache_identity(self) -> dict:
+        """Return the JSON-safe source identity used by derived disk caches."""
+
+        return self._identity()
+
+    def derived_cache_path(self, prefix: str, identity: dict) -> Path:
+        """Return a deterministic path for a source-derived cache directory."""
+
+        return self.cache_root / f"{prefix}{self._digest(identity)}"
+
+    def touch_cache_path(self, path: Path) -> None:
+        """Mark a complete cache entry as recently used."""
+
+        self._touch_cache(path)
+
     def bounds(self, channel_id: int) -> tuple[float, float]:
         path, metadata = self._cache_metadata(channel_id)
         count = int(metadata["sample_count"])
@@ -796,6 +834,41 @@ class SignalDataSource:
                 "Could not remove one or more signal caches:\n"
                 + "\n".join(failures)
             )
+
+    @contextmanager
+    def hold_cache_path(self, path: str | Path):
+        """Keep one cache directory protected while a caller is using it."""
+
+        resolved = str(Path(path).resolve())
+        with _CACHE_CLEANUP_LOCK:
+            _ACTIVE_CACHE_PATHS[resolved] = _ACTIVE_CACHE_PATHS.get(resolved, 0) + 1
+        try:
+            yield Path(path)
+        finally:
+            with _CACHE_CLEANUP_LOCK:
+                remaining = _ACTIVE_CACHE_PATHS.get(resolved, 0) - 1
+                if remaining > 0:
+                    _ACTIVE_CACHE_PATHS[resolved] = remaining
+                else:
+                    _ACTIVE_CACHE_PATHS.pop(resolved, None)
+
+    @contextmanager
+    def cache_build_lock(self):
+        """Serialize cache validation and atomic construction for this source."""
+
+        with self._build_lock:
+            yield
+
+    def commit_cache_directory(self, temporary: Path, final_path: Path) -> None:
+        """Flush and atomically publish a fully prepared cache directory."""
+
+        self._flush_directory_files(temporary)
+        self._atomic_replace_directory(temporary, final_path)
+
+    def prune_cache(self, protected: set[Path]) -> None:
+        """Enforce the shared signal-cache limit while preserving active paths."""
+
+        self._prune_cache(protected)
 
     def _prune_cache(self, protected: set[Path]) -> None:
         cleanup_signal_cache(

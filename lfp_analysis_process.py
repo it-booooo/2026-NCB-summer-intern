@@ -9,6 +9,8 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
 from scipy import signal
 
+FINITE_CHECK_BLOCK_SAMPLES = 1_000_000
+
 
 def render_lfp_analysis(
     connection,
@@ -146,9 +148,18 @@ def _finite_signal(values):
         signal_values = signal_values.reshape(-1)
     if signal_values.size == 0:
         return signal_values.copy()
+    all_finite = True
+    for start in range(0, signal_values.size, FINITE_CHECK_BLOCK_SAMPLES):
+        if not np.isfinite(
+            signal_values[start : start + FINITE_CHECK_BLOCK_SAMPLES]
+        ).all():
+            all_finite = False
+            break
+    if all_finite:
+        # Keep the read-only memmap view.  Welch/spectrogram do not mutate their
+        # input, so a full-size RAM copy is unnecessary for the common case.
+        return signal_values
     finite_mask = np.isfinite(signal_values)
-    if finite_mask.all():
-        return signal_values.copy()
     if not finite_mask.any():
         return np.zeros(signal_values.shape, dtype=signal_values.dtype)
     indices = np.arange(signal_values.size)
