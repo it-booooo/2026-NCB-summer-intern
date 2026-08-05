@@ -118,7 +118,7 @@ TTL CSV 建議包含：
 
 匯入 LFP 後可選擇 channel 與訊號顯示模式。勾選「Bandpass」後設定 Low／High cutoff；「Line noise」可選 None、Notch filter 或 Sinusoidal regression。Frequencies 可輸入一個或多個以逗號／空白分隔的頻率，例如 `60, 90`。Notch 使用同一個 Q 依序處理各頻率；正弦波回歸會在同一個 least-squares design matrix 中共同估計所有頻率。勾選「All harmonics」時，程式會自動加入每個輸入頻率的所有整數倍頻，僅處理嚴格低於目前 sample rate Nyquist frequency 的項目，重複的倍頻只估計一次；不會自動加入公因數。預設為 60 Hz、4 秒、50% overlap、只處理輸入頻率。完成設定後按「confirm」套用；波形、power spectrum、spectrogram 與 LFP 影像匯出會共用同一組已選處理設定。
 
-大型正弦波回歸區段會自動使用 OpenCL GPU：設計矩陣的偽逆只在 CPU 建立並快取一次，大量視窗係數、Hann overlap-add 重建與相減則在 GPU 執行；少於 100,000 samples、GPU 不支援 double precision，或 OpenCL 不可用時會安全改用 NumPy。可用環境變數 `PIG_LFP_COMPUTE_BACKEND=cpu|opencl|auto` 強制選擇，並以 `PIG_LFP_OPENCL_MIN_SAMPLES` 調整自動啟用門檻。LFP 與 LED 共用 `PIG_OPENCL_DEVICE`／`PIG_OPENCL_VENDOR` 裝置選擇及 `.opencl_temp` cache。
+大型正弦波回歸區段會自動使用 OpenCL GPU：設計矩陣的偽逆只在 CPU 建立並快取一次，大量視窗係數、Hann overlap-add 重建與相減則在 GPU 執行；少於 100,000 samples、GPU 不支援 double precision，或 OpenCL 不可用時會安全改用 NumPy。可用環境變數 `PIG_LFP_COMPUTE_BACKEND=cpu|opencl|auto` 強制選擇，並以 `PIG_LFP_OPENCL_MIN_SAMPLES` 調整回歸的自動啟用門檻。LFP 與 LED 共用 `PIG_OPENCL_DEVICE`／`PIG_OPENCL_VENDOR` 裝置選擇及 `.opencl_temp` cache。
 
 「Power spectrum」與「Spectrogram」會依目前所選 LFP channel、時間軸範圍及已套用的濾波設定產生分析結果。建立 filtered overview、power spectrum 或 spectrogram 時會顯示進度，需要時可按「Cancel」中止。「Follow video playback」開啟時，完成同步後的波形視窗會跟隨影片播放位置。
 
@@ -191,6 +191,10 @@ TTL CSV 建議包含：
 5. 切換至「LFP Peak」，按「Detect LFP Peaks」。
 
 程式只在與影片時間重疊的訊號範圍尋找峰值，並以訊號基準線區分正向峰值與負向峰值。正向與負向峰值都會加入表格，note 中會標示 positive peak 或 negative peak。偵測期間會顯示進度，需要時可按「Cancel」中止。再次對同一個 channel 執行會取代該 channel 先前自動偵測出的 LFP peak；其他 channel 的峰值會保留。表格內可編輯 note、點選峰值跳轉影片，或刪除選定峰值。
+
+較大的峰值搜尋會自動以 OpenCL 分段計算統計並掃描正負候選峰；plateau、distance、prominence、跨區段去重與 marker 建立仍由 NumPy／SciPy 在 CPU 完成，因此不改變既有峰值定義。支援 NVIDIA、AMD、Intel 的標準 OpenCL GPU，實際可用性取決於已安裝的驅動；沒有 OpenCL 時會自動回到 CPU。沒有 FP64 的裝置仍可加速 float32 candidate，而 periodic regression 與 peak candidate 是兩個獨立 capability，不會因回歸缺少 FP64 就停用 float32 peak scan。
+
+`PIG_LFP_COMPUTE_BACKEND=auto|cpu|opencl` 同時控制 LFP 計算選擇：`auto` 讓小資料留在 CPU 並在 GPU 失敗時安全 fallback，`cpu` 不初始化 OpenCL，`opencl` 則要求所需功能可用並回報 device、vendor、platform、dtype 與原始錯誤。`PIG_LFP_OPENCL_PEAK_MIN_SAMPLES` 可調整 peak detection 的自動啟用門檻（依 end-to-end benchmark 預設為 10,000,000 samples）；它與 periodic regression 使用的 `PIG_LFP_OPENCL_MIN_SAMPLES` 分開。完成訊息會顯示實際 statistics/candidate backend、OpenCL chunk 數與簡短 fallback 原因。可用 `python -m benchmarks.run_peak_benchmark --sample-rate 1000 --duration 300` 執行可重現 benchmark；完整參數見 `benchmarks/README.md`。
 
 完成峰值偵測後，可按「Analyze Peaks」查看所選 channel 每分鐘的 LFP peak 數量長條圖。圖表會合併統計正向與負向峰值，不會分開顯示。此功能必須先有完成同步的 LFP peak 才能使用。
 

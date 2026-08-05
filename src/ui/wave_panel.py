@@ -41,6 +41,9 @@ class WavePanel(LfpAnalysisMixin, QWidget):
     DEFAULT_PLAYBACK_WINDOW_SEC = 30.0
     PLAYBACK_CURSOR_FRACTION = 0.35
     PLAYBACK_EDGE_MARGIN_FRACTION = 0.18
+    LFP_PEAK_CONTEXT_SEC = 1.0
+    MAX_LFP_PEAK_DISPLAY_POINTS = 200_000
+    MAX_LFP_PEAK_READ_INTERVAL_SEC = 30.0
 
     def __init__(self, data_state=None, sync_state=None, marker_store=None):
         super().__init__()
@@ -69,6 +72,10 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self._lfp_coarse_request_id = None
         self._lfp_coarse_progress = None
         self._lfp_coarse_key = None
+        self._lfp_peak_display_workers = {}
+        self._lfp_peak_display_request_id = None
+        self._lfp_peak_display_request_key = None
+        self._lfp_peak_display_key = None
 
         self.lfp_file_label = QLabel("LFP CSV: Not imported")
         self.axis_file_label = QLabel("3-axis CSV: Not imported")
@@ -1108,52 +1115,172 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self.invalidate_current_time_backgrounds("lfp")
 
     def update_lfp_peak_artist(self) -> None:
-        """Draw one second around every persisted LFP peak event."""
+        """Prepare peak neighborhoods in the background and draw the latest result."""
+
         fig = self.lfp_fig
         canvas = self.lfp_canvas
         if fig is None or canvas is None or not fig.axes:
+            self._cancel_lfp_peak_display_workers()
             self.invalidate_current_time_backgrounds("lfp")
             return
 
         channel = self.selected_channel(self.lfp_channel_selector)
         filtered = bool(self.signal_view_selector.currentData())
-        if channel is not None:
-            dataset = self.ensure_lfp_dataset()
-            local_times: list[float] = []
-            local_values: list[float] = []
+        if channel is None:
+            self._cancel_lfp_peak_display_workers()
+            return
 
-            markers = self.marker_store.all() if self.marker_store is not None else ()
-            for marker in markers:
-                if marker.kind != MarkerKind.LFP_PEAK:
-                    continue
-                marker_channel = marker.payload.get("channel")
-                if marker_channel is not None and int(marker_channel) != channel:
-                    continue
-                peak_record_time = marker_record_time(
-                    marker, self.sync_state.time_offset_sec
+        dataset = self.ensure_lfp_dataset()
+        markers = self.marker_store.all() if self.marker_store is not None else ()
+        peak_records = []
+        for marker in markers:
+            if marker.kind != MarkerKind.LFP_PEAK:
+                continue
+            marker_channel = marker.payload.get("channel")
+            if marker_channel is not None and int(marker_channel) != channel:
+                continue
+            peak_record_time = marker_record_time(
+                marker, self.sync_state.time_offset_sec
+            )
+            try:
+                peak_record = (
+                    float(peak_record_time),
+                    float(marker.payload.get("value")),
                 )
-                if peak_record_time is None:
-                    continue
-                segment = dataset.segment(
-                    channel,
-                    peak_record_time - 1.0,
-                    peak_record_time + 1.0,
-                    self.current_lfp_filter_settings(),
-                )
-                local_times.extend(segment.record_time_s)
-                local_values.extend(segment.values)
-                local_times.append(np.nan)
-                local_values.append(np.nan)
+            except (TypeError, ValueError):
+                continue
+            if np.isfinite(peak_record).all():
+                peak_records.append(peak_record)
 
+        settings = self.current_lfp_filter_settings()
+        key = (
+            id(fig),
+            dataset.source.identity_token(),
+            channel,
+            filtered,
+            settings,
+            tuple(peak_records),
+        )
+        if key == self._lfp_peak_display_key:
+            return
+        if (
+            key == self._lfp_peak_display_request_key
+            and self._lfp_peak_display_request_id is not None
+        ):
+            return
+
+        self._cancel_lfp_peak_display_workers()
+        if not peak_records:
             fig.set_lfp_peak_samples(
                 channel,
                 filtered,
-                np.asarray(local_times, dtype=float),
-                np.asarray(local_values, dtype=float),
+                np.empty(0, dtype=float),
+                np.empty(0, dtype=float),
             )
+            self._lfp_peak_display_key = key
+            self.invalidate_current_time_backgrounds("lfp")
+            return
 
+        request_id = uuid.uuid4().hex
+        self._lfp_peak_display_request_id = request_id
+        self._lfp_peak_display_request_key = key
+        worker = signal_func.LfpPeakDisplayWorker(
+            request_id,
+            dataset,
+            channel,
+            peak_records,
+            settings,
+            context_sec=self.LFP_PEAK_CONTEXT_SEC,
+            maximum_points=self.MAX_LFP_PEAK_DISPLAY_POINTS,
+            maximum_interval_sec=self.MAX_LFP_PEAK_READ_INTERVAL_SEC,
+        )
+        self._lfp_peak_display_workers[request_id] = worker
+        worker.completed.connect(
+            lambda result_id, identity, result, result_key=key: (
+                self._finish_lfp_peak_display(
+                    result_id,
+                    identity,
+                    result_key,
+                    result,
+                )
+            )
+        )
+        worker.failed.connect(
+            lambda result_id, identity, message, result_key=key: (
+                self._fail_lfp_peak_display(
+                    result_id,
+                    identity,
+                    result_key,
+                    message,
+                )
+            )
+        )
+        worker.canceled.connect(
+            lambda result_id, _identity: self._complete_lfp_peak_display_request(
+                result_id
+            )
+        )
+        worker.finished.connect(
+            lambda result_id=request_id: self._discard_lfp_peak_display_worker(
+                result_id
+            )
+        )
+        worker.finished.connect(worker.deleteLater)
+        worker.start()
+
+    def _lfp_peak_display_result_is_current(self, request_id, identity, key):
+        dataset = self.data_state.lfp_dataset
+        if (
+            request_id != self._lfp_peak_display_request_id
+            or not widget_is_valid(self)
+            or dataset is None
+            or self.lfp_fig is None
+            or id(self.lfp_fig) != key[0]
+        ):
+            return False
+        try:
+            return dataset.source.identity_token() == identity
+        except (OSError, RuntimeError, ValueError):
+            return False
+
+    def _finish_lfp_peak_display(self, request_id, identity, key, result):
+        if not self._lfp_peak_display_result_is_current(request_id, identity, key):
+            return
+        self.lfp_fig.set_lfp_peak_samples(
+            result["channel"],
+            result["filtered"],
+            result["times"],
+            result["values"],
+        )
+        self._lfp_peak_display_key = key
+        self._complete_lfp_peak_display_request(request_id)
         self.invalidate_current_time_backgrounds("lfp")
-        canvas.draw_idle()
+
+    def _fail_lfp_peak_display(self, request_id, identity, key, message):
+        if not self._lfp_peak_display_result_is_current(request_id, identity, key):
+            return
+        self._complete_lfp_peak_display_request(request_id)
+        QMessageBox.warning(self, "LFP peak display failed", message)
+
+    def _complete_lfp_peak_display_request(self, request_id):
+        if request_id != self._lfp_peak_display_request_id:
+            return
+        self._lfp_peak_display_request_id = None
+        self._lfp_peak_display_request_key = None
+
+    def _discard_lfp_peak_display_worker(self, request_id):
+        self._lfp_peak_display_workers.pop(request_id, None)
+
+    def _cancel_lfp_peak_display_workers(self, wait=False):
+        workers = list(self._lfp_peak_display_workers.values())
+        self._lfp_peak_display_request_id = None
+        self._lfp_peak_display_request_key = None
+        for worker in workers:
+            worker.cancel()
+        if wait:
+            for worker in workers:
+                worker.wait(10_000)
+        return not any(worker.isRunning() for worker in workers)
 
     def set_line_noise_hz(self, line_noise_hz):
         """Set line noise hz."""
@@ -1516,7 +1643,8 @@ class WavePanel(LfpAnalysisMixin, QWidget):
     def stop_background_work(self, wait=False):
         analysis_stopped = self._cancel_lfp_analysis_workers(wait=wait)
         coarse_stopped = self._cancel_lfp_coarse_workers(wait=wait)
-        return analysis_stopped and coarse_stopped
+        peak_display_stopped = self._cancel_lfp_peak_display_workers(wait=wait)
+        return analysis_stopped and coarse_stopped and peak_display_stopped
 
     def set_axis_info(self, info):
         """Compatibility entry point that prepares and installs an axis dataset."""

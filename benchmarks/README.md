@@ -1,5 +1,33 @@
 # 訊號 CSV 基準測試
 
+## LFP peak OpenCL benchmark
+
+以下 benchmark 使用固定 random seed 合成 1000 Hz 訊號，包含週期背景、雜訊、
+正負峰、不同振幅、plateau、距離過近的峰與 chunk 邊界案例，不需要提交大型資料檔：
+
+```powershell
+python -m benchmarks.run_peak_benchmark `
+  --sample-rate 1000 `
+  --duration 300 `
+  --chunk-samples 250000 `
+  --backend all `
+  --warmup 1 `
+  --repeats 3 `
+  --result benchmark-results\lfp-peak.json
+```
+
+它比較 CPU full pipeline、CPU statistics + OpenCL candidates，以及 OpenCL
+statistics + OpenCL candidates。OpenCL 計時是完整 end-to-end 範圍，包含資料複製、
+kernel、CPU plateau／distance／prominence、chunk orchestration 與全域去重，不是只量
+kernel。輸出會核對 peak index、正負類型與 peak value，並列出裝置、vendor、platform、
+FP64、chunk 數與 speedup。若電腦沒有可用 OpenCL GPU，CPU 結果仍會完成，兩個 OpenCL
+模式會清楚標為 unavailable 並保留原因，不會產生虛構的 speedup。
+
+可用 `--samples` 覆蓋 duration 換算出的 sample 數，`--backend cpu` 只執行 CPU
+基準；其他參數可用 `python -m benchmarks.run_peak_benchmark --help` 查看。
+
+## CSV benchmark
+
 請在專案根目錄使用專案的 Python 環境執行：
 
 ```powershell

@@ -3,7 +3,7 @@ import uuid
 
 import numpy as np
 from matplotlib.figure import Figure
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QTimer, Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -61,6 +61,7 @@ class LfpPeakPanel(MarkerViewPanel):
         self._peak_workers = {}
         self._peak_request_id = None
         self._peak_progress = None
+        self._peak_message_boxes = set()
 
         self.channel_selector = QComboBox()
         self.channel_selector.setMinimumContentsLength(12)
@@ -439,13 +440,48 @@ class LfpPeakPanel(MarkerViewPanel):
                 and marker.payload.get("channel") == channel
             )
         ]
-        self.marker_store.replace_all([*retained, *markers])
         self._complete_peak_request(request_id)
-        QMessageBox.information(
-            self,
-            "LFP peaks",
-            f"Added {len(markers)} peak markers from channel {channel}.",
+        self.marker_store.replace_all([*retained, *markers])
+        acceleration = result.get("acceleration", {})
+        details = ""
+        if acceleration:
+            details = (
+                f"\n\nBackend: {acceleration.get('backend', 'cpu')}"
+                f"\nStatistics: {acceleration.get('statistics_backend', 'cpu')}"
+                f"\nCandidates: {acceleration.get('candidate_backend', 'cpu')}"
+                f"\nElapsed: {acceleration.get('elapsed_sec', 0.0):.3f} s"
+                f"\nOpenCL statistics chunks: "
+                f"{acceleration.get('gpu_statistics_chunks', 0)}"
+                f"\nOpenCL candidate chunks: "
+                f"{acceleration.get('gpu_candidate_chunks', 0)}"
+            )
+            if acceleration.get("fallback_reason"):
+                fallback = str(acceleration["fallback_reason"])
+                fallback = fallback.split("reason=", 1)[-1]
+                if len(fallback) > 240:
+                    fallback = fallback[:237] + "..."
+                details += f"\nFallback: {fallback}"
+        message = f"Added {len(markers)} peak markers from channel {channel}.{details}"
+        QTimer.singleShot(
+            0,
+            lambda title="LFP peaks", text=message: self._show_peak_message(
+                title,
+                text,
+            ),
         )
+
+    def _show_peak_message(self, title, message):
+        """Show completion without starting a nested event loop during canvas redraw."""
+
+        if not widget_is_valid(self):
+            return
+        box = QMessageBox(QMessageBox.Icon.Information, title, message, parent=self)
+        box.setStandardButtons(QMessageBox.StandardButton.Ok)
+        self._peak_message_boxes.add(box)
+        box.finished.connect(
+            lambda _result, item=box: self._peak_message_boxes.discard(item)
+        )
+        box.open()
 
     def _fail_peak_detection(self, request_id, identity, message):
         if not self._peak_result_is_current(request_id, identity):

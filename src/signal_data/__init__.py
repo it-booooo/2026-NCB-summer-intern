@@ -11,11 +11,22 @@ from .background_workers import (
     LfpAnalysisWorker,
     LfpCoarseWorker,
     LfpExportDataWorker,
+    LfpPeakDisplayWorker,
     LfpSegmentWorker,
     PeakDetectionWorker,
 )
 from .lfp_dataset import LfpDataset
-from .gpu_backend import opencl_status, select_backend
+from .gpu_backend import (
+    chunk_statistics_opencl,
+    last_peak_operation_error,
+    opencl_peak_status,
+    opencl_status,
+    peak_candidate_masks_cpu,
+    peak_candidate_masks_opencl,
+    select_backend,
+    select_peak_candidate_backend,
+    select_peak_statistics_backend,
+)
 from .lfp_processing import (
     LfpFilterSettings,
     LfpSegment,
@@ -46,6 +57,7 @@ __all__ = [
     "LfpAnalysisWorker",
     "LfpCoarseWorker",
     "LfpExportDataWorker",
+    "LfpPeakDisplayWorker",
     "LfpDataset",
     "LfpFilterSettings",
     "LfpSegment",
@@ -60,6 +72,8 @@ __all__ = [
     "filter_description",
     "filter_padding_samples",
     "line_noise_frequencies",
+    "last_peak_operation_error",
+    "opencl_peak_status",
     "opencl_status",
     "parse_lfp_csv_info",
     "parse_signal_csv_metadata",
@@ -67,10 +81,15 @@ __all__ = [
     "parse_ttl_marker_csv_info",
     "prepare_lfp_segment",
     "prepare_lfp_signal",
+    "peak_candidate_masks_cpu",
+    "peak_candidate_masks_opencl",
     "parse_line_noise_frequencies",
     "read_csv_preview",
     "remove_periodic_noise",
     "sample_rate_for_channel",
     "select_backend",
+    "select_peak_candidate_backend",
+    "select_peak_statistics_backend",
     "signal_data_source",
+    "chunk_statistics_opencl",
 ]

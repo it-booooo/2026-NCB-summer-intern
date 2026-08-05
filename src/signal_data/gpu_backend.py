@@ -15,7 +15,9 @@ from ..opencl_runtime import (
 
 
 DEFAULT_GPU_MIN_SAMPLES = 100_000
+DEFAULT_PEAK_GPU_MIN_SAMPLES = 10_000_000
 _last_operation_error = None
+_last_peak_operation_error = None
 
 
 KERNEL_SOURCE = r"""
@@ -243,14 +245,239 @@ __kernel void reconstruct_clean_f64(
 """
 
 
+PEAK_KERNEL_SOURCE = r"""
+#if defined(cl_khr_fp64)
+#pragma OPENCL EXTENSION cl_khr_fp64 : enable
+#define PIG_PEAK_FP64 1
+#endif
+
+__kernel void peak_candidate_mask_f32(
+    __global const float *values,
+    __global uchar *positive_mask,
+    __global uchar *negative_mask,
+    const float positive_threshold,
+    const float negative_threshold,
+    const uchar positive_strict,
+    const uchar negative_strict,
+    const int sample_count
+) {
+    const int index = (int)get_global_id(0);
+    if (index >= sample_count) {
+        return;
+    }
+    if (index == 0 || index == sample_count - 1) {
+        positive_mask[index] = (uchar)0;
+        negative_mask[index] = (uchar)0;
+        return;
+    }
+
+    const float left = values[index - 1];
+    const float center = values[index];
+    const float right = values[index + 1];
+    const int finite_values = isfinite(left) && isfinite(center) && isfinite(right);
+    const int positive_height = positive_strict
+        ? center > positive_threshold : center >= positive_threshold;
+    const int negative_height = negative_strict
+        ? center < negative_threshold : center <= negative_threshold;
+
+    positive_mask[index] = (uchar)(
+        finite_values && center >= left && center >= right && positive_height
+    );
+    negative_mask[index] = (uchar)(
+        finite_values && center <= left && center <= right && negative_height
+    );
+}
+
+__kernel void peak_statistics_f32(
+    __global const float *values,
+    __global ulong *partial_counts,
+    __global float *partial_means,
+    __global float *partial_m2,
+    const int sample_count,
+    __local ulong *local_counts,
+    __local float *local_means,
+    __local float *local_m2
+) {
+    const int global_id = (int)get_global_id(0);
+    const int global_size = (int)get_global_size(0);
+    const int local_id = (int)get_local_id(0);
+    const int local_size = (int)get_local_size(0);
+    ulong count = 0;
+    float mean = 0.0f;
+    float m2 = 0.0f;
+
+    for (int index = global_id; index < sample_count; index += global_size) {
+        const float value = values[index];
+        if (!isfinite(value)) {
+            continue;
+        }
+        count += 1;
+        const float delta = value - mean;
+        mean += delta / (float)count;
+        m2 += delta * (value - mean);
+    }
+    local_counts[local_id] = count;
+    local_means[local_id] = mean;
+    local_m2[local_id] = m2;
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    for (int offset = local_size / 2; offset > 0; offset /= 2) {
+        if (local_id < offset) {
+            const ulong right_count = local_counts[local_id + offset];
+            if (right_count > 0) {
+                const ulong left_count = local_counts[local_id];
+                if (left_count == 0) {
+                    local_counts[local_id] = right_count;
+                    local_means[local_id] = local_means[local_id + offset];
+                    local_m2[local_id] = local_m2[local_id + offset];
+                } else {
+                    const ulong combined = left_count + right_count;
+                    const float delta = local_means[local_id + offset]
+                        - local_means[local_id];
+                    local_m2[local_id] += local_m2[local_id + offset]
+                        + delta * delta * (float)left_count * (float)right_count
+                        / (float)combined;
+                    local_means[local_id] += delta * (float)right_count
+                        / (float)combined;
+                    local_counts[local_id] = combined;
+                }
+            }
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+    if (local_id == 0) {
+        const int group = (int)get_group_id(0);
+        partial_counts[group] = local_counts[0];
+        partial_means[group] = local_means[0];
+        partial_m2[group] = local_m2[0];
+    }
+}
+
+#ifdef PIG_PEAK_FP64
+__kernel void peak_candidate_mask_f64(
+    __global const double *values,
+    __global uchar *positive_mask,
+    __global uchar *negative_mask,
+    const double positive_threshold,
+    const double negative_threshold,
+    const int sample_count
+) {
+    const int index = (int)get_global_id(0);
+    if (index >= sample_count) {
+        return;
+    }
+    if (index == 0 || index == sample_count - 1) {
+        positive_mask[index] = (uchar)0;
+        negative_mask[index] = (uchar)0;
+        return;
+    }
+
+    const double left = values[index - 1];
+    const double center = values[index];
+    const double right = values[index + 1];
+    const int finite_values = isfinite(left) && isfinite(center) && isfinite(right);
+    positive_mask[index] = (uchar)(
+        finite_values && center >= left && center >= right
+        && center >= positive_threshold
+    );
+    negative_mask[index] = (uchar)(
+        finite_values && center <= left && center <= right
+        && center <= negative_threshold
+    );
+}
+
+__kernel void peak_statistics_f64(
+    __global const double *values,
+    __global ulong *partial_counts,
+    __global double *partial_means,
+    __global double *partial_m2,
+    const int sample_count,
+    __local ulong *local_counts,
+    __local double *local_means,
+    __local double *local_m2
+) {
+    const int global_id = (int)get_global_id(0);
+    const int global_size = (int)get_global_size(0);
+    const int local_id = (int)get_local_id(0);
+    const int local_size = (int)get_local_size(0);
+    ulong count = 0;
+    double mean = 0.0;
+    double m2 = 0.0;
+
+    for (int index = global_id; index < sample_count; index += global_size) {
+        const double value = values[index];
+        if (!isfinite(value)) {
+            continue;
+        }
+        count += 1;
+        const double delta = value - mean;
+        mean += delta / (double)count;
+        m2 += delta * (value - mean);
+    }
+    local_counts[local_id] = count;
+    local_means[local_id] = mean;
+    local_m2[local_id] = m2;
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    for (int offset = local_size / 2; offset > 0; offset /= 2) {
+        if (local_id < offset) {
+            const ulong right_count = local_counts[local_id + offset];
+            if (right_count > 0) {
+                const ulong left_count = local_counts[local_id];
+                if (left_count == 0) {
+                    local_counts[local_id] = right_count;
+                    local_means[local_id] = local_means[local_id + offset];
+                    local_m2[local_id] = local_m2[local_id + offset];
+                } else {
+                    const ulong combined = left_count + right_count;
+                    const double delta = local_means[local_id + offset]
+                        - local_means[local_id];
+                    local_m2[local_id] += local_m2[local_id + offset]
+                        + delta * delta * (double)left_count * (double)right_count
+                        / (double)combined;
+                    local_means[local_id] += delta * (double)right_count
+                        / (double)combined;
+                    local_counts[local_id] = combined;
+                }
+            }
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+    if (local_id == 0) {
+        const int group = (int)get_group_id(0);
+        partial_counts[group] = local_counts[0];
+        partial_means[group] = local_means[0];
+        partial_m2[group] = local_m2[0];
+    }
+}
+#endif
+"""
+
+
 def _record_operation_error(error) -> None:
     global _last_operation_error
     _last_operation_error = str(error)
 
 
+def _record_peak_operation_error(error) -> None:
+    global _last_peak_operation_error
+    _last_peak_operation_error = str(error)
+
+
 def _configured_backend() -> str:
     value = os.environ.get("PIG_LFP_COMPUTE_BACKEND", "auto").strip().lower()
-    return value if value in {"auto", "cpu", "opencl"} else "auto"
+    if value not in {"auto", "cpu", "opencl"}:
+        raise ValueError(f"Unsupported LFP compute backend: {value}")
+    return value
+
+
+def configured_backend(requested: str | None = None) -> str:
+    """Return and validate an explicit or environment-selected LFP backend."""
+
+    value = _configured_backend() if requested is None else str(requested).strip().lower()
+    if value not in {"auto", "cpu", "opencl"}:
+        raise ValueError(f"Unsupported LFP compute backend: {value}")
+    return value
 
 
 def _minimum_gpu_samples() -> int:
@@ -268,6 +495,27 @@ def _minimum_gpu_samples() -> int:
         return DEFAULT_GPU_MIN_SAMPLES
 
 
+def _minimum_peak_gpu_samples() -> int:
+    try:
+        return max(
+            int(
+                os.environ.get(
+                    "PIG_LFP_OPENCL_PEAK_MIN_SAMPLES",
+                    DEFAULT_PEAK_GPU_MIN_SAMPLES,
+                )
+            ),
+            1,
+        )
+    except (TypeError, ValueError):
+        return DEFAULT_PEAK_GPU_MIN_SAMPLES
+
+
+def peak_opencl_minimum_samples() -> int:
+    """Return the configured threshold used by automatic peak dispatch."""
+
+    return _minimum_peak_gpu_samples()
+
+
 @lru_cache(maxsize=1)
 def _opencl_runtime():
     try:
@@ -278,6 +526,23 @@ def _opencl_runtime():
             )
         program = build_opencl_program(shared, KERNEL_SOURCE)
         return {**shared, "program": program}, None
+    except Exception as error:
+        return None, str(error)
+
+
+@lru_cache(maxsize=1)
+def _opencl_peak_runtime():
+    """Build peak kernels independently from FP64 periodic regression kernels."""
+
+    try:
+        shared = opencl_runtime()
+        extensions = set(str(shared["device"].extensions).lower().split())
+        program = build_opencl_program(shared, PEAK_KERNEL_SOURCE)
+        return {
+            **shared,
+            "peak_program": program,
+            "peak_supports_fp64": "cl_khr_fp64" in extensions,
+        }, None
     except Exception as error:
         return None, str(error)
 
@@ -303,15 +568,60 @@ def opencl_status() -> dict:
                 "supports_fp64": runtime["supports_fp64"],
             }
         )
+    peak_status = opencl_peak_status()
+    result.update(
+        {
+            "device_available": peak_status["device_available"],
+            "periodic_regression": runtime is not None,
+            "peak_statistics_f32": peak_status["peak_statistics_f32"],
+            "peak_statistics_f64": peak_status["peak_statistics_f64"],
+            "peak_candidates_f32": peak_status["peak_candidates_f32"],
+            "peak_candidates_f64": peak_status["peak_candidates_f64"],
+        }
+    )
     return result
+
+
+def opencl_peak_status() -> dict:
+    """Return serializable peak capabilities without exposing PyOpenCL objects."""
+
+    runtime, reason = _opencl_peak_runtime()
+    available = runtime is not None
+    supports_fp64 = bool(available and runtime["peak_supports_fp64"])
+    result = {
+        "device_available": available,
+        "supports_fp64": supports_fp64,
+        "periodic_regression": bool(available and runtime["supports_fp64"]),
+        "peak_statistics_f32": available,
+        "peak_statistics_f64": supports_fp64,
+        "peak_candidates_f32": available,
+        "peak_candidates_f64": supports_fp64,
+        "minimum_samples": _minimum_peak_gpu_samples(),
+        "reason": reason,
+        "last_operation_error": _last_peak_operation_error,
+    }
+    if available:
+        result.update(
+            {
+                "device_name": runtime["device_name"],
+                "device_vendor": runtime["device_vendor"],
+                "platform": runtime["platform_name"],
+                "selected_reason": runtime["selected_reason"],
+            }
+        )
+    return result
+
+
+def last_peak_operation_error():
+    """Return the most recent peak OpenCL failure, if any."""
+
+    return _last_peak_operation_error
 
 
 def select_backend(sample_count: int, requested: str | None = None) -> str:
     """Select CPU or OpenCL while keeping small arrays on the CPU."""
 
-    requested = (requested or _configured_backend()).strip().lower()
-    if requested not in {"auto", "cpu", "opencl"}:
-        raise ValueError(f"Unsupported LFP compute backend: {requested}")
+    requested = configured_backend(requested)
     if requested == "cpu":
         return "cpu"
     if requested == "auto" and int(sample_count) < _minimum_gpu_samples():
@@ -323,6 +633,344 @@ def select_backend(sample_count: int, requested: str | None = None) -> str:
             raise RuntimeError(f"OpenCL backend is unavailable: {reason}")
         return "cpu"
     return "opencl"
+
+
+def _select_peak_backend(
+    sample_count: int,
+    dtype,
+    requested: str | None,
+    capability_name: str,
+) -> str:
+    selected = configured_backend(requested)
+    if selected == "cpu":
+        return "cpu"
+    if selected == "auto" and int(sample_count) < _minimum_peak_gpu_samples():
+        return "cpu"
+
+    dtype = np.dtype(dtype)
+    if dtype not in {np.dtype(np.float32), np.dtype(np.float64)}:
+        if selected == "opencl":
+            raise TypeError(
+                f"OpenCL {capability_name} supports float32 and float64, not {dtype}."
+            )
+        return "cpu"
+
+    runtime, reason = _opencl_peak_runtime()
+    if runtime is None:
+        _record_peak_operation_error(reason)
+        if selected == "opencl":
+            raise RuntimeError(
+                f"OpenCL {capability_name} is unavailable: {reason}"
+            )
+        return "cpu"
+    if dtype == np.dtype(np.float64) and not runtime["peak_supports_fp64"]:
+        reason = (
+            f"OpenCL {capability_name} for float64 requires the standard "
+            "cl_khr_fp64 extension"
+        )
+        _record_peak_operation_error(reason)
+        if selected == "opencl":
+            raise RuntimeError(
+                f"OpenCL {capability_name} is unavailable: operation={capability_name}; "
+                f"dtype={dtype}; device={runtime.get('device_name', 'unknown')}; "
+                f"vendor={runtime.get('device_vendor', 'unknown')}; "
+                f"platform={runtime.get('platform_name', 'unknown')}; reason={reason}"
+            )
+        return "cpu"
+    return "opencl"
+
+
+def select_peak_candidate_backend(
+    sample_count: int,
+    dtype=np.float32,
+    requested: str | None = None,
+) -> str:
+    """Select the candidate scan independently from other OpenCL features."""
+
+    return _select_peak_backend(sample_count, dtype, requested, "peak candidates")
+
+
+def select_peak_statistics_backend(
+    sample_count: int,
+    dtype=np.float32,
+    requested: str | None = None,
+) -> str:
+    """Select chunk statistics independently from the candidate scan."""
+
+    return _select_peak_backend(sample_count, dtype, requested, "peak statistics")
+
+
+def _peak_error_message(operation, dtype, sample_count, runtime, error) -> str:
+    def metadata(name, default="unknown"):
+        try:
+            return str(runtime.get(name, default))
+        except Exception:
+            return default
+
+    return (
+        f"OpenCL peak operation failed: operation={operation}; dtype={np.dtype(dtype)}; "
+        f"sample_count={int(sample_count)}; device={metadata('device_name')}; "
+        f"vendor={metadata('device_vendor')}; platform={metadata('platform_name')}; "
+        f"reason={type(error).__name__}: {error}"
+    )
+
+
+def peak_candidate_masks_cpu(
+    values,
+    positive_threshold: float,
+    negative_threshold: float,
+):
+    """Return the exact CPU reference masks used to validate OpenCL kernels."""
+
+    input_values = np.asarray(values)
+    if input_values.ndim != 1:
+        raise ValueError("Peak candidates require a one-dimensional signal.")
+    if not np.isfinite(positive_threshold) or not np.isfinite(negative_threshold):
+        raise ValueError("Peak candidate thresholds must be finite.")
+    positive = np.zeros(input_values.size, dtype=np.uint8)
+    negative = np.zeros(input_values.size, dtype=np.uint8)
+    if input_values.size < 3:
+        return positive, negative
+    left = input_values[:-2]
+    center = input_values[1:-1]
+    right = input_values[2:]
+    threshold_values = center.astype(np.float64, copy=False)
+    finite = np.isfinite(left) & np.isfinite(center) & np.isfinite(right)
+    positive[1:-1] = (
+        finite
+        & (center >= left)
+        & (center >= right)
+        & (threshold_values >= float(positive_threshold))
+    )
+    negative[1:-1] = (
+        finite
+        & (center <= left)
+        & (center <= right)
+        & (threshold_values <= float(negative_threshold))
+    )
+    return positive, negative
+
+
+def peak_candidate_masks_opencl(
+    values,
+    positive_threshold: float,
+    negative_threshold: float,
+    *,
+    requested: str | None = None,
+):
+    """Return positive/negative uint8 masks, or ``None`` for automatic CPU use."""
+
+    input_values = np.asarray(values)
+    if input_values.ndim != 1:
+        raise ValueError("OpenCL peak candidates require a one-dimensional signal.")
+    if not np.isfinite(positive_threshold) or not np.isfinite(negative_threshold):
+        raise ValueError("Peak candidate thresholds must be finite.")
+    sample_count = int(input_values.size)
+    if sample_count < 3:
+        empty = np.zeros(sample_count, dtype=np.uint8)
+        return empty, empty.copy()
+    if (
+        select_peak_candidate_backend(sample_count, input_values.dtype, requested)
+        != "opencl"
+    ):
+        return None
+
+    runtime, reason = _opencl_peak_runtime()
+    if runtime is None:
+        error = RuntimeError(reason or "OpenCL peak runtime is unavailable")
+        _record_peak_operation_error(error)
+        if configured_backend(requested) == "opencl":
+            raise error
+        return None
+    try:
+        return _peak_candidate_masks_opencl(
+            runtime,
+            input_values,
+            float(positive_threshold),
+            float(negative_threshold),
+        )
+    except Exception as error:
+        detail = _peak_error_message(
+            "candidate-mask",
+            input_values.dtype,
+            sample_count,
+            runtime,
+            error,
+        )
+        _record_peak_operation_error(detail)
+        if configured_backend(requested) == "opencl":
+            raise RuntimeError(detail) from error
+        return None
+
+
+def _peak_candidate_masks_opencl(
+    runtime,
+    input_values,
+    positive_threshold,
+    negative_threshold,
+):
+    host_values = np.ascontiguousarray(input_values)
+    sample_count = int(host_values.size)
+    max_alloc_size = int(runtime.get("max_alloc_size", host_values.nbytes))
+    if host_values.nbytes > max_alloc_size or sample_count > max_alloc_size:
+        raise MemoryError("one peak candidate buffer exceeds the device allocation limit")
+
+    cl = runtime["cl"]
+    context = runtime["context"]
+    queue = cl.CommandQueue(context)
+    values_buffer = _read_only_buffer(cl, context, host_values)
+    positive_mask = np.empty(sample_count, dtype=np.uint8)
+    negative_mask = np.empty(sample_count, dtype=np.uint8)
+    positive_buffer = cl.Buffer(
+        context, cl.mem_flags.WRITE_ONLY, positive_mask.nbytes
+    )
+    negative_buffer = cl.Buffer(
+        context, cl.mem_flags.WRITE_ONLY, negative_mask.nbytes
+    )
+
+    if host_values.dtype == np.dtype(np.float32):
+        with np.errstate(over="ignore", invalid="ignore"):
+            positive_bound = np.float32(positive_threshold)
+            negative_bound = np.float32(negative_threshold)
+        # A strict flag preserves comparison with a Python float threshold even
+        # when that threshold lies between adjacent representable float32 values.
+        positive_strict = np.uint8(float(positive_bound) < positive_threshold)
+        negative_strict = np.uint8(float(negative_bound) > negative_threshold)
+        kernel = cl.Kernel(runtime["peak_program"], "peak_candidate_mask_f32")
+        kernel(
+            queue,
+            (sample_count,),
+            None,
+            values_buffer,
+            positive_buffer,
+            negative_buffer,
+            positive_bound,
+            negative_bound,
+            positive_strict,
+            negative_strict,
+            np.int32(sample_count),
+        )
+    else:
+        kernel = cl.Kernel(runtime["peak_program"], "peak_candidate_mask_f64")
+        kernel(
+            queue,
+            (sample_count,),
+            None,
+            values_buffer,
+            positive_buffer,
+            negative_buffer,
+            np.float64(positive_threshold),
+            np.float64(negative_threshold),
+            np.int32(sample_count),
+        )
+    cl.enqueue_copy(queue, positive_mask, positive_buffer, is_blocking=False)
+    cl.enqueue_copy(queue, negative_mask, negative_buffer, is_blocking=True)
+    queue.finish()
+    return positive_mask, negative_mask
+
+
+def chunk_statistics_opencl(values, *, requested: str | None = None):
+    """Return finite ``(count, mean, M2)`` or ``None`` for automatic CPU use."""
+
+    input_values = np.asarray(values)
+    if input_values.ndim != 1:
+        raise ValueError("OpenCL peak statistics require a one-dimensional signal.")
+    sample_count = int(input_values.size)
+    if sample_count == 0:
+        return 0, float("nan"), 0.0
+    if (
+        select_peak_statistics_backend(sample_count, input_values.dtype, requested)
+        != "opencl"
+    ):
+        return None
+
+    runtime, reason = _opencl_peak_runtime()
+    if runtime is None:
+        error = RuntimeError(reason or "OpenCL peak runtime is unavailable")
+        _record_peak_operation_error(error)
+        if configured_backend(requested) == "opencl":
+            raise error
+        return None
+    try:
+        return _chunk_statistics_opencl(runtime, input_values)
+    except Exception as error:
+        detail = _peak_error_message(
+            "chunk-statistics",
+            input_values.dtype,
+            sample_count,
+            runtime,
+            error,
+        )
+        _record_peak_operation_error(detail)
+        if configured_backend(requested) == "opencl":
+            raise RuntimeError(detail) from error
+        return None
+
+
+def _chunk_statistics_opencl(runtime, input_values):
+    host_values = np.ascontiguousarray(input_values)
+    sample_count = int(host_values.size)
+    max_alloc_size = int(runtime.get("max_alloc_size", host_values.nbytes))
+    if host_values.nbytes > max_alloc_size:
+        raise MemoryError("the peak statistics input exceeds the device allocation limit")
+
+    cl = runtime["cl"]
+    context = runtime["context"]
+    queue = cl.CommandQueue(context)
+    local_size = max(int(runtime.get("local_size", 1)), 1)
+    group_count = max(1, min((sample_count + local_size - 1) // local_size, 256))
+    global_size = group_count * local_size
+    partial_dtype = host_values.dtype
+    partial_counts = np.empty(group_count, dtype=np.uint64)
+    partial_means = np.empty(group_count, dtype=partial_dtype)
+    partial_m2 = np.empty(group_count, dtype=partial_dtype)
+
+    values_buffer = _read_only_buffer(cl, context, host_values)
+    counts_buffer = cl.Buffer(context, cl.mem_flags.WRITE_ONLY, partial_counts.nbytes)
+    means_buffer = cl.Buffer(context, cl.mem_flags.WRITE_ONLY, partial_means.nbytes)
+    m2_buffer = cl.Buffer(context, cl.mem_flags.WRITE_ONLY, partial_m2.nbytes)
+    suffix = "f32" if partial_dtype == np.dtype(np.float32) else "f64"
+    kernel = cl.Kernel(runtime["peak_program"], f"peak_statistics_{suffix}")
+    scalar_bytes = int(partial_dtype.itemsize)
+    kernel(
+        queue,
+        (global_size,),
+        (local_size,),
+        values_buffer,
+        counts_buffer,
+        means_buffer,
+        m2_buffer,
+        np.int32(sample_count),
+        cl.LocalMemory(local_size * np.dtype(np.uint64).itemsize),
+        cl.LocalMemory(local_size * scalar_bytes),
+        cl.LocalMemory(local_size * scalar_bytes),
+    )
+    cl.enqueue_copy(queue, partial_counts, counts_buffer, is_blocking=False)
+    cl.enqueue_copy(queue, partial_means, means_buffer, is_blocking=False)
+    cl.enqueue_copy(queue, partial_m2, m2_buffer, is_blocking=True)
+    queue.finish()
+
+    count = 0
+    mean = 0.0
+    m2 = 0.0
+    for partial_count, partial_mean, partial_value_m2 in zip(
+        partial_counts, partial_means, partial_m2
+    ):
+        right_count = int(partial_count)
+        if right_count == 0:
+            continue
+        right_mean = float(partial_mean)
+        combined = count + right_count
+        delta = right_mean - mean
+        m2 += (
+            float(partial_value_m2)
+            + delta * delta * count * right_count / combined
+        )
+        mean += delta * right_count / combined
+        count = combined
+    if count == 0:
+        return 0, float("nan"), 0.0
+    return count, mean, m2
 
 
 def periodic_noise_regression_opencl(

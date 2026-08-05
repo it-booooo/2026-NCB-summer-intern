@@ -8,10 +8,13 @@ import os
 import sys
 import tempfile
 import threading
+import time
+from collections import OrderedDict
 
 import numpy as np
 from PySide6.QtCore import QThread, Signal
-from scipy.signal import find_peaks
+from scipy.signal import find_peaks, peak_prominences
+from scipy.signal._peak_finding_utils import _select_by_peak_distance
 
 from .lfp_processing import (
     LfpSegment,
@@ -21,11 +24,112 @@ from .lfp_processing import (
 )
 from lfp_analysis_process import render_lfp_analysis
 from .source import CacheBuildCancelled
+from .peak_display import load_peak_display_samples
+from .gpu_backend import (
+    chunk_statistics_opencl,
+    configured_backend,
+    last_peak_operation_error,
+    opencl_peak_status,
+    peak_candidate_masks_opencl,
+    peak_opencl_minimum_samples,
+)
 
 
 MAX_EXPORT_WAVEFORM_POINTS = 200_000
 ANALYSIS_DISPLAY_DPI = 300
 _PROCESS_SPAWN_LOCK = threading.Lock()
+_PEAK_STATISTICS_CACHE = OrderedDict()
+_PEAK_STATISTICS_CACHE_LOCK = threading.RLock()
+_PEAK_STATISTICS_CACHE_MAX_ENTRIES = 32
+
+
+def _normalize_plateau_candidates(values, candidate_mask):
+    """Collapse flat local maxima to SciPy's floor-rounded midpoint."""
+
+    signal_values = np.asarray(values, dtype=np.float64)
+    mask = np.asarray(candidate_mask, dtype=bool)
+    if signal_values.ndim != 1 or mask.shape != signal_values.shape:
+        raise ValueError("Peak candidate masks must match a one-dimensional signal.")
+    indices = np.flatnonzero(mask)
+    if indices.size == 0:
+        return np.empty(0, dtype=np.intp)
+    breaks = np.flatnonzero(np.diff(indices) > 1)
+    group_starts = np.concatenate((np.array([0]), breaks + 1))
+    group_ends = np.concatenate((breaks, np.array([indices.size - 1])))
+    left_edges = indices[group_starts]
+    right_edges = indices[group_ends]
+    valid = np.zeros(left_edges.size, dtype=bool)
+    interior = np.flatnonzero(
+        (left_edges > 0) & (right_edges < signal_values.size - 1)
+    )
+    valid[interior] = (
+        signal_values[left_edges[interior]]
+        > signal_values[left_edges[interior] - 1]
+    ) & (
+        signal_values[right_edges[interior]]
+        > signal_values[right_edges[interior] + 1]
+    )
+    return np.asarray((left_edges[valid] + right_edges[valid]) // 2, dtype=np.intp)
+
+
+def _finalize_peak_mask(
+    values,
+    candidate_mask,
+    *,
+    height,
+    prominence,
+    distance,
+    wlen,
+    cancel_check=None,
+):
+    """Apply SciPy-equivalent plateau, height, distance, and prominence steps."""
+
+    signal_values = np.asarray(values, dtype=np.float64)
+    peaks = _normalize_plateau_candidates(signal_values, candidate_mask)
+    if peaks.size:
+        peaks = peaks[signal_values[peaks] >= float(height)]
+    if cancel_check is not None:
+        cancel_check()
+    if peaks.size > 1:
+        keep = _select_by_peak_distance(
+            np.ascontiguousarray(peaks, dtype=np.intp),
+            np.ascontiguousarray(signal_values[peaks], dtype=np.float64),
+            float(distance),
+        )
+        peaks = peaks[keep]
+    if cancel_check is not None:
+        cancel_check()
+    if peaks.size:
+        prominences = peak_prominences(signal_values, peaks, wlen=int(wlen))[0]
+        keep = prominences >= float(prominence)
+        peaks = peaks[keep]
+        prominences = prominences[keep]
+    else:
+        prominences = np.empty(0, dtype=np.float64)
+    if cancel_check is not None:
+        cancel_check()
+    return peaks, prominences
+
+
+def _cpu_chunk_statistics(values):
+    finite = np.asarray(values)[np.isfinite(values)]
+    count = int(finite.size)
+    if count == 0:
+        return 0, float("nan"), 0.0
+    float_values = finite.astype(np.float64, copy=False)
+    mean = float(np.mean(float_values, dtype=np.float64))
+    m2 = float(np.sum((float_values - mean) ** 2, dtype=np.float64))
+    return count, mean, m2
+
+
+def _merge_statistics(count, mean, m2, right_count, right_mean, right_m2):
+    if right_count == 0:
+        return count, mean, m2
+    combined = count + right_count
+    delta = right_mean - mean
+    m2 += right_m2 + delta * delta * count * right_count / combined
+    mean += delta * right_count / combined
+    return combined, mean, m2
 
 
 def _render_analysis_file(
@@ -166,6 +270,49 @@ class SignalWorker(QThread):
             return
         self.completed.emit(self.request_id, self.source_identity, result)
         del result
+
+
+class LfpPeakDisplayWorker(SignalWorker):
+    """Prepare bounded LFP peak plot samples outside the GUI thread."""
+
+    def __init__(
+        self,
+        request_id,
+        dataset,
+        channel,
+        peak_records,
+        settings,
+        *,
+        context_sec,
+        maximum_points,
+        maximum_interval_sec,
+    ):
+        super().__init__(request_id, dataset)
+        self.channel = int(channel)
+        self.peak_records = tuple(peak_records)
+        self.settings = settings
+        self.context_sec = float(context_sec)
+        self.maximum_points = int(maximum_points)
+        self.maximum_interval_sec = float(maximum_interval_sec)
+
+    def execute(self):
+        times, values = load_peak_display_samples(
+            self.dataset,
+            self.channel,
+            self.peak_records,
+            self.settings,
+            context_sec=self.context_sec,
+            maximum_points=self.maximum_points,
+            maximum_interval_sec=self.maximum_interval_sec,
+            cancel_event=self.cancel_event,
+        )
+        self.check_cancel()
+        return {
+            "channel": self.channel,
+            "filtered": bool(self.settings and self.settings.show_filtered),
+            "times": times,
+            "values": values,
+        }
 
 
 class LfpAnalysisWorker(SignalWorker):
@@ -483,6 +630,7 @@ class PeakDetectionWorker(SignalWorker):
         prominence_sigma,
         min_distance_sec,
         chunk_samples=None,
+        backend=None,
     ):
         super().__init__(request_id, dataset)
         self.channel = int(channel)
@@ -496,8 +644,25 @@ class PeakDetectionWorker(SignalWorker):
             int(chunk_samples or self.DEFAULT_CHUNK_SAMPLES),
             2,
         )
+        self.backend = configured_backend(backend)
+        self._fallback_reasons = []
+        self._acceleration = None
 
     def execute(self):
+        started = time.perf_counter()
+        self._acceleration = {
+            "backend": "cpu",
+            "statistics_backend": "cpu",
+            "candidate_backend": "cpu",
+            "gpu_statistics_chunks": 0,
+            "gpu_candidate_chunks": 0,
+            "cpu_statistics_chunks": 0,
+            "cpu_candidate_chunks": 0,
+            "elapsed_sec": 0.0,
+            "opencl_status": {"checked": False},
+            "fallback_reason": None,
+            "statistics_cache_hit": False,
+        }
         self.report(5)
         source = self.dataset.source
         left_index, right_index = source.segment_indices(
@@ -529,6 +694,13 @@ class PeakDetectionWorker(SignalWorker):
         height_delta = self.height_sigma * sigma
         candidates = []
         total = right_index - left_index
+        use_opencl_candidates = (
+            self.backend == "opencl"
+            or (
+                self.backend == "auto"
+                and total >= peak_opencl_minimum_samples()
+            )
+        )
         for core_left in range(left_index, right_index, self.chunk_samples):
             self.check_cancel()
             core_right = min(core_left + self.chunk_samples, right_index)
@@ -539,24 +711,68 @@ class PeakDetectionWorker(SignalWorker):
                 loaded_right,
                 sample_rate_hz,
             )
-            positive, positive_properties = find_peaks(
-                values,
-                height=baseline + height_delta,
-                prominence=prominence,
-                distance=distance,
-                wlen=prominence_wlen,
-            )
-            negative, negative_properties = find_peaks(
-                -values,
-                height=-baseline + height_delta,
-                prominence=prominence,
-                distance=distance,
-                wlen=prominence_wlen,
-            )
+            positive_threshold = baseline + height_delta
+            negative_threshold = baseline - height_delta
+            masks = None
+            if use_opencl_candidates:
+                try:
+                    masks = peak_candidate_masks_opencl(
+                        values,
+                        positive_threshold,
+                        negative_threshold,
+                        requested="opencl",
+                    )
+                    self.check_cancel()
+                except Exception as error:
+                    if self.backend == "opencl":
+                        raise
+                    self._add_fallback(error)
+                    use_opencl_candidates = False
+            if masks is None:
+                self.check_cancel()
+                positive, positive_properties = find_peaks(
+                    values,
+                    height=positive_threshold,
+                    prominence=prominence,
+                    distance=distance,
+                    wlen=prominence_wlen,
+                )
+                self.check_cancel()
+                negative, negative_properties = find_peaks(
+                    -values,
+                    height=-negative_threshold,
+                    prominence=prominence,
+                    distance=distance,
+                    wlen=prominence_wlen,
+                )
+                self.check_cancel()
+                positive_prominences = positive_properties["prominences"]
+                negative_prominences = negative_properties["prominences"]
+                self._acceleration["cpu_candidate_chunks"] += 1
+            else:
+                positive, positive_prominences = _finalize_peak_mask(
+                    values,
+                    masks[0],
+                    height=positive_threshold,
+                    prominence=prominence,
+                    distance=distance,
+                    wlen=prominence_wlen,
+                    cancel_check=self.check_cancel,
+                )
+                negative, negative_prominences = _finalize_peak_mask(
+                    -values,
+                    masks[1],
+                    height=-negative_threshold,
+                    prominence=prominence,
+                    distance=distance,
+                    wlen=prominence_wlen,
+                    cancel_check=self.check_cancel,
+                )
+                self._acceleration["gpu_candidate_chunks"] += 1
             self._append_owned_candidates(
                 candidates,
                 positive,
-                positive_properties["prominences"],
+                positive_prominences,
                 values,
                 times,
                 loaded_left,
@@ -567,7 +783,7 @@ class PeakDetectionWorker(SignalWorker):
             self._append_owned_candidates(
                 candidates,
                 negative,
-                negative_properties["prominences"],
+                negative_prominences,
                 values,
                 times,
                 loaded_left,
@@ -578,7 +794,9 @@ class PeakDetectionWorker(SignalWorker):
             completed = core_right - left_index
             self.report(50 + round(45 * completed / total))
 
+        self.check_cancel()
         accepted = self._deduplicate_candidates(candidates, distance)
+        self.check_cancel()
         records = [
             {
                 "record_time_s": candidate["record_time_s"],
@@ -587,10 +805,12 @@ class PeakDetectionWorker(SignalWorker):
             }
             for candidate in accepted
         ]
+        self._finalize_acceleration(started)
         self.report(100)
         return {
             "channel": self.channel,
             "records": records,
+            "acceleration": self._acceleration,
         }
 
     def _global_mean_std(
@@ -602,10 +822,39 @@ class PeakDetectionWorker(SignalWorker):
     ):
         """Merge per-chunk count/mean/M2 values into one global baseline."""
 
+        cache_key = None
+        if self.backend == "cpu":
+            effective_settings = (
+                self.settings
+                if self.settings is not None and self.settings.show_filtered
+                else None
+            )
+            cache_key = (
+                self.source_identity,
+                self.channel,
+                int(left_index),
+                int(right_index),
+                float(sample_rate_hz),
+                effective_settings,
+            )
+            with _PEAK_STATISTICS_CACHE_LOCK:
+                cached = _PEAK_STATISTICS_CACHE.get(cache_key)
+                if cached is not None:
+                    _PEAK_STATISTICS_CACHE.move_to_end(cache_key)
+                    self._acceleration["statistics_cache_hit"] = True
+                    return cached
+
         count = 0
         mean = 0.0
         m2 = 0.0
         total = right_index - left_index
+        use_opencl_statistics = (
+            self.backend == "opencl"
+            or (
+                self.backend == "auto"
+                and total >= peak_opencl_minimum_samples()
+            )
+        )
         for core_left in range(left_index, right_index, self.chunk_samples):
             self.check_cancel()
             core_right = min(core_left + self.chunk_samples, right_index)
@@ -619,26 +868,84 @@ class PeakDetectionWorker(SignalWorker):
             crop_left = core_left - loaded_left
             crop_right = crop_left + (core_right - core_left)
             values = loaded_values[crop_left:crop_right]
-            finite = values[np.isfinite(values)]
-            chunk_count = int(finite.size)
-            if chunk_count:
-                chunk_mean = float(np.mean(finite, dtype=np.float64))
-                delta = chunk_mean - mean
-                combined = count + chunk_count
-                chunk_m2 = float(
-                    np.sum(
-                        (finite.astype(np.float64) - chunk_mean) ** 2,
-                        dtype=np.float64,
+            chunk_statistics = None
+            if use_opencl_statistics:
+                try:
+                    chunk_statistics = chunk_statistics_opencl(
+                        values,
+                        requested="opencl",
                     )
-                )
-                m2 += chunk_m2 + delta * delta * count * chunk_count / combined
-                mean += delta * chunk_count / combined
-                count = combined
+                    self.check_cancel()
+                except Exception as error:
+                    if self.backend == "opencl":
+                        raise
+                    self._add_fallback(error)
+                    use_opencl_statistics = False
+            if chunk_statistics is None:
+                chunk_statistics = _cpu_chunk_statistics(values)
+                self._acceleration["cpu_statistics_chunks"] += 1
+            else:
+                self._acceleration["gpu_statistics_chunks"] += 1
+            chunk_count, chunk_mean, chunk_m2 = chunk_statistics
+            count, mean, m2 = _merge_statistics(
+                count,
+                mean,
+                m2,
+                chunk_count,
+                chunk_mean,
+                chunk_m2,
+            )
             completed = core_right - left_index
             self.report(5 + round(40 * completed / total))
         if count == 0:
             raise ValueError("Selected signal contains no finite samples.")
-        return mean, float(np.sqrt(m2 / count))
+        result = mean, float(np.sqrt(m2 / count))
+        if cache_key is not None:
+            with _PEAK_STATISTICS_CACHE_LOCK:
+                _PEAK_STATISTICS_CACHE[cache_key] = result
+                _PEAK_STATISTICS_CACHE.move_to_end(cache_key)
+                while len(_PEAK_STATISTICS_CACHE) > _PEAK_STATISTICS_CACHE_MAX_ENTRIES:
+                    _PEAK_STATISTICS_CACHE.popitem(last=False)
+        return result
+
+    def _add_fallback(self, error):
+        reason = str(error or last_peak_operation_error() or "OpenCL peak operation failed")
+        if reason and reason not in self._fallback_reasons:
+            self._fallback_reasons.append(reason)
+
+    def _finalize_acceleration(self, started):
+        metadata = self._acceleration
+
+        def stage_backend(gpu_key, cpu_key):
+            gpu_chunks = metadata[gpu_key]
+            cpu_chunks = metadata[cpu_key]
+            if gpu_chunks and cpu_chunks:
+                return "hybrid"
+            return "opencl" if gpu_chunks else "cpu"
+
+        metadata["statistics_backend"] = stage_backend(
+            "gpu_statistics_chunks", "cpu_statistics_chunks"
+        )
+        metadata["candidate_backend"] = stage_backend(
+            "gpu_candidate_chunks", "cpu_candidate_chunks"
+        )
+        stages = {metadata["statistics_backend"], metadata["candidate_backend"]}
+        metadata["backend"] = stages.pop() if len(stages) == 1 else "hybrid"
+        if metadata["backend"] == "hybrid" or "hybrid" in (
+            metadata["statistics_backend"],
+            metadata["candidate_backend"],
+        ):
+            metadata["backend"] = "hybrid"
+        metadata["elapsed_sec"] = float(time.perf_counter() - started)
+        metadata["fallback_reason"] = (
+            "; ".join(self._fallback_reasons) if self._fallback_reasons else None
+        )
+        if (
+            metadata["gpu_statistics_chunks"]
+            or metadata["gpu_candidate_chunks"]
+            or self._fallback_reasons
+        ):
+            metadata["opencl_status"] = opencl_peak_status()
 
     def _processed_indices(self, left_index, right_index, sample_rate_hz):
         effective_settings = (

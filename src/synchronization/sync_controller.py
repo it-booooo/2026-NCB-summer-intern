@@ -219,12 +219,17 @@ class SyncController:
         Args:
             None.
         """
+        time_mapping_changed = (
+            self.sync_state.time_offset_sec is not None
+            or self.sync_state.video_time_origin_sec is not None
+        )
         self.sync_state.time_offset_sec = None
         self.video_player.update_time_offset_display()
         self.video_player.set_sync_time_origin(None)
         self.wave_panel.set_sync_time_origin(None)
         self.marker_table.set_sync_time_origin(None)
-        self.lfp_peak_panel.refresh_table()
+        if time_mapping_changed:
+            self.lfp_peak_panel.refresh_table()
         self.wave_panel.clear_current_time_marker()
         self.update_event_intervals()
         self.marker_panel.update_sync_selection_status()
@@ -244,11 +249,20 @@ class SyncController:
         video_marker_sec = video_marker.position.time_sec
 
         previous_video_origin_sec = self.sync_state.video_time_origin_sec
-        self.sync_state.time_offset_sec = video_marker_sec - ttl_marker_sec
+        previous_time_offset_sec = self.sync_state.time_offset_sec
+        next_time_offset_sec = video_marker_sec - ttl_marker_sec
+        self.sync_state.time_offset_sec = next_time_offset_sec
         self.video_player.set_sync_time_origin(video_marker_sec)
         self.wave_panel.set_sync_time_origin(ttl_marker_sec)
         self.marker_table.set_sync_time_origin(video_marker_sec)
-        self.lfp_peak_panel.refresh_table()
+        time_mapping_changed = (
+            previous_time_offset_sec is None
+            or abs(previous_time_offset_sec - next_time_offset_sec) > 1e-9
+            or previous_video_origin_sec is None
+            or abs(previous_video_origin_sec - video_marker_sec) > 1e-9
+        )
+        if time_mapping_changed:
+            self.lfp_peak_panel.refresh_table()
         self.video_player.update_time_offset_display()
         if (
             previous_video_origin_sec is None
