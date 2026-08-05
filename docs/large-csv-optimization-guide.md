@@ -25,7 +25,7 @@
 ImportController.import_signal()
   -> parse_lfp_csv_info()
        -> parse_signal_csv_metadata()
-  -> WavePanel.set_lfp_info()
+  -> WavePanel.set_lfp_dataset()
   -> WavePanel.plot_lfp()
   -> WavePanel.ensure_lfp_dataset()
   -> LfpDataset.from_csv()

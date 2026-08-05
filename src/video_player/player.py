@@ -324,7 +324,6 @@ class VideoPlayer(QWidget):
         self.video_state.current_frame = 0
         self.video_state.is_playing = False
         self.video_state.rotation_degrees = 0
-        self.video_state.rotate_180_enabled = False
         self.sync_state.video_time_origin_sec = None
 
         # Clear old LED ROI when switching videos so coordinates do not leak.
@@ -512,7 +511,6 @@ class VideoPlayer(QWidget):
             return
 
         self.video_state.rotation_degrees = rotation
-        self.video_state.rotate_180_enabled = rotation == 180
         self.update_rotation_buttons()
         if clear_roi:
             self.clear_led_roi()

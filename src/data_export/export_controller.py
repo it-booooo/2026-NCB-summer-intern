@@ -168,7 +168,6 @@ class ExportController:
                     {
                         "roi": roi,
                         "rotation_degrees": rotation_degrees,
-                        "rotate_180": int(rotation_degrees) == 180,
                         "fps": fps,
                         "start_frame": start_frame,
                         "end_frame": end_frame,
@@ -181,7 +180,6 @@ class ExportController:
                 "video": {
                     "current_frame": self.video_state.current_frame,
                     "rotation_degrees": self.video_state.rotation_degrees,
-                    "rotate_180_enabled": self.video_state.rotate_180_enabled,
                 },
                 "data": {
                     "lfp_step": self.data_state.lfp_step,

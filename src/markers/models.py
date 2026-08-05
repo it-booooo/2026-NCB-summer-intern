@@ -54,11 +54,7 @@ def marker_kind(value: MarkerKind | str) -> MarkerKind:
 def marker_source(value: MarkerSource | str) -> MarkerSource:
     if isinstance(value, MarkerSource):
         return value
-    aliases = {
-        "timeline": MarkerSource.TTL_IMPORT,
-    }
-    alias = aliases.get(str(value))
-    return alias if alias is not None else MarkerSource(str(value))
+    return MarkerSource(str(value))
 
 
 def marker_video_time(marker: Marker, offset_sec: float | None) -> float | None:

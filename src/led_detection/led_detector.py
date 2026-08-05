@@ -80,8 +80,7 @@ def mean_brightness(frame_bgr, roi=None):
 def compute_led_brightness_curve(
     video_path,
     roi=None,
-    rotate_180=False,
-    rotation_degrees=None,
+    rotation_degrees=0,
     using_fps=30.0,
     frame_step=1,
     start_frame=0,
@@ -95,7 +94,6 @@ def compute_led_brightness_curve(
     Args:
         video_path: Path of the video being processed.
         roi: LED region of interest as (x, y, width, height).
-        rotate_180: Backward-compatible 180-degree rotation flag.
         rotation_degrees: Display/analysis rotation.
         using_fps: Frame rate used for time conversion.
         start_frame: First video frame to process.
@@ -106,8 +104,6 @@ def compute_led_brightness_curve(
     if backend_info is not None:
         backend_info.clear()
 
-    if rotation_degrees is None:
-        rotation_degrees = 180 if rotate_180 else 0
     rotation_degrees = normalize_rotation_degrees(rotation_degrees)
     rotate_180 = rotation_degrees == 180
 
@@ -404,8 +400,7 @@ def refine_led_event_pairs_from_frame_deltas(
     video_path,
     roi,
     coarse_events,
-    rotate_180=False,
-    rotation_degrees=None,
+    rotation_degrees=0,
     using_fps=30.0,
     window_sec=1.0,
     scan_start_frame=0,
@@ -424,7 +419,6 @@ def refine_led_event_pairs_from_frame_deltas(
     Args:
         video_path: Path of the video being processed.
         roi: LED region of interest as (x, y, width, height).
-        rotate_180: Backward-compatible 180-degree rotation flag.
         rotation_degrees: Display/analysis rotation.
         using_fps: Frame rate used for time conversion.
         should_stop: Callback that returns true when processing should stop.
@@ -469,7 +463,6 @@ def refine_led_event_pairs_from_frame_deltas(
         fine_points = compute_led_brightness_curve(
             video_path,
             roi=roi,
-            rotate_180=rotate_180,
             rotation_degrees=rotation_degrees,
             using_fps=fps,
             frame_step=1,

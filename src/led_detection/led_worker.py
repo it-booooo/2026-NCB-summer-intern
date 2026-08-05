@@ -18,7 +18,6 @@ class LedDetectionWorker(QThread):
         self,
         video_path,
         roi,
-        rotate_180,
         rotation_degrees,
         fps,
         scan_start_frame,
@@ -30,7 +29,6 @@ class LedDetectionWorker(QThread):
         super().__init__(parent)
         self.video_path = video_path
         self.roi = roi
-        self.rotate_180 = rotate_180
         self.rotation_degrees = rotation_degrees
         self.fps = fps
         self.scan_start_frame = scan_start_frame
@@ -55,7 +53,6 @@ class LedDetectionWorker(QThread):
                 points = compute_led_brightness_curve(
                     self.video_path,
                     roi=self.roi,
-                    rotate_180=self.rotate_180,
                     rotation_degrees=self.rotation_degrees,
                     using_fps=self.fps,
                     frame_step=coarse_step,
@@ -95,7 +92,6 @@ class LedDetectionWorker(QThread):
                         self.video_path,
                         roi=self.roi,
                         coarse_events=coarse_events,
-                        rotate_180=self.rotate_180,
                         rotation_degrees=self.rotation_degrees,
                         using_fps=self.fps,
                         window_sec=refine_window_sec,

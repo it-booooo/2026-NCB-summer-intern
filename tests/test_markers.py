@@ -8,7 +8,6 @@ from src.markers import (
     RecordPosition,
     VideoPosition,
     marker_from_dict,
-    marker_from_legacy_event,
     marker_from_legacy_ttl,
     marker_record_time,
     marker_to_dict,
@@ -62,34 +61,11 @@ class MarkerModelTests(unittest.TestCase):
         )
         self.assertEqual(MarkerSource.LFP_DETECTION.value, "lfp_detection")
 
-    def test_legacy_records_migrate_to_markers(self):
-        event = marker_from_legacy_event(
-            {
-                "event_type": "led_on",
-                "video_time_sec": 3.0,
-                "frame_index": 90,
-                "source": "manual",
-            }
-        )
+    def test_legacy_ttl_records_migrate_to_markers(self):
         ttl = marker_from_legacy_ttl({"record_time": 2_000_000})
 
-        self.assertEqual(event.kind, MarkerKind.LED_ON)
-        self.assertEqual(event.position, VideoPosition(3.0, 90))
         self.assertEqual(ttl.kind, MarkerKind.TTL)
         self.assertEqual(ttl.position, RecordPosition(2.0))
-
-    def test_legacy_peak_is_restored_on_record_timeline(self):
-        peak = marker_from_legacy_event(
-            {
-                "event_type": "lfp_peak",
-                "video_time_sec": 12.0,
-                "frame_index": 360,
-                "source": "lfp_detection",
-            },
-            offset_sec=2.0,
-        )
-
-        self.assertEqual(peak.position, RecordPosition(10.0))
 
 
 class MarkerStoreTests(unittest.TestCase):

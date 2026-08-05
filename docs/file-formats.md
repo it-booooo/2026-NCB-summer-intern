@@ -130,13 +130,10 @@ record_time_sec = video_time_sec - time_offset_sec
 | `current_frame` | `int = 0` | 當前影格，從 0 開始 | 是 |
 | `is_playing` | `bool = False` | 播放器是否正在播放 | 否 |
 | `rotation_degrees` | `int = 0` | 顯示／分析旋轉角度，只允許 0/90/180/270 | 是 |
-| `rotate_180_enabled` | `bool = False` | 舊版相容旗標，等價於旋轉 180 度 | 是，相容用途 |
 
 規則：
 
 - `rotation_degrees` 是目前主要欄位。
-- `rotate_180_enabled` 必須與 `rotation_degrees == 180` 一致。
-- 新程式不要只更新其中一個欄位。
 - 新影片載入時會重設目前影格、播放狀態、旋轉與部分同步／LED state。
 
 ### 3.3 `DataState`
@@ -464,10 +461,9 @@ Marker(
 | `LFP_DETECTION` | `lfp_detection` |
 | `PROJECT_IMPORT` | `project_import` |
 
-相容 alias：
+Source 文字值：
 
 - `lfp_detection` → `LFP_DETECTION`
-- `timeline` → `TTL_IMPORT`
 
 ### Position
 
@@ -649,7 +645,6 @@ PROJECT_VERSION = 3
     "video": {
         "current_frame": int,
         "rotation_degrees": int,
-        "rotate_180_enabled": bool,
     },
     "data": {
         "lfp_step": int | None,
@@ -740,7 +735,6 @@ Record domain：
 {
     "roi": list[int] | None,
     "rotation_degrees": int,
-    "rotate_180": bool,  # 相容欄位
     "fps": float,
     "start_frame": int,
     "end_frame": int,

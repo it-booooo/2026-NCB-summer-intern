@@ -526,14 +526,9 @@ class ImportController:
 
             if video_path and self.video_state.metadata is not None:
                 self.restore_brightness_cache(video_path, led)
-                rotation_degrees = staged["video"].get("rotation_degrees")
-                if rotation_degrees is None:
-                    rotation_degrees = (
-                        180 if staged["video"].get("rotate_180_enabled", False) else 0
-                    )
+                rotation_degrees = staged["video"].get("rotation_degrees", 0)
                 rotation_degrees = normalize_rotation_degrees(rotation_degrees)
                 self.video_state.rotation_degrees = rotation_degrees
-                self.video_state.rotate_180_enabled = rotation_degrees == 180
                 context.video_player.update_rotation_buttons()
                 context.video_player.seek_frame(
                     int(staged["video"].get("current_frame", 0))
@@ -556,9 +551,7 @@ class ImportController:
     def restore_brightness_cache(self, video_path, led):
         for cache in led.get("brightness_cache", []):
             cache_roi = cache.get("roi")
-            rotation_degrees = cache.get("rotation_degrees")
-            if rotation_degrees is None:
-                rotation_degrees = 180 if cache.get("rotate_180", False) else 0
+            rotation_degrees = cache.get("rotation_degrees", 0)
             cache_key = (
                 video_path,
                 tuple(cache_roi) if cache_roi is not None else None,

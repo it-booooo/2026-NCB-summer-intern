@@ -1150,11 +1150,6 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self.update_event_interval_artists()
         self.update_current_time_marker()
 
-    def set_lfp_info(self, info):
-        """Compatibility entry point that prepares and installs an LFP dataset."""
-        dataset = self.data_state.load_lfp_info(info)
-        self.set_lfp_dataset(dataset)
-
     def set_lfp_dataset(self, dataset):
         """Atomically install a prepared LFP dataset and refresh its controls."""
         self._cancel_lfp_coarse_workers()
@@ -1362,11 +1357,6 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         analysis_stopped = self._cancel_lfp_analysis_workers(wait=wait)
         coarse_stopped = self._cancel_lfp_coarse_workers(wait=wait)
         return analysis_stopped and coarse_stopped
-
-    def set_three_axis_info(self, info):
-        """Prepare and install a three-axis dataset from metadata."""
-        dataset = self.data_state.load_three_axis_info(info)
-        self.set_three_axis_dataset(dataset)
 
     def set_three_axis_dataset(self, dataset):
         """Atomically install a prepared three-axis dataset and refresh its plot."""
