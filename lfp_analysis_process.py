@@ -24,6 +24,7 @@ def render_lfp_analysis(
     dpi=100,
     annotation=None,
     frequency_range_hz=None,
+    notch_display_options=None,
 ):
     """Compute and render inside a disposable process."""
     figure = None
@@ -40,7 +41,12 @@ def render_lfp_analysis(
                 values,
                 float(sample_rate_hz),
             )
-            figure = _power_spectrum_figure(channel, frequencies, power)
+            figure = _power_spectrum_figure(
+                channel,
+                frequencies,
+                power,
+                notch_display_options=notch_display_options,
+            )
             del frequencies, power
         elif analysis_type == "spectrogram":
             frequencies, times, power = _compute_time_frequency(
@@ -154,7 +160,77 @@ def _finite_signal(values):
     return interpolated.astype(signal_values.dtype, copy=False)
 
 
-def _power_spectrum_figure(channel, frequencies, power):
+def _interpolate_notch_gaps_db(
+    frequencies,
+    power_db,
+    notch_frequencies_hz,
+    quality_factor,
+):
+    """Interpolate notch regions in a dB display copy without changing PSD data."""
+
+    frequency_values = np.asarray(frequencies, dtype=np.float64)
+    display_values = np.array(power_db, dtype=np.float64, copy=True)
+    if (
+        frequency_values.ndim != 1
+        or display_values.ndim != 1
+        or frequency_values.shape != display_values.shape
+        or frequency_values.size < 3
+    ):
+        return display_values
+    quality_factor = float(quality_factor)
+    if not np.isfinite(quality_factor) or quality_factor <= 0:
+        return display_values
+
+    positive_steps = np.diff(frequency_values)
+    positive_steps = positive_steps[
+        np.isfinite(positive_steps) & (positive_steps > 0)
+    ]
+    if positive_steps.size == 0:
+        return display_values
+    frequency_resolution = float(np.median(positive_steps))
+    gap_mask = np.zeros(frequency_values.shape, dtype=bool)
+    for notch_frequency in notch_frequencies_hz or ():
+        notch_frequency = float(notch_frequency)
+        if not np.isfinite(notch_frequency) or notch_frequency <= 0:
+            continue
+        # iirnotch defines Q as centre frequency / total -3 dB bandwidth.
+        # Keep at least two PSD bins on either side in low-resolution plots.
+        half_width_hz = max(
+            notch_frequency / (2.0 * quality_factor),
+            2.0 * frequency_resolution,
+        )
+        gap_mask |= np.abs(frequency_values - notch_frequency) <= half_width_hz
+
+    if not gap_mask.any():
+        return display_values
+    padded = np.pad(gap_mask, (1, 1), constant_values=False)
+    transitions = np.diff(padded.astype(np.int8))
+    starts = np.flatnonzero(transitions == 1)
+    ends = np.flatnonzero(transitions == -1) - 1
+    for start, end in zip(starts, ends):
+        left = int(start) - 1
+        right = int(end) + 1
+        if left < 0 or right >= display_values.size:
+            continue
+        if not (
+            np.isfinite(display_values[left])
+            and np.isfinite(display_values[right])
+        ):
+            continue
+        display_values[start : end + 1] = np.interp(
+            frequency_values[start : end + 1],
+            (frequency_values[left], frequency_values[right]),
+            (display_values[left], display_values[right]),
+        )
+    return display_values
+
+
+def _power_spectrum_figure(
+    channel,
+    frequencies,
+    power,
+    notch_display_options=None,
+):
     figure = Figure(figsize=(7.6, 4.4), constrained_layout=True)
     ax = figure.add_subplot(111)
     power_db = np.array(power, copy=True)
@@ -162,8 +238,19 @@ def _power_spectrum_figure(channel, frequencies, power):
     np.maximum(power_db, tiny, out=power_db)
     np.log10(power_db, out=power_db)
     power_db *= 10.0
+    interpolated = bool(notch_display_options)
+    if interpolated:
+        power_db = _interpolate_notch_gaps_db(
+            frequencies,
+            power_db,
+            notch_display_options.get("frequencies_hz", ()),
+            notch_display_options.get("quality_factor", 30.0),
+        )
     ax.plot(frequencies, power_db, linewidth=0.8, color="#1f77b4")
-    ax.set_title(f"LFP Power Spectrum - Channel {channel}")
+    title = f"LFP Power Spectrum - Channel {channel}"
+    if interpolated:
+        title += " (notch gaps display-interpolated)"
+    ax.set_title(title)
     ax.set_xlabel("Frequency (Hz)")
     ax.set_ylabel("PSD (dB/Hz)")
     ax.grid(True, linewidth=0.4, alpha=0.35)

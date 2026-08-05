@@ -16,6 +16,7 @@ from scipy.signal import find_peaks
 from .lfp_processing import (
     LfpSegment,
     filter_padding_samples,
+    line_noise_frequencies,
     prepare_lfp_signal,
 )
 from lfp_analysis_process import render_lfp_analysis
@@ -42,6 +43,7 @@ def _render_analysis_file(
     dpi=100,
     annotation=None,
     frequency_range_hz=None,
+    notch_display_options=None,
 ):
     """Run one render process and return only its encoded static image."""
     context = multiprocessing.get_context("spawn")
@@ -62,6 +64,7 @@ def _render_analysis_file(
             dpi,
             annotation,
             frequency_range_hz,
+            notch_display_options,
         ),
         name=f"lfp-{analysis_type}",
         daemon=True,
@@ -256,6 +259,7 @@ class LfpAnalysisWorker(SignalWorker):
             cancel_event=self.cancel_event,
             dpi=ANALYSIS_DISPLAY_DPI,
             frequency_range_hz=_spectrogram_frequency_range(self.settings),
+            notch_display_options=_notch_spectrum_display_options(self.settings),
         )
 
 
@@ -410,6 +414,9 @@ class LfpExportDataWorker(SignalWorker):
                     frequency_range_hz=_spectrogram_frequency_range(
                         self.settings
                     ),
+                    notch_display_options=_notch_spectrum_display_options(
+                        self.settings
+                    ),
                 )
                 self.report(
                     65 + round(35 * (index + 1) / len(spectral_types))
@@ -437,6 +444,24 @@ def _spectrogram_frequency_range(settings):
         float(settings.bandpass_low_hz),
         float(settings.bandpass_high_hz),
     )
+
+
+def _notch_spectrum_display_options(settings):
+    """Return display-only PSD interpolation parameters for an active notch."""
+
+    if (
+        settings is None
+        or not settings.show_filtered
+        or settings.line_noise_method != "notch"
+    ):
+        return None
+    frequencies = line_noise_frequencies(settings)
+    if not frequencies:
+        return None
+    return {
+        "frequencies_hz": tuple(float(value) for value in frequencies),
+        "quality_factor": float(settings.notch_quality),
+    }
 
 
 class PeakDetectionWorker(SignalWorker):

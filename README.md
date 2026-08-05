@@ -118,9 +118,11 @@ TTL CSV 建議包含：
 
 匯入 LFP 後可選擇 channel 與訊號顯示模式。勾選「Bandpass」後設定 Low／High cutoff；「Line noise」可選 None、Notch filter 或 Sinusoidal regression。Frequencies 可輸入一個或多個以逗號／空白分隔的頻率，例如 `60, 90`。Notch 使用同一個 Q 依序處理各頻率；正弦波回歸會在同一個 least-squares design matrix 中共同估計所有頻率。勾選「All harmonics」時，程式會自動加入每個輸入頻率的所有整數倍頻，僅處理嚴格低於目前 sample rate Nyquist frequency 的項目，重複的倍頻只估計一次；不會自動加入公因數。預設為 60 Hz、4 秒、50% overlap、只處理輸入頻率。完成設定後按「confirm」套用；波形、power spectrum、spectrogram 與 LFP 影像匯出會共用同一組已選處理設定。
 
-大型正弦波回歸區段會自動使用 CuPy／CUDA，將相同長度視窗合併成一次 batched least-squares；少於 100,000 samples 或無可用 CuPy／CUDA 時會安全改用 NumPy。可用環境變數 `PIG_LFP_COMPUTE_BACKEND=cpu|cupy|auto` 強制選擇，並以 `PIG_LFP_CUPY_MIN_SAMPLES` 調整自動啟用門檻。Windows Conda 環境會在 Qt 啟動前綁定配套的 CUDA DLL，CuPy cache 與暫存則寫入專案的 `.cupy_cache`、`.cupy_temp`。
+大型正弦波回歸區段會自動使用 OpenCL GPU：設計矩陣的偽逆只在 CPU 建立並快取一次，大量視窗係數、Hann overlap-add 重建與相減則在 GPU 執行；少於 100,000 samples、GPU 不支援 double precision，或 OpenCL 不可用時會安全改用 NumPy。可用環境變數 `PIG_LFP_COMPUTE_BACKEND=cpu|opencl|auto` 強制選擇，並以 `PIG_LFP_OPENCL_MIN_SAMPLES` 調整自動啟用門檻。LFP 與 LED 共用 `PIG_OPENCL_DEVICE`／`PIG_OPENCL_VENDOR` 裝置選擇及 `.opencl_temp` cache。
 
 「Power spectrum」與「Spectrogram」會依目前所選 LFP channel、時間軸範圍及已套用的濾波設定產生分析結果。建立 filtered overview、power spectrum 或 spectrogram 時會顯示進度，需要時可按「Cancel」中止。「Follow video playback」開啟時，完成同步後的波形視窗會跟隨影片播放位置。
+
+使用 Notch filter 顯示或匯出 power spectrum 時，程式會在轉換為 dB 後，依 notch 中心頻率與 Q 推算的頻寬，使用兩側頻譜做僅供顯示的線性插值，並在圖名標示 `notch gaps display-interpolated`。此步驟不修改 Welch PSD、filtered LFP、波形、spectrogram 或資料匯出內容；Raw 與 Sinusoidal regression 的 power spectrum 也不會套用。
 
 ### 3. 建立或匯入 TTL
 

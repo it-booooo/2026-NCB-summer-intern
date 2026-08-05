@@ -244,9 +244,9 @@ def remove_periodic_noise(
     ``sample_offset`` aligns windows when a larger recording is processed in
     padded blocks; ordinary callers should leave it at zero.
 
-    ``backend`` accepts ``"auto"``, ``"cpu"`` or ``"cupy"``.  The default
-    uses CuPy for large arrays when CUDA is available and otherwise preserves
-    the NumPy implementation.
+    ``backend`` accepts ``"auto"``, ``"cpu"`` or ``"opencl"``.  The default
+    uses OpenCL for large arrays when a compatible GPU is available and
+    otherwise preserves the NumPy implementation.
     """
     _validate_sample_rate(sample_rate_hz)
     window_seconds = float(window_seconds)
@@ -317,9 +317,9 @@ def remove_periodic_noise(
         )
     hop_samples = max(int(round(window_samples * (1.0 - overlap))), 1)
 
-    from .gpu_backend import periodic_noise_regression_cupy
+    from .gpu_backend import periodic_noise_regression_opencl
 
-    gpu_result = periodic_noise_regression_cupy(
+    gpu_result = periodic_noise_regression_opencl(
         input_values,
         sample_rate_hz,
         frequency_values,
@@ -539,7 +539,9 @@ def filter_description(settings: LfpFilterSettings | None) -> str:
         except RuntimeError:
             selected_backend = "cpu"
         backend_label = (
-            "CuPy GPU" if selected_backend == "cupy" else "NumPy CPU fallback"
+            "OpenCL GPU"
+            if selected_backend == "opencl"
+            else "NumPy CPU fallback"
         )
         line_noise_description = (
             f"sinusoidal regression {frequency_label} Hz, "
