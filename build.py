@@ -95,6 +95,16 @@ def main():
             + ". Install requirements before building so they can be bundled."
         )
 
+    try:
+        import numpy
+    except Exception as error:
+        raise SystemExit(
+            "Build environment has an incompatible NumPy installation. "
+            f"Run `{sys.executable} -m pip install --force-reinstall -r "
+            f"{ROOT / 'requirements.txt'}` and try again.\n"
+            f"{type(error).__name__}: {error}"
+        ) from error
+
     import pyopencl
 
     try:
@@ -106,16 +116,22 @@ def main():
         ) from error
 
     print(f"Bundling pyopencl {pyopencl.VERSION_TEXT} from {pyopencl.__file__}")
+    print(f"Bundling NumPy {numpy.__version__} from {numpy.__file__}")
 
     ensure_output_is_replaceable()
     cupy_args = optional_cupy_bundle_args()
 
     env = os.environ.copy()
-    if LOCAL_DEPS.exists():
-        pythonpath = env.get("PYTHONPATH")
-        env["PYTHONPATH"] = (
-            f"{LOCAL_DEPS}{os.pathsep}{pythonpath}" if pythonpath else str(LOCAL_DEPS)
-        )
+    pythonpath_entries = env.get("PYTHONPATH", "").split(os.pathsep)
+    clean_pythonpath = [
+        entry
+        for entry in pythonpath_entries
+        if entry and Path(entry).resolve() != LOCAL_DEPS.resolve()
+    ]
+    if clean_pythonpath:
+        env["PYTHONPATH"] = os.pathsep.join(clean_pythonpath)
+    else:
+        env.pop("PYTHONPATH", None)
 
     cmd = [
         sys.executable,
