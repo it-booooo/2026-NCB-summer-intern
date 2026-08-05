@@ -61,7 +61,13 @@ class DataState:
             "bandpass_low_hz": 1.0,
             "bandpass_high_hz": 100.0,
             "line_noise_hz": 60.0,
+            "line_noise_frequencies_hz": [60.0],
             "notch_quality": 30.0,
+            "line_noise_method": "notch",
+            "regression_window_seconds": 4.0,
+            "regression_overlap": 0.5,
+            "regression_harmonics": 1,
+            "regression_all_harmonics": False,
         }
     )
     follow_video_playback: bool = True

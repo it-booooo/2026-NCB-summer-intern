@@ -1,16 +1,13 @@
 from importlib import import_module
 
-from .app_state import (
-    AppState,
-    DataState,
-    LedState,
-    MarkerState,
-    SyncState,
-    TtlState,
-    VideoState,
-)
-
 _LAZY_EXPORTS = {
+    "AppState": (".app_state", "AppState"),
+    "DataState": (".app_state", "DataState"),
+    "LedState": (".app_state", "LedState"),
+    "MarkerState": (".app_state", "MarkerState"),
+    "SyncState": (".app_state", "SyncState"),
+    "TtlState": (".app_state", "TtlState"),
+    "VideoState": (".app_state", "VideoState"),
     "MarkerTable": (".ui", "MarkerTable"),
     "export_events_csv": (".data_export", "export_events_csv"),
     "export_events_excel": (".data_export", "export_events_excel"),

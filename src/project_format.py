@@ -122,8 +122,60 @@ def validate_state(state):
         or float(timeline[0]) >= float(timeline[1])
     ):
         raise ValueError("Project timeline range is invalid.")
-    if not isinstance(data.get("lfp_filter_settings", {}), dict):
+    lfp_filter_settings = data.get("lfp_filter_settings", {})
+    if not isinstance(lfp_filter_settings, dict):
         raise ValueError("Project LFP filter settings are invalid.")
+    line_noise_method = lfp_filter_settings.get(
+        "line_noise_method",
+        "notch"
+        if (
+            lfp_filter_settings.get("line_noise_hz") is not None
+            or lfp_filter_settings.get("line_noise_frequencies_hz")
+        )
+        else "none",
+    )
+    if line_noise_method not in {"none", "notch", "regression"}:
+        raise ValueError("Project LFP line-noise method is invalid.")
+    filter_frequencies = lfp_filter_settings.get("line_noise_frequencies_hz")
+    if filter_frequencies is None:
+        legacy_frequency = lfp_filter_settings.get("line_noise_hz")
+        filter_frequencies = [] if legacy_frequency is None else [legacy_frequency]
+    if (
+        not isinstance(filter_frequencies, (list, tuple))
+        or len(filter_frequencies) > 64
+        or any(
+            not _finite_number(frequency) or float(frequency) <= 0
+            for frequency in filter_frequencies
+        )
+        or (line_noise_method != "none" and not filter_frequencies)
+    ):
+        raise ValueError("Project LFP line-noise frequencies are invalid.")
+    notch_quality = lfp_filter_settings.get("notch_quality", 30.0)
+    if not _finite_number(notch_quality) or float(notch_quality) <= 0:
+        raise ValueError("Project LFP notch quality is invalid.")
+    regression_window = lfp_filter_settings.get("regression_window_seconds", 4.0)
+    if not _finite_number(regression_window) or float(regression_window) <= 0:
+        raise ValueError("Project LFP regression window is invalid.")
+    regression_overlap = lfp_filter_settings.get("regression_overlap", 0.5)
+    if (
+        not _finite_number(regression_overlap)
+        or float(regression_overlap) < 0
+        or float(regression_overlap) >= 1
+    ):
+        raise ValueError("Project LFP regression overlap is invalid.")
+    regression_harmonics = lfp_filter_settings.get("regression_harmonics", 1)
+    if (
+        not isinstance(regression_harmonics, int)
+        or isinstance(regression_harmonics, bool)
+        or regression_harmonics < 1
+    ):
+        raise ValueError("Project LFP regression harmonics are invalid.")
+    regression_all_harmonics = lfp_filter_settings.get(
+        "regression_all_harmonics",
+        regression_harmonics > 1,
+    )
+    if not isinstance(regression_all_harmonics, bool):
+        raise ValueError("Project LFP all-harmonics setting is invalid.")
 
     analysis = state.get("analysis", {})
     for name in ("lfp_peak_height_sigma", "lfp_peak_prominence_sigma"):

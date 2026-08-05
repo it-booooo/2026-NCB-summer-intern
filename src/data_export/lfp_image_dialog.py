@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
     QGroupBox,
@@ -77,10 +78,38 @@ class LfpImageExportDialog(QDialog):
         self.high_spin = panel.create_frequency_spinbox(
             panel.bandpass_high_spin.value()
         )
-        self.notch_checkbox = QCheckBox(
-            f"Notch {panel.format_line_noise_label()}"
+        self.method_selector = QComboBox()
+        self.method_selector.addItem("None", "none")
+        self.method_selector.addItem("Notch filter", "notch")
+        self.method_selector.addItem("Sinusoidal regression", "regression")
+        self.method_selector.setCurrentIndex(
+            self.method_selector.findData(panel.filter_method_selector.currentData())
         )
-        self.notch_checkbox.setChecked(panel.notch_checkbox.isChecked())
+        self.line_frequencies_edit = QLineEdit(panel.line_frequencies_edit.text())
+        self.line_frequencies_edit.setPlaceholderText("e.g. 60, 120")
+        self.line_frequencies_edit.setToolTip(
+            "Enter one or more frequencies in Hz, separated by commas or spaces."
+        )
+        self.notch_quality_spin = QDoubleSpinBox()
+        self.notch_quality_spin.setRange(1.0, 1000.0)
+        self.notch_quality_spin.setValue(panel.notch_quality_spin.value())
+        self.regression_window_spin = QDoubleSpinBox()
+        self.regression_window_spin.setRange(0.1, 3600.0)
+        self.regression_window_spin.setValue(panel.regression_window_spin.value())
+        self.regression_window_spin.setSuffix(" s")
+        self.regression_overlap_spin = QDoubleSpinBox()
+        self.regression_overlap_spin.setRange(0.0, 95.0)
+        self.regression_overlap_spin.setValue(panel.regression_overlap_spin.value())
+        self.regression_overlap_spin.setSuffix(" %")
+        self.regression_all_harmonics_checkbox = QCheckBox(
+            "Remove all harmonics below Nyquist"
+        )
+        self.regression_all_harmonics_checkbox.setChecked(
+            panel.regression_all_harmonics_checkbox.isChecked()
+        )
+        self.regression_all_harmonics_checkbox.setToolTip(
+            "Automatically include every integer multiple of each entered frequency."
+        )
 
         bandpass_layout = QHBoxLayout()
         bandpass_layout.setContentsMargins(0, 0, 0, 0)
@@ -97,7 +126,12 @@ class LfpImageExportDialog(QDialog):
         settings_form.addRow("Signal", self.signal_selector)
         settings_form.addRow("", self.bandpass_checkbox)
         settings_form.addRow("Bandpass range", bandpass_layout)
-        settings_form.addRow("", self.notch_checkbox)
+        settings_form.addRow("Line-noise method", self.method_selector)
+        settings_form.addRow("Line frequencies", self.line_frequencies_edit)
+        settings_form.addRow("Notch Q", self.notch_quality_spin)
+        settings_form.addRow("Regression window", self.regression_window_spin)
+        settings_form.addRow("Regression overlap", self.regression_overlap_spin)
+        settings_form.addRow("", self.regression_all_harmonics_checkbox)
 
         settings_group = QGroupBox("Signal and time range")
         settings_group.setLayout(settings_form)
@@ -158,16 +192,27 @@ class LfpImageExportDialog(QDialog):
             self.update_processing_controls
         )
         self.bandpass_checkbox.toggled.connect(self.update_processing_controls)
+        self.method_selector.currentIndexChanged.connect(
+            self.update_processing_controls
+        )
         self.update_processing_controls()
 
     def update_processing_controls(self, *_args):
         """Update processing controls."""
         processed = bool(self.signal_selector.currentData())
         self.bandpass_checkbox.setEnabled(processed)
-        self.notch_checkbox.setEnabled(processed)
         bandpass_enabled = processed and self.bandpass_checkbox.isChecked()
         self.low_spin.setEnabled(bandpass_enabled)
         self.high_spin.setEnabled(bandpass_enabled)
+        self.method_selector.setEnabled(processed)
+        method = self.method_selector.currentData() if processed else "none"
+        active = method in {"notch", "regression"}
+        self.line_frequencies_edit.setEnabled(active)
+        self.notch_quality_spin.setEnabled(method == "notch")
+        regression = method == "regression"
+        self.regression_window_spin.setEnabled(regression)
+        self.regression_overlap_spin.setEnabled(regression)
+        self.regression_all_harmonics_checkbox.setEnabled(regression)
 
     def choose_destination(self):
         directory = QFileDialog.getExistingDirectory(
@@ -229,6 +274,27 @@ class LfpImageExportDialog(QDialog):
             )
             return
 
+        try:
+            self.panel.settings_from_processing_controls(
+                self.signal_selector,
+                self.bandpass_checkbox,
+                self.low_spin,
+                self.high_spin,
+                self.method_selector,
+                self.line_frequencies_edit,
+                self.notch_quality_spin,
+                self.regression_window_spin,
+                self.regression_overlap_spin,
+                self.regression_all_harmonics_checkbox,
+            )
+        except ValueError as error:
+            QMessageBox.warning(
+                self,
+                "Invalid line-noise frequencies",
+                str(error),
+            )
+            return
+
         directory_text = self.destination_edit.text().strip()
         if not directory_text or not Path(directory_text).is_dir():
             QMessageBox.warning(
@@ -251,7 +317,12 @@ class LfpImageExportDialog(QDialog):
             self.bandpass_checkbox,
             self.low_spin,
             self.high_spin,
-            self.notch_checkbox,
+            self.method_selector,
+            self.line_frequencies_edit,
+            self.notch_quality_spin,
+            self.regression_window_spin,
+            self.regression_overlap_spin,
+            self.regression_all_harmonics_checkbox,
         )
         return LfpImageExportOptions(
             channel=int(self.channel_selector.currentData()),

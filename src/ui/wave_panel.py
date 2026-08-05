@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QPushButton,
     QProgressDialog,
@@ -102,10 +103,56 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self.bandpass_high_spin.setToolTip("Bandpass high cutoff frequency.")
         self.bandpass_high_spin.valueChanged.connect(self.refresh_lfp_processing)
 
-        self.notch_checkbox = QCheckBox()
-        self.notch_checkbox.setChecked(True)
-        self.notch_checkbox.stateChanged.connect(self.refresh_lfp_processing)
-        self.update_notch_control_text()
+        self.filter_method_selector = PlaybackAwareComboBox()
+        self.filter_method_selector.addItem("None", "none")
+        self.filter_method_selector.addItem("Notch filter", "notch")
+        self.filter_method_selector.addItem(
+            "Sinusoidal regression", "regression"
+        )
+        self.filter_method_selector.setToolTip(
+            "Choose how fixed-frequency power-line interference is removed."
+        )
+
+        self.line_frequencies_edit = QLineEdit("60")
+        self.line_frequencies_edit.setPlaceholderText("e.g. 60, 120")
+        self.line_frequencies_edit.setMaximumWidth(180)
+        self.line_frequencies_edit.setToolTip(
+            "Enter one or more frequencies in Hz, separated by commas or spaces."
+        )
+
+        self.notch_quality_spin = QDoubleSpinBox()
+        self.notch_quality_spin.setDecimals(1)
+        self.notch_quality_spin.setRange(1.0, 1000.0)
+        self.notch_quality_spin.setValue(30.0)
+        self.notch_quality_spin.setMaximumWidth(80)
+        self.notch_quality_spin.setToolTip("Notch filter quality factor (Q).")
+
+        self.regression_window_spin = QDoubleSpinBox()
+        self.regression_window_spin.setDecimals(1)
+        self.regression_window_spin.setRange(0.1, 3600.0)
+        self.regression_window_spin.setValue(4.0)
+        self.regression_window_spin.setSuffix(" s")
+        self.regression_window_spin.setMaximumWidth(85)
+        self.regression_window_spin.setToolTip(
+            "Length of each sinusoidal regression window."
+        )
+
+        self.regression_overlap_spin = QDoubleSpinBox()
+        self.regression_overlap_spin.setDecimals(0)
+        self.regression_overlap_spin.setRange(0.0, 95.0)
+        self.regression_overlap_spin.setSingleStep(5.0)
+        self.regression_overlap_spin.setValue(50.0)
+        self.regression_overlap_spin.setSuffix(" %")
+        self.regression_overlap_spin.setMaximumWidth(80)
+        self.regression_overlap_spin.setToolTip(
+            "Overlap between adjacent regression windows."
+        )
+
+        self.regression_all_harmonics_checkbox = QCheckBox("All harmonics")
+        self.regression_all_harmonics_checkbox.setToolTip(
+            "Automatically remove every integer multiple of each entered frequency "
+            "that is below Nyquist."
+        )
 
         self.apply_filter_button = QPushButton("confirm")
         self.apply_filter_button.setToolTip(
@@ -190,12 +237,28 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         filter_layout.addWidget(self.bandpass_low_spin)
         filter_layout.addWidget(QLabel("High"))
         filter_layout.addWidget(self.bandpass_high_spin)
-        filter_layout.addWidget(self.notch_checkbox)
-        filter_layout.addWidget(self.apply_filter_button)
         filter_layout.addStretch()
         filter_layout.addWidget(self.spectrum_button)
         filter_layout.addWidget(self.spectrogram_button)
         layout.addLayout(filter_layout)
+
+        line_noise_layout = QHBoxLayout()
+        line_noise_layout.setContentsMargins(0, 0, 0, 0)
+        line_noise_layout.setSpacing(6)
+        line_noise_layout.addWidget(QLabel("Line noise"))
+        line_noise_layout.addWidget(self.filter_method_selector)
+        line_noise_layout.addWidget(QLabel("Frequencies"))
+        line_noise_layout.addWidget(self.line_frequencies_edit)
+        line_noise_layout.addWidget(QLabel("Q"))
+        line_noise_layout.addWidget(self.notch_quality_spin)
+        line_noise_layout.addWidget(QLabel("Window"))
+        line_noise_layout.addWidget(self.regression_window_spin)
+        line_noise_layout.addWidget(QLabel("Overlap"))
+        line_noise_layout.addWidget(self.regression_overlap_spin)
+        line_noise_layout.addWidget(self.regression_all_harmonics_checkbox)
+        line_noise_layout.addWidget(self.apply_filter_button)
+        line_noise_layout.addStretch()
+        layout.addLayout(line_noise_layout)
 
         layout.addWidget(self.axis_file_label)
         layout.addLayout(waveform_grid, stretch=1)
@@ -208,13 +271,24 @@ class WavePanel(LfpAnalysisMixin, QWidget):
             self.bandpass_checkbox.stateChanged,
             self.bandpass_low_spin.valueChanged,
             self.bandpass_high_spin.valueChanged,
-            self.notch_checkbox.stateChanged,
         ):
             try:
                 signal.disconnect(self.refresh_lfp_processing)
             except (RuntimeError, TypeError):
                 pass
             signal.connect(self.mark_lfp_filter_settings_pending)
+        for signal in (
+            self.filter_method_selector.currentIndexChanged,
+            self.line_frequencies_edit.textChanged,
+            self.notch_quality_spin.valueChanged,
+            self.regression_window_spin.valueChanged,
+            self.regression_overlap_spin.valueChanged,
+            self.regression_all_harmonics_checkbox.stateChanged,
+        ):
+            signal.connect(self.mark_lfp_filter_settings_pending)
+        self.filter_method_selector.currentIndexChanged.connect(
+            self.update_line_noise_control_states
+        )
         self.signal_view_selector.currentIndexChanged.disconnect(
             self.refresh_lfp_processing
         )
@@ -222,6 +296,7 @@ class WavePanel(LfpAnalysisMixin, QWidget):
             self.switch_lfp_signal_view
         )
         self.apply_filter_button.setEnabled(False)
+        self.update_line_noise_control_states()
 
     def apply_project_state(self):
         """Apply the shared project state to the waveform controls."""
@@ -237,14 +312,53 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self.bandpass_high_spin.setValue(
             float(settings.get("bandpass_high_hz", 100.0))
         )
-        self.notch_checkbox.setChecked(settings.get("line_noise_hz") is not None)
+        method = settings.get(
+            "line_noise_method",
+            "notch"
+            if (
+                settings.get("line_noise_hz") is not None
+                or settings.get("line_noise_frequencies_hz")
+            )
+            else "none",
+        )
+        method_index = self.filter_method_selector.findData(method)
+        self.filter_method_selector.setCurrentIndex(max(method_index, 0))
+        frequencies = settings.get("line_noise_frequencies_hz")
+        if frequencies is None:
+            line_frequency = settings.get("line_noise_hz")
+            frequencies = (
+                [self.data_state.line_noise_hz]
+                if line_frequency is None
+                else [line_frequency]
+            )
+        self.line_frequencies_edit.setText(
+            self.format_line_noise_frequencies(frequencies)
+        )
+        self.notch_quality_spin.setValue(float(settings.get("notch_quality", 30.0)))
+        self.regression_window_spin.setValue(
+            float(settings.get("regression_window_seconds", 4.0))
+        )
+        self.regression_overlap_spin.setValue(
+            float(settings.get("regression_overlap", 0.5)) * 100.0
+        )
+        self.regression_all_harmonics_checkbox.setChecked(
+            bool(
+                settings.get(
+                    "regression_all_harmonics",
+                    int(settings.get("regression_harmonics", 1)) > 1,
+                )
+            )
+        )
         self.follow_video_checkbox.setChecked(self.data_state.follow_video_playback)
         self._applied_lfp_filter_settings = self.pending_lfp_filter_settings()
-        self.update_notch_control_text()
+        self.update_line_noise_control_states()
         self.apply_filter_button.setEnabled(False)
 
     def store_lfp_filter_settings(self, settings):
         """Keep the applied filter configuration in the project state."""
+        frequencies = signal_func.line_noise_frequencies(settings)
+        if frequencies:
+            self.data_state.line_noise_hz = float(frequencies[0])
         self.data_state.lfp_filter_settings = {
             "show_filtered": bool(settings.show_filtered),
             "bandpass_enabled": bool(settings.bandpass_enabled),
@@ -255,7 +369,20 @@ class WavePanel(LfpAnalysisMixin, QWidget):
                 if settings.line_noise_hz is None
                 else float(settings.line_noise_hz)
             ),
+            "line_noise_frequencies_hz": [
+                float(frequency) for frequency in frequencies
+            ],
             "notch_quality": float(settings.notch_quality),
+            "line_noise_method": settings.line_noise_method,
+            "regression_window_seconds": float(
+                settings.regression_window_seconds
+            ),
+            "regression_overlap": float(settings.regression_overlap),
+            "regression_harmonics": 1,
+            "regression_all_harmonics": bool(
+                settings.regression_all_harmonics
+                or settings.regression_harmonics > 1
+            ),
         }
         self.project_changed.emit()
 
@@ -288,17 +415,23 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         """
         return f"{self.data_state.line_noise_hz:g} Hz" if self.data_state.line_noise_hz else "not set"
 
-    def update_notch_control_text(self):
-        """Update notch control text.
-
-        Args:
-            None.
-        """
-        label = self.format_line_noise_label()
-        self.notch_checkbox.setText(f"Notch {label}")
-        self.notch_checkbox.setToolTip(
-            f"Apply {label} power-line noise notch filter when Filtered is selected."
+    @staticmethod
+    def format_line_noise_frequencies(frequencies):
+        return ", ".join(
+            f"{frequency:g}"
+            for frequency in signal_func.parse_line_noise_frequencies(frequencies)
         )
+
+    def update_line_noise_control_states(self, *_args):
+        """Enable only the parameters used by the selected removal method."""
+        method = self.filter_method_selector.currentData()
+        active = method in {"notch", "regression"}
+        self.line_frequencies_edit.setEnabled(active)
+        self.notch_quality_spin.setEnabled(method == "notch")
+        regression = method == "regression"
+        self.regression_window_spin.setEnabled(regression)
+        self.regression_overlap_spin.setEnabled(regression)
+        self.regression_all_harmonics_checkbox.setEnabled(regression)
 
     def create_waveform_area(self, text):
         """Create waveform area.
@@ -880,13 +1013,23 @@ class WavePanel(LfpAnalysisMixin, QWidget):
             self.bandpass_checkbox,
             self.bandpass_low_spin,
             self.bandpass_high_spin,
-            self.notch_checkbox,
+            self.filter_method_selector,
+            self.line_frequencies_edit,
+            self.notch_quality_spin,
+            self.regression_window_spin,
+            self.regression_overlap_spin,
+            self.regression_all_harmonics_checkbox,
         )
 
     def mark_lfp_filter_settings_pending(self, *_args):
         """Mark lfp filter settings pending."""
+        try:
+            pending = self.pending_lfp_filter_settings()
+        except ValueError:
+            self.apply_filter_button.setEnabled(True)
+            return
         self.apply_filter_button.setEnabled(
-            self.pending_lfp_filter_settings() != self._applied_lfp_filter_settings
+            pending != self._applied_lfp_filter_settings
         )
 
     def apply_lfp_filter_settings(self):
@@ -895,7 +1038,15 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         Args:
             None.
         """
-        settings = self.pending_lfp_filter_settings()
+        try:
+            settings = self.pending_lfp_filter_settings()
+        except ValueError as error:
+            QMessageBox.warning(
+                self,
+                "Invalid line-noise frequencies",
+                str(error),
+            )
+            return
         if (
             settings.bandpass_enabled
             and settings.bandpass_low_hz >= settings.bandpass_high_hz
@@ -927,6 +1078,12 @@ class WavePanel(LfpAnalysisMixin, QWidget):
             bandpass_high_hz=current.bandpass_high_hz,
             line_noise_hz=current.line_noise_hz,
             notch_quality=current.notch_quality,
+            line_noise_method=current.line_noise_method,
+            regression_window_seconds=current.regression_window_seconds,
+            regression_overlap=current.regression_overlap,
+            regression_harmonics=current.regression_harmonics,
+            regression_all_harmonics=current.regression_all_harmonics,
+            line_noise_frequencies_hz=current.line_noise_frequencies_hz,
         )
         self.store_lfp_filter_settings(self._applied_lfp_filter_settings)
         self.mark_lfp_filter_settings_pending()
@@ -1005,8 +1162,8 @@ class WavePanel(LfpAnalysisMixin, QWidget):
             return
 
         self.data_state.line_noise_hz = next_value
-        self.update_notch_control_text()
-        if self._applied_lfp_filter_settings.line_noise_hz is not None:
+        self.line_frequencies_edit.setText(f"{next_value:g}")
+        if self._applied_lfp_filter_settings.line_noise_method != "none":
             current = self._applied_lfp_filter_settings
             self._applied_lfp_filter_settings = signal_func.LfpFilterSettings(
                 show_filtered=current.show_filtered,
@@ -1015,6 +1172,12 @@ class WavePanel(LfpAnalysisMixin, QWidget):
                 bandpass_high_hz=current.bandpass_high_hz,
                 line_noise_hz=next_value,
                 notch_quality=current.notch_quality,
+                line_noise_method=current.line_noise_method,
+                regression_window_seconds=current.regression_window_seconds,
+                regression_overlap=current.regression_overlap,
+                regression_harmonics=current.regression_harmonics,
+                regression_all_harmonics=current.regression_all_harmonics,
+                line_noise_frequencies_hz=(next_value,),
             )
             self.store_lfp_filter_settings(self._applied_lfp_filter_settings)
             self.refresh_lfp_processing()
