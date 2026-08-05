@@ -79,8 +79,8 @@ def parse_signal_csv_metadata(path):
     }
 
 
-def parse_lfp_csv_info(path):
-    """Parse lfp csv info.
+def parse_signal_csv_info(path):
+    """Parse signal CSV source information.
 
     Args:
         path: File path to read from or write to.

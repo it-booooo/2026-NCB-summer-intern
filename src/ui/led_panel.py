@@ -324,12 +324,14 @@ class LedAnalysisPanel(MarkerViewPanel):
         self.led_detection_progress_bar.setValue(0)
         self.led_detection_progress_label.setText("LED detection: Not started")
 
-    def set_led_analysis(self, points, threshold, events, stats=None, status=None):
+    def set_led_analysis(
+        self, points, threshold, markers, stats=None, status=None
+    ):
         """Set led analysis.
 
         Args:
             points: Brightness or analysis points used by the operation.
-            events: Event records to display, analyze, or export.
+            markers: Persisted LED markers to display.
         """
         self.led_state.analysis_points = list(points or [])
         self.led_state.analysis_threshold = float(threshold or 0.0)
@@ -337,13 +339,13 @@ class LedAnalysisPanel(MarkerViewPanel):
         self.led_state.analysis_status = status or format_led_detection_status(
             self.led_state.analysis_points,
             self.led_state.analysis_threshold,
-            events,
+            markers,
             self.led_state.analysis_stats,
         )
         self.roi_plot_indicator.set_state(
             "done" if self.led_state.analysis_points else "empty"
         )
-        self.update_analysis_details(events)
+        self.update_analysis_details(markers)
 
     def clear_analysis_details(self):
         """Clear the embedded LED analysis details."""
@@ -361,7 +363,7 @@ class LedAnalysisPanel(MarkerViewPanel):
                 widget.setParent(None)
         self.analysis_status_labels = []
 
-    def update_analysis_details(self, events=None):
+    def update_analysis_details(self, markers=None):
         """Render LED analysis status and plot below the progress bar."""
         if self.led_state.analysis_status is None:
             return
@@ -380,8 +382,8 @@ class LedAnalysisPanel(MarkerViewPanel):
         self.analysis_figure.clear()
         ax = self.analysis_figure.add_subplot(111)
         points = self.led_state.analysis_points or []
-        if events is None:
-            events = self.marker_store.by_source(MarkerSource.LED_DETECTION)
+        if markers is None:
+            markers = self.marker_store.by_source(MarkerSource.LED_DETECTION)
         stats = self.led_state.analysis_stats or {}
         times = [point.video_time_sec for point in points]
         delta_times = [points[index].video_time_sec for index in range(1, len(points))]
@@ -406,7 +408,7 @@ class LedAnalysisPanel(MarkerViewPanel):
         if threshold_value > 0:
             ax.axhline(threshold_value, color="gray", linestyle="--", linewidth=0.6)
             ax.axhline(-threshold_value, color="gray", linestyle="--", linewidth=0.6)
-        for marker in events:
+        for marker in markers:
             video_time = marker_video_time(marker, None)
             if video_time is None:
                 continue

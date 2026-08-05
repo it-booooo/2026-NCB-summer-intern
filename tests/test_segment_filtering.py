@@ -11,7 +11,7 @@ from src.signal_data import (
     LfpDataset,
     LfpFilterSettings,
     filter_padding_samples,
-    parse_lfp_csv_info,
+    parse_signal_csv_info,
     prepare_lfp_signal,
 )
 from src.signal_data import lfp_dataset as lfp_dataset_module
@@ -32,7 +32,7 @@ class SegmentFilteringTests(unittest.TestCase):
                 peak_indices=(),
             ),
         )
-        self.info = parse_lfp_csv_info(self.path)
+        self.info = parse_signal_csv_info(self.path)
         self.info["_signal_cache_root"] = str(
             Path(self.directory.name) / "signal-cache"
         )

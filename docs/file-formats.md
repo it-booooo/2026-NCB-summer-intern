@@ -155,7 +155,7 @@ record_time_sec = video_time_sec - time_offset_sec
 
 ### `lfp_info`／`three_axis_info`
 
-由 `parse_lfp_csv_info()` 產生，標準形狀為：
+由 `parse_signal_csv_info()` 產生，標準形狀為：
 
 ```python
 {
@@ -543,7 +543,7 @@ Marker 必須先保存它原生所在的 domain：
 
 ```text
 CSV
- → parse_lfp_csv_info()
+ → parse_signal_csv_info()
  → DataState.lfp_info
  → LfpDataset.from_csv()
  → DataState.lfp_dataset
@@ -809,7 +809,7 @@ UI 正式接受 `.mp4`，以 OpenCV `VideoCapture` 解析。內部邏輯應使�
 
 這些是輸出邊界，不是 canonical state：
 
-- 事件 CSV/XLSX：`event_type`, `video_time_sec`, `frame_index`, `note`；
+- Marker CSV/XLSX：`marker_type`, `video_time_sec`, `frame_index`, `note`；
 - TTL CSV/XLSX：`marker_index`, `local_time(us)`, `local_time`, `record_time(us)`, `record_time`；
 - 檢查報告 CSV：`Type`, `File`, `Value`；
 - 圖表：PNG、JPG/JPEG、PDF、SVG。

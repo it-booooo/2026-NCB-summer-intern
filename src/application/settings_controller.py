@@ -90,14 +90,14 @@ class AnalysisSettingsController:
             "Signal caches were cleared and will be rebuilt when needed.",
         )
 
-    def set_power_noise_frequency(self):
+    def set_power_line_frequency(self):
         items = ["60 Hz", "50 Hz"]
         values = [60.0, 50.0]
         current_index = 1 if self.data_state.line_noise_hz == 50.0 else 0
         text, accepted = QInputDialog.getItem(
             self.parent,
-            "Set power noise frequency",
-            "Power noise filter:",
+            "Set Power Line Frequency",
+            "Power Line Frequency:",
             items,
             current_index,
             False,

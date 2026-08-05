@@ -1,7 +1,7 @@
 """Signal CSV parsing, reading, and LFP processing."""
 
 from .csv_loader import (
-    parse_lfp_csv_info,
+    parse_signal_csv_info,
     parse_signal_csv_metadata,
     parse_signal_csv_units,
     parse_ttl_marker_csv_info,
@@ -55,7 +55,7 @@ __all__ = [
     "compute_spectrogram",
     "filter_description",
     "filter_padding_samples",
-    "parse_lfp_csv_info",
+    "parse_signal_csv_info",
     "parse_signal_csv_metadata",
     "parse_signal_csv_units",
     "parse_ttl_marker_csv_info",

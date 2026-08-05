@@ -349,12 +349,12 @@ class ImportController:
         timeline_xlim = data.get("timeline_xlim")
         lfp_path = source_paths.get("lfp")
         three_axis_path = source_paths.get("three_axis")
-        lfp_info = signal_data.parse_lfp_csv_info(lfp_path) if lfp_path else None
+        lfp_info = signal_data.parse_signal_csv_info(lfp_path) if lfp_path else None
         lfp_dataset = (
             signal_data.LfpDataset.from_csv(lfp_info) if lfp_info is not None else None
         )
         three_axis_info = (
-            signal_data.parse_lfp_csv_info(three_axis_path)
+            signal_data.parse_signal_csv_info(three_axis_path)
             if three_axis_path
             else None
         )
@@ -645,7 +645,7 @@ class ImportController:
             return
 
         try:
-            info = signal_data.parse_lfp_csv_info(path)
+            info = signal_data.parse_signal_csv_info(path)
             dataset = (
                 signal_data.LfpDataset.from_csv(info)
                 if signal_type == "lfp"

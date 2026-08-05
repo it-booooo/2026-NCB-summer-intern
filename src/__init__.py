@@ -12,8 +12,8 @@ from .app_state import (
 
 _LAZY_EXPORTS = {
     "MarkerTable": (".ui", "MarkerTable"),
-    "export_events_csv": (".data_export", "export_events_csv"),
-    "export_events_excel": (".data_export", "export_events_excel"),
+    "export_markers_csv": (".data_export", "export_markers_csv"),
+    "export_markers_excel": (".data_export", "export_markers_excel"),
     "WavePanel": (".ui", "WavePanel"),
     "MarkerPanel": (".ui", "MarkerPanel"),
     "SyncPanel": (".ui", "SyncPanel"),
@@ -42,6 +42,6 @@ __all__ = [
     "TtlState",
     "VideoPlayer",
     "VideoState",
-    "export_events_csv",
-    "export_events_excel",
+    "export_markers_csv",
+    "export_markers_excel",
 ]

@@ -24,7 +24,7 @@ def create_three_axis_figure(
     """Read three-axis sensor data and draw its waveform.
 
     Args:
-        info: CSV metadata returned by data_io.parse_lfp_csv_info().
+        info: CSV metadata returned by parse_signal_csv_info().
             Required keys:
             - path: CSV file path selected from the GUI import action.
             - sample_rates: Sample rate values used when exporting check results.

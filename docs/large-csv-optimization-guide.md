@@ -23,7 +23,7 @@
 
 ```text
 ImportController.import_signal()
-  -> parse_lfp_csv_info()
+  -> parse_signal_csv_info()
        -> parse_signal_csv_metadata()
   -> WavePanel.set_lfp_dataset()
   -> WavePanel.plot_lfp()
@@ -231,7 +231,7 @@ def parse_signal_csv_header(path) -> dict:
     ...
 ```
 
-`parse_lfp_csv_info()` 僅呼叫此函式一次。保留既有 `parse_signal_csv_metadata()` 與 `parse_signal_csv_units()` 時，可讓它們包裝新函式以維持相容性。
+`parse_signal_csv_info()` 僅呼叫此函式一次。保留既有 `parse_signal_csv_metadata()` 與 `parse_signal_csv_units()` 時，可讓它們包裝新函式。
 
 這項修改只減少兩次 header 開檔，不會解決主要的大型資料瓶頸，因此不要把它當作 20 小時支援已完成。
 

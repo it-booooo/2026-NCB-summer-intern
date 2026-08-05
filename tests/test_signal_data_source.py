@@ -16,7 +16,7 @@ from src.signal_data import (
     LfpDataset,
     LfpFilterSettings,
     SignalDataset,
-    parse_lfp_csv_info,
+    parse_signal_csv_info,
 )
 from src.signal_data import lfp_dataset as lfp_dataset_module
 from src.signal_data.source import SignalDataSource, _SOURCES
@@ -35,7 +35,7 @@ class SignalDataSourceTests(unittest.TestCase):
                 channels=(2, 5, 8, 13, 21, 34, 55, 260),
             ),
         )
-        self.info = parse_lfp_csv_info(self.path)
+        self.info = parse_signal_csv_info(self.path)
         self.info["_signal_cache_root"] = str(
             Path(self.directory.name) / "signal-cache"
         )

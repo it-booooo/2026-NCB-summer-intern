@@ -57,8 +57,8 @@ class MenuBuilder:
         )
         self._add_action(
             settings_menu,
-            "Set power noise frequency",
-            self.settings_controller.set_power_noise_frequency,
+            "Set Power Line Frequency",
+            self.settings_controller.set_power_line_frequency,
         )
         self._add_action(
             settings_menu,

@@ -222,11 +222,11 @@ TTL CSV 建議包含：
 可選擇：
 
 - 要輸出的 channel 和時間範圍；
-- Raw 原始訊號或 Processed 處理後訊號，以及 Bandpass／Notch 設定；
+- Raw 原始訊號或 Filtered 濾波後訊號，以及 Bandpass／Notch 設定；
 - 波形圖、Power spectrum、Spectrogram，可同時選擇多種；
 - 目的資料夾。
 
-圖片固定以 300 DPI 輸出。檔名會自動包含原始檔名、channel、Raw／Processed 及圖表類型。準備大量資料或多張圖片時會顯示進度，需要時可按「Cancel」中止。使用 Processed＋Bandpass 匯出 Spectrogram 時，圖表只會顯示設定的頻率範圍。
+圖片固定以 300 DPI 輸出。檔名會自動包含原始檔名、channel、Raw／Filtered 及圖表類型。準備大量資料或多張圖片時會顯示進度，需要時可按「Cancel」中止。使用 Filtered＋Bandpass 匯出 Spectrogram 時，圖表只會顯示設定的頻率範圍。
 
 ### Export Peak analyze Image
 

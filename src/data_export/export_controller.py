@@ -38,8 +38,8 @@ from ..project_format import (
     validate_project_json_sizes,
 )
 from .file_writers import (
-    export_events_csv,
-    export_events_excel,
+    export_markers_csv,
+    export_markers_excel,
     export_ttl_markers_csv,
     export_ttl_markers_excel,
 )
@@ -392,7 +392,9 @@ class ExportController:
                 self.marker_store.by_kind(MarkerKind.LFP_PEAK)
             )
             filename_stem = "lfp_peak_markers"
-            writer = export_events_csv if file_type == "csv" else export_events_excel
+            writer = (
+                export_markers_csv if file_type == "csv" else export_markers_excel
+            )
         else:
             markers = self.exportable_video_marker_rows(
                 marker
@@ -400,7 +402,9 @@ class ExportController:
                 if marker.kind not in {MarkerKind.TTL, MarkerKind.LFP_PEAK}
             )
             filename_stem = "video_markers"
-            writer = export_events_csv if file_type == "csv" else export_events_excel
+            writer = (
+                export_markers_csv if file_type == "csv" else export_markers_excel
+            )
 
         if not markers:
             QMessageBox.information(
@@ -437,7 +441,7 @@ class ExportController:
             )
             rows.append(
                 {
-                    "event_type": marker.kind.value,
+                    "marker_type": marker.kind.value,
                     "video_time_sec": video_time,
                     "frame_index": frame_index,
                     "note": marker.note,
@@ -946,7 +950,7 @@ class ExportController:
         info = self.data_state.lfp_info
         filename = info.get("filename", "lfp") if info else "lfp"
         stem = filename.rsplit(".", 1)[0]
-        mode = "processed" if settings.show_filtered else "raw"
+        mode = "filtered" if settings.show_filtered else "raw"
         middle = f"_{suffix}" if suffix else ""
         return f"{stem}_channel_{channel}_{mode}{middle}.png"
     def export_peak_image(self):

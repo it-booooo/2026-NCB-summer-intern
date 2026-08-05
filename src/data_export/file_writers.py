@@ -1,44 +1,52 @@
 import csv
 
 
-def export_events_csv(path, events):
-    """Export events csv.
+def export_markers_csv(path, markers):
+    """Export video-domain markers as CSV.
 
     Args:
         path: File path to read from or write to.
-        events: Event records to display, analyze, or export.
+        markers: Serializable marker rows.
     """
     # 使用 utf-8-sig，讓含有非 ASCII 內容的 CSV 可由 Excel 正確辨識。
-    fieldnames = ["event_type", "video_time_sec", "frame_index", "note"]
+    fieldnames = ["marker_type", "video_time_sec", "frame_index", "note"]
     with open(path, "w", newline="", encoding="utf-8-sig") as csv_file:
         writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
         writer.writeheader()
-        for event in events:
-            writer.writerow({
-                "event_type": event.get("event_type", ""),
-                "video_time_sec": f"{float(event.get('video_time_sec', 0)):.6f}",
-                "frame_index": int(event.get("frame_index", 0)),
-                "note": event.get("note", ""),
-            })
+        for marker in markers:
+            writer.writerow(
+                {
+                    "marker_type": marker.get("marker_type", ""),
+                    "video_time_sec": (
+                        f"{float(marker.get('video_time_sec', 0)):.6f}"
+                    ),
+                    "frame_index": int(marker.get("frame_index", 0)),
+                    "note": marker.get("note", ""),
+                }
+            )
 
 
-def export_events_excel(path, events):
-    """Export events excel.
+def export_markers_excel(path, markers):
+    """Export video-domain markers as an Excel workbook.
 
     Args:
         path: File path to read from or write to.
-        events: Event records to display, analyze, or export.
+        markers: Serializable marker rows.
     """
     from openpyxl import Workbook
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = "Markers"
-    sheet.append(["event_type", "video_time_sec", "frame_index", "note"])
-    for event in events:
-        sheet.append([
-            event.get("event_type", ""), float(event.get("video_time_sec", 0)),
-            int(event.get("frame_index", 0)), event.get("note", ""),
-        ])
+    sheet.append(["marker_type", "video_time_sec", "frame_index", "note"])
+    for marker in markers:
+        sheet.append(
+            [
+                marker.get("marker_type", ""),
+                float(marker.get("video_time_sec", 0)),
+                int(marker.get("frame_index", 0)),
+                marker.get("note", ""),
+            ]
+        )
     workbook.save(path)
 
 

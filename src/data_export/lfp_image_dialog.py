@@ -66,7 +66,7 @@ class LfpImageExportDialog(QDialog):
 
         self.signal_selector = QComboBox()
         self.signal_selector.addItem("Raw", False)
-        self.signal_selector.addItem("Processed", True)
+        self.signal_selector.addItem("Filtered", True)
         self.signal_selector.setCurrentIndex(
             1 if bool(panel.signal_view_selector.currentData()) else 0
         )
@@ -162,10 +162,10 @@ class LfpImageExportDialog(QDialog):
 
     def update_processing_controls(self, *_args):
         """Update processing controls."""
-        processed = bool(self.signal_selector.currentData())
-        self.bandpass_checkbox.setEnabled(processed)
-        self.notch_checkbox.setEnabled(processed)
-        bandpass_enabled = processed and self.bandpass_checkbox.isChecked()
+        filtered = bool(self.signal_selector.currentData())
+        self.bandpass_checkbox.setEnabled(filtered)
+        self.notch_checkbox.setEnabled(filtered)
+        bandpass_enabled = filtered and self.bandpass_checkbox.isChecked()
         self.low_spin.setEnabled(bandpass_enabled)
         self.high_spin.setEnabled(bandpass_enabled)
 

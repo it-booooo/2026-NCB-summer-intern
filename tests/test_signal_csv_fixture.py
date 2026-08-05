@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 
 from benchmarks.signal_csv_fixture import SignalFixtureConfig, generate_signal_csv
-from src.signal_data.csv_loader import parse_lfp_csv_info, parse_signal_csv_metadata
+from src.signal_data.csv_loader import parse_signal_csv_info, parse_signal_csv_metadata
 from src.signal_data.lfp_dataset import LfpDataset
 from src.signal_data.lfp_processing import prepare_lfp_signal
 from src.signal_data.readers import read_signal_csv
@@ -79,7 +79,7 @@ class SignalCsvFixtureTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "dataset.csv"
             generate_signal_csv(path, config)
-            info = parse_lfp_csv_info(path)
+            info = parse_signal_csv_info(path)
             info["_signal_cache_root"] = str(Path(directory) / "signal-cache")
             dataset = LfpDataset.from_csv(info)
             segment = dataset.segment(2, 0.0, 0.5, None)

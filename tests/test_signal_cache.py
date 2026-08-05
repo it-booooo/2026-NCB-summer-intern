@@ -11,7 +11,7 @@ import numpy as np
 from benchmarks.signal_csv_fixture import SignalFixtureConfig, generate_signal_csv
 from src.signal_data import (
     LfpFilterSettings,
-    parse_lfp_csv_info,
+    parse_signal_csv_info,
     prepare_lfp_signal,
 )
 from src.signal_data.readers import read_signal_csv
@@ -36,7 +36,7 @@ class SignalCacheTests(unittest.TestCase):
             peak_amplitude=50,
         )
         generate_signal_csv(self.path, self.config)
-        self.info = parse_lfp_csv_info(self.path)
+        self.info = parse_signal_csv_info(self.path)
 
     def tearDown(self):
         self.directory.cleanup()
@@ -247,7 +247,7 @@ class SignalCacheTests(unittest.TestCase):
                 discontinuity_us=-1_000_000,
             ),
         )
-        info = parse_lfp_csv_info(backwards)
+        info = parse_signal_csv_info(backwards)
         source = SignalDataSource(
             str(backwards),
             info["metadata"],
