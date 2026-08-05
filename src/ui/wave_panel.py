@@ -125,7 +125,7 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self.spectrogram_button = QPushButton("Spectrogram")
         self.spectrogram_button.setEnabled(False)
         self.spectrogram_button.setToolTip(
-            "Calculate the time-frequency map of the selected LFP time range."
+            "Calculate the spectrogram of the selected LFP time range."
         )
         self.spectrogram_button.clicked.connect(
             lambda _checked=False: self.show_lfp_analysis("spectrogram")
