@@ -1,13 +1,11 @@
 # build.py
 import importlib.util
-import os
 import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 ENV_ROOT = Path(sys.prefix)
-LOCAL_DEPS = ROOT / ".build_deps"
 OUTPUT_EXE = ROOT / "dist" / "PigBehaviorSync.exe"
 
 
@@ -72,6 +70,16 @@ def main():
             + ". Install requirements before building so they can be bundled."
         )
 
+    try:
+        import numpy
+    except Exception as error:
+        raise SystemExit(
+            "Build environment has an incompatible NumPy installation. "
+            f"Run `{sys.executable} -m pip install --force-reinstall -r "
+            f"{ROOT / 'requirements.txt'}` and try again.\n"
+            f"{type(error).__name__}: {error}"
+        ) from error
+
     import pyopencl
 
     try:
@@ -83,15 +91,9 @@ def main():
         ) from error
 
     print(f"Bundling pyopencl {pyopencl.VERSION_TEXT} from {pyopencl.__file__}")
+    print(f"Bundling NumPy {numpy.__version__} from {numpy.__file__}")
 
     ensure_output_is_replaceable()
-    env = os.environ.copy()
-    if LOCAL_DEPS.exists():
-        pythonpath = env.get("PYTHONPATH")
-        env["PYTHONPATH"] = (
-            f"{LOCAL_DEPS}{os.pathsep}{pythonpath}" if pythonpath else str(LOCAL_DEPS)
-        )
-
     cmd = [
         sys.executable,
         "-m",
@@ -107,7 +109,7 @@ def main():
         *conda_runtime_binaries(),
         "__main__.py",
     ]
-    subprocess.run(cmd, cwd=ROOT, check=True, env=env)
+    subprocess.run(cmd, cwd=ROOT, check=True)
 
 
 if __name__ == "__main__":
