@@ -213,19 +213,19 @@ class PeriodicNoiseRegressionTests(unittest.TestCase):
                 backend="invalid",
             )
 
-    def test_regression_dispatches_to_the_optional_cupy_backend(self):
+    def test_regression_dispatches_to_the_optional_opencl_backend(self):
         source = np.arange(1000, dtype=np.float32)
         expected = np.full_like(source, 7.0)
         original = source.copy()
         with patch(
-            "src.signal_data.gpu_backend.periodic_noise_regression_cupy",
+            "src.signal_data.gpu_backend.periodic_noise_regression_opencl",
             return_value=expected,
         ) as gpu_regression:
             result = remove_periodic_noise(
                 source,
                 self.sample_rate_hz,
                 [60.0],
-                backend="cupy",
+                backend="opencl",
             )
 
         np.testing.assert_array_equal(result, expected)
