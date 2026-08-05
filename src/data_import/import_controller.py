@@ -66,12 +66,12 @@ class ImportController:
 
     SIGNAL_IMPORT_TITLES: ClassVar[dict[str, str]] = {
         "lfp": "Import LFP (.csv)",
-        "axis": "Import 3-axis (.csv)",
+        "three_axis": "Import 3-axis (.csv)",
     }
     PROJECT_SOURCE_DIALOGS: ClassVar[dict[str, tuple[str, str]]] = {
         "video": ("Locate Project Video", "Video Files (*.mp4);;All Files (*)"),
         "lfp": ("Locate Project LFP File", "CSV Files (*.csv);;All Files (*)"),
-        "axis": ("Locate Project 3-axis File", "CSV Files (*.csv);;All Files (*)"),
+        "three_axis": ("Locate Project 3-axis File", "CSV Files (*.csv);;All Files (*)"),
         "ttl": ("Locate Project TTL File", "CSV Files (*.csv);;All Files (*)"),
     }
 
@@ -156,7 +156,7 @@ class ImportController:
             QMessageBox.warning(self.parent, "Restore project failed", str(error))
             return
         if staged.get("lfp_dataset") is not None or staged.get(
-            "axis_dataset"
+            "three_axis_dataset"
         ) is not None:
             self._prepare_project_signals(worker, path, staged)
             return
@@ -231,7 +231,7 @@ class ImportController:
             dataset
             for dataset in (
                 staged.get("lfp_dataset"),
-                staged.get("axis_dataset"),
+                staged.get("three_axis_dataset"),
             )
             if dataset is not None
         ]
@@ -348,15 +348,19 @@ class ImportController:
         data = state.get("data", {})
         timeline_xlim = data.get("timeline_xlim")
         lfp_path = source_paths.get("lfp")
-        axis_path = source_paths.get("axis")
+        three_axis_path = source_paths.get("three_axis")
         lfp_info = signal_data.parse_lfp_csv_info(lfp_path) if lfp_path else None
         lfp_dataset = (
             signal_data.LfpDataset.from_csv(lfp_info) if lfp_info is not None else None
         )
-        axis_info = signal_data.parse_lfp_csv_info(axis_path) if axis_path else None
-        axis_dataset = (
-            signal_data.SignalDataset.from_csv(axis_info)
-            if axis_info is not None
+        three_axis_info = (
+            signal_data.parse_lfp_csv_info(three_axis_path)
+            if three_axis_path
+            else None
+        )
+        three_axis_dataset = (
+            signal_data.SignalDataset.from_csv(three_axis_info)
+            if three_axis_info is not None
             else None
         )
         led = state.get("led", {})
@@ -373,7 +377,7 @@ class ImportController:
                 else None
             ),
             "lfp_dataset": lfp_dataset,
-            "axis_dataset": axis_dataset,
+            "three_axis_dataset": three_axis_dataset,
             "markers": list(state.get("markers", [])),
             "ttl_metadata": dict(state.get("ttl", {}).get("metadata") or {}),
             "led": led,
@@ -449,7 +453,7 @@ class ImportController:
 
             data = staged["data"]
             self.data_state.lfp_step = data.get("lfp_step")
-            self.data_state.axis_step = data.get("axis_step")
+            self.data_state.three_axis_step = data.get("three_axis_step")
             self.data_state.line_noise_hz = float(data.get("line_noise_hz", 60.0))
             self.data_state.timeline_xlim = staged["timeline_xlim"]
             selected_channel = data.get("selected_lfp_channel")
@@ -485,7 +489,7 @@ class ImportController:
 
             context.wave_panel.set_lfp_dataset(staged["lfp_dataset"])
 
-            context.wave_panel.set_axis_dataset(staged["axis_dataset"])
+            context.wave_panel.set_three_axis_dataset(staged["three_axis_dataset"])
 
             ttl_metadata = dict(staged["ttl_metadata"])
             if source_paths.get("ttl"):
@@ -588,7 +592,7 @@ class ImportController:
             ),
             (
                 "Import 3-axis (.csv)",
-                lambda: self.import_signal("axis"),
+                lambda: self.import_signal("three_axis"),
                 "Load three-axis sensor data from a CSV file and display its waveforms.",
             ),
             (
@@ -677,7 +681,7 @@ class ImportController:
         configured_step = (
             self.data_state.lfp_step
             if signal_type == "lfp"
-            else self.data_state.axis_step
+            else self.data_state.three_axis_step
         )
         worker = SignalCacheWorker(request_id, dataset, configured_step)
         self._signal_cache_worker = worker
@@ -712,7 +716,7 @@ class ImportController:
             if signal_type == "lfp":
                 context.wave_panel.set_lfp_dataset(prepared_dataset)
             else:
-                context.wave_panel.set_axis_dataset(prepared_dataset)
+                context.wave_panel.set_three_axis_dataset(prepared_dataset)
             context.sync_controller.update_waveform_current_time()
             context.project_controller.mark_dirty()
 

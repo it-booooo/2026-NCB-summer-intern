@@ -50,7 +50,7 @@ class LedDetectionWorker(QThread):
             coarse_step = coarse_scan_step_for_fps(self.fps)
             refine_window_sec = 1.0
             max_events = max(int(self.max_events or 0), 0)
-            scan_acceleration_info = {}
+            scan_backend_info = {}
             if self.cached_points is None:
                 points = compute_led_brightness_curve(
                     self.video_path,
@@ -63,11 +63,11 @@ class LedDetectionWorker(QThread):
                     end_frame=self.scan_end_frame,
                     should_stop=self.isInterruptionRequested,
                     progress_callback=self.progress_changed.emit,
-                    acceleration_info=scan_acceleration_info,
+                    backend_info=scan_backend_info,
                 )
             else:
                 points = self.cached_points
-                scan_acceleration_info["brightness_backend"] = "cache"
+                scan_backend_info["brightness_backend"] = "cache"
                 scan_total_frames = max(
                     self.scan_end_frame - self.scan_start_frame + 1,
                     1,
@@ -87,7 +87,7 @@ class LedDetectionWorker(QThread):
             )
 
             events = coarse_events
-            refine_acceleration_info = {}
+            refine_backend_info = {}
             if coarse_events and not self.isInterruptionRequested():
                 self.stage_changed.emit("Refining LED events...")
                 refined_events, refined_threshold, _ = (
@@ -103,7 +103,7 @@ class LedDetectionWorker(QThread):
                         scan_end_frame=self.scan_end_frame,
                         should_stop=self.isInterruptionRequested,
                         max_events=max_events,
-                        acceleration_info=refine_acceleration_info,
+                        backend_info=refine_backend_info,
                     )
                 )
                 events = refined_events
@@ -120,9 +120,9 @@ class LedDetectionWorker(QThread):
             stats["refine_window_sec"] = refine_window_sec
             stats["scan_elapsed_sec"] = scan_elapsed_sec
             stats["detect_elapsed_sec"] = detect_elapsed_sec
-            stats.update(scan_acceleration_info)
+            stats.update(scan_backend_info)
             if coarse_events:
-                stats["refine_brightness_backend"] = refine_acceleration_info.get(
+                stats["refine_brightness_backend"] = refine_backend_info.get(
                     "brightness_backend",
                     "cpu",
                 )

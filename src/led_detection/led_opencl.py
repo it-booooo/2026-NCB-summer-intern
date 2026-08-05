@@ -518,7 +518,7 @@ def compute_led_brightness_curve_opencl(
     end_frame=None,
     should_stop=None,
     progress_callback=None,
-    acceleration_info=None,
+    backend_info=None,
 ):
     """Compute led brightness curve opencl.
 
@@ -587,8 +587,8 @@ def compute_led_brightness_curve_opencl(
 
         scan_total_frames = max(end_frame - start_frame + 1, 1)
 
-        if acceleration_info is not None:
-            acceleration_info.update(
+        if backend_info is not None:
+            backend_info.update(
                 {
                     "brightness_backend": "opencl",
                     "opencl_device": runtime["device_name"],
@@ -713,8 +713,8 @@ def compute_led_brightness_curve_opencl(
 
         emit_progress(frame_index)
 
-        if acceleration_info is not None:
-            acceleration_info.update(
+        if backend_info is not None:
+            backend_info.update(
                 {
                     "opencl_batches": batches_processed,
                     "opencl_frames": frames_processed,

@@ -20,6 +20,7 @@ from src.markers import (
 from src.project_archive import load_project_archive
 from src.project_format import PROJECT_FORMAT, PROJECT_VERSION
 from src.project_format import (
+    validate_manifest,
     validate_project_json_sizes,
     validate_state,
     validate_video_bounds,
@@ -27,6 +28,32 @@ from src.project_format import (
 
 
 class AnalysisSettingsTests(unittest.TestCase):
+    def test_project_format_uses_three_axis_source_and_setting_names(self):
+        source = {
+            "external_path": "three_axis.csv",
+            "filename": "three_axis.csv",
+            "fingerprint": {"size": 0, "sample_sha256": "0" * 64},
+        }
+        manifest = {
+            "format": PROJECT_FORMAT,
+            "version": PROJECT_VERSION,
+            "sources": {"three_axis": source},
+        }
+        state = {"data": {"three_axis_step": 4}}
+
+        self.assertEqual(validate_manifest(manifest), {"three_axis": source})
+        self.assertIs(validate_state(state), state)
+
+    def test_project_format_rejects_old_axis_source_name(self):
+        manifest = {
+            "format": PROJECT_FORMAT,
+            "version": PROJECT_VERSION,
+            "sources": {"axis": {}},
+        }
+
+        with self.assertRaisesRegex(ValueError, "Unsupported project source type"):
+            validate_manifest(manifest)
+
     def test_peak_settings_live_in_application_state(self):
         state = AppState()
 

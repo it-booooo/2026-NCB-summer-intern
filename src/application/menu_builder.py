@@ -53,7 +53,7 @@ class MenuBuilder:
         self._add_action(
             settings_menu,
             "Set 3-axis step",
-            lambda: self.settings_controller.set_plot_step("axis"),
+            lambda: self.settings_controller.set_plot_step("three_axis"),
         )
         self._add_action(
             settings_menu,

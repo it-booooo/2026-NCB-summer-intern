@@ -33,7 +33,7 @@ def format_led_detection_status(points, threshold, events, stats):
         f"{event_status}"
     )
     status += format_timing_status(stats)
-    status += format_acceleration_status(stats)
+    status += format_backend_status(stats)
     return status
 
 
@@ -45,8 +45,8 @@ def format_timing_status(stats):
     )
 
 
-def format_acceleration_status(stats):
-    """Format acceleration status."""
+def format_backend_status(stats):
+    """Format processing backend status."""
     backend = stats.get("brightness_backend")
     status = ""
     if backend == "opencl":

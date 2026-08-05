@@ -47,7 +47,7 @@ ImportController.import_signal()
 | `src/signal_data/lfp_dataset.py` | 保存完整 DataFrame 與 signal cache | 所有資料常駐；多份完整副本 |
 | `src/signal_data/lfp_processing.py` | 濾波及區段擷取 | 對完整陣列複製、遮罩及濾波 |
 | `src/charts/lfp_chart.py` | 建立 LFP 圖表 | 預先處理所有通道及兩種 signal |
-| `src/charts/acceleration_chart.py` | 讀取及繪製 3-axis | 重建圖表時重新讀完整 CSV |
+| `src/charts/three_axis_chart.py` | 讀取及繪製 3-axis | 重建圖表時重新讀完整 CSV |
 | `src/data_validation/input_checks.py` | 完整性檢查 | 再次完整讀取並產生大型 boolean array |
 | `src/ui/lfp_peak_panel.py` | 全時段 peak detection | 對完整時間軸與 signal 建立陣列 |
 
@@ -329,7 +329,7 @@ available_channels.index(channel) + 1
 
 ### 5.7 3-axis 共用資料存取策略
 
-`acceleration_chart.py` 不應在每次重建圖表時重新完整讀檔。至少先加入針對 path + channel 的 cache；最終應使用相同 `SignalDataSource`。
+`three_axis_chart.py` 不應在每次重建圖表時重新完整讀檔。至少先加入針對 path + channel 的 cache；最終應使用相同 `SignalDataSource`。
 
 ### Phase 2 驗收
 

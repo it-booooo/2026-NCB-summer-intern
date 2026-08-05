@@ -28,7 +28,7 @@ class AnalysisSettingsController:
     def set_plot_step(self, plot_name):
         title, step_attribute = {
             "lfp": ("Set LFP step", "lfp_step"),
-            "axis": ("Set 3-axis step", "axis_step"),
+            "three_axis": ("Set 3-axis step", "three_axis_step"),
         }[plot_name]
         current_step = getattr(self.data_state, step_attribute)
         step, accepted = QInputDialog.getInt(
@@ -49,7 +49,7 @@ class AnalysisSettingsController:
         """Clear active signal disk caches after explicit confirmation."""
         datasets = [
             self.data_state.lfp_dataset,
-            self.data_state.axis_dataset,
+            self.data_state.three_axis_dataset,
         ]
         datasets = [dataset for dataset in datasets if dataset is not None]
         if not datasets:

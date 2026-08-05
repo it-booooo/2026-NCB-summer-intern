@@ -147,16 +147,16 @@ record_time_sec = video_time_sec - time_offset_sec
 | --- | --- | --- | --- |
 | `lfp_info` | `dict \| None` | LFP 檔案路徑及解析後 metadata | 來源路徑存於 manifest，其餘重建 |
 | `lfp_dataset` | `LfpDataset \| None` | 完整 LFP DataFrame 與訊號 cache | 否 |
-| `axis_info` | `dict \| None` | 三軸檔案路徑及解析後 metadata | 來源路徑存於 manifest，其餘重建 |
+| `three_axis_info` | `dict \| None` | 三軸檔案路徑及解析後 metadata | 來源路徑存於 manifest，其餘重建 |
 | `lfp_step` | `int \| None` | LFP 顯示抽樣／繪圖步長 | 是 |
-| `axis_step` | `int \| None` | 三軸顯示抽樣／繪圖步長 | 是 |
+| `three_axis_step` | `int \| None` | 三軸顯示抽樣／繪圖步長 | 是 |
 | `line_noise_hz` | `float = 60.0` | UI 共用的電源線頻率 | 是 |
 | `timeline_xlim` | `tuple[float, float] \| None` | 共用時間軸左右範圍，秒 | 是 |
 | `selected_lfp_channel` | `int \| None` | 目前選取的實際通道 ID | 是 |
 | `lfp_filter_settings` | `dict` | LFP 顯示／分析濾波設定 | 是 |
 | `follow_video_playback` | `bool = True` | 波形是否跟隨影片播放位置 | 是 |
 
-### `lfp_info`／`axis_info`
+### `lfp_info`／`three_axis_info`
 
 由 `parse_lfp_csv_info()` 產生，標準形狀為：
 
@@ -635,7 +635,7 @@ PROJECT_VERSION = 3
 
 - `video`
 - `lfp`
-- `axis`
+- `three_axis`
 - `ttl`
 
 來源檔不內嵌於專案。fingerprint 使用檔案大小與開頭／中間／結尾的抽樣 SHA-256，屬快速 identity，不是完整檔案 hash。
@@ -653,7 +653,7 @@ PROJECT_VERSION = 3
     },
     "data": {
         "lfp_step": int | None,
-        "axis_step": int | None,
+        "three_axis_step": int | None,
         "line_noise_hz": float,
         "timeline_xlim": [float, float] | None,
         "selected_lfp_channel": int | None,

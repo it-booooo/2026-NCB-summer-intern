@@ -9,7 +9,7 @@ from .markers import VideoPosition
 
 PROJECT_FORMAT = "pig-analysis-project"
 PROJECT_VERSION = 3
-ALLOWED_SOURCE_TYPES = frozenset({"video", "lfp", "axis", "ttl"})
+ALLOWED_SOURCE_TYPES = frozenset({"video", "lfp", "three_axis", "ttl"})
 MAX_MANIFEST_BYTES = 1 * 1024 * 1024
 MAX_STATE_BYTES = 256 * 1024 * 1024
 MAX_EVENTS = 1_000_000
@@ -105,7 +105,7 @@ def validate_state(state):
         raise ValueError("Project video rotation must be 0, 90, 180, or 270 degrees.")
 
     data = state.get("data", {})
-    for name in ("lfp_step", "axis_step", "selected_lfp_channel"):
+    for name in ("lfp_step", "three_axis_step", "selected_lfp_channel"):
         value = data.get(name)
         if value is not None and (
             not isinstance(value, int) or isinstance(value, bool) or value < 0
