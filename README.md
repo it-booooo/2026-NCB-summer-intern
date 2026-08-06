@@ -6,8 +6,8 @@ Pig Behavior Sync 是一套 Windows 桌面程式，主要用途是把動物行�
 
 - 播放 MP4 行為影片，支援逐格移動、跳至指定時間／影格，以及 90°、180° 旋轉。
 - 顯示 LFP 與三軸訊號，共用可拖曳的時間範圍。
-- 選擇 LFP channel，套用 band-pass，以及 notch 或滑動視窗正弦波回歸電源雜訊移除。
-- 顯示 LFP power spectrum 與 spectrogram。
+- 選擇 LFP channel，使用 Bandpass、Notch filter 或 Sinusoidal regression 處理訊號。
+- 顯示 LFP 的 Power spectrum 與 Spectrogram。
 - 匯入或手動新增 TTL 時間標記。
 - 在影片上建立 LED On、LED Off、Action Start、Action End 與 Seizure-like 標記。
 - 選取影片中的 LED ROI，自動分析亮度變化並建立 LED 事件。
@@ -20,7 +20,7 @@ Pig Behavior Sync 是一套 Windows 桌面程式，主要用途是把動物行�
 
 - Windows 10／11
 - 可讀取的 MP4、LFP／三軸 CSV 或 TTL CSV 實驗資料
-- OpenCL 相容 GPU 與驅動程式為選用項目；沒有可用 GPU 時，LED 偵測會自動改用 CPU，只是處理時間可能較長
+- OpenCL 相容 GPU 與驅動程式為選用項目；可加速 LED 偵測及部分大型 LFP 處理，沒有可用 GPU 時會自動改用 CPU，只是處理時間可能較長
 
 本程式不需要安裝 Python 或其他套件。
 
@@ -36,7 +36,7 @@ Pig Behavior Sync 是一套 Windows 桌面程式，主要用途是把動物行�
 
 程式是單一執行檔，不需執行安裝程序，也不需要下載額外的 Python 套件。第一次啟動或第一次分析大型影片時，Windows 防毒軟體可能需要較長時間檢查檔案。
 
-> **GPU 加速說明：** 電腦若有相容的 GPU 與 OpenCL 驅動，程式會用它加速 LED 偵測；沒有可用 GPU 時會自動改用 CPU，不影響其他功能。
+> **GPU 加速說明：** 電腦若有相容的 GPU 與 OpenCL 驅動，程式會用它加速 LED 偵測及部分大型 LFP 處理；沒有可用 GPU 時會自動改用 CPU，不影響分析功能與結果。
 
 ## 肆、輸入資料格式
 
@@ -86,7 +86,7 @@ TTL CSV 建議包含：
 - 「File > Save Project...」：保存目前分析狀態。
 - 「File > Import」：匯入影片、LFP、三軸及 TTL。
 - 「File > Export」：匯出標記、檢查結果及圖表。
-- 「Settings」：調整波形在畫面上的顯示密度、電源雜訊頻率、LFP 峰值偵測條件、檢查 GPU，以及清除訊號暫存資料。
+- 「Settings」：調整波形在畫面上的顯示密度、LFP 峰值偵測條件、檢查 GPU，以及清除訊號暫存資料。
 
 ## 陸、第一次使用：請照順序操作
 
@@ -118,9 +118,9 @@ TTL CSV 建議包含：
 
 若要釋放訊號暫存所占用的磁碟與記憶體，可使用「Settings > Clear signal cache」。此操作不會刪除原始 CSV，但下次使用相關訊號時需要重新建立暫存，因此第一次顯示或分析可能較慢。
 
-匯入 LFP 後可選擇 channel 與訊號顯示模式。勾選「Bandpass」後設定 Low／High cutoff；「Line noise」可選 None、Notch filter 或 Sinusoidal regression。Frequencies 可輸入一個或多個以逗號／空白分隔的頻率，例如 `60, 90`。Notch 使用同一個 Q 依序處理各頻率；正弦波回歸會在同一個 least-squares design matrix 中共同估計所有頻率。勾選「All harmonics」時，程式會自動加入每個輸入頻率的所有整數倍頻，僅處理嚴格低於目前 sample rate Nyquist frequency 的項目，重複的倍頻只估計一次；不會自動加入公因數。預設為 60 Hz、4 秒、50% overlap、只處理輸入頻率。完成設定後按「confirm」套用；波形、power spectrum、spectrogram 與 LFP 影像匯出會共用同一組已選處理設定。
+匯入 LFP 後，先選擇 channel，再選擇 Raw（原始訊號）或 Filtered（濾波後訊號）。勾選「Bandpass」後可設定 Low／High；「Line noise」可選 None、Notch filter 或 Sinusoidal regression。Frequencies 可輸入一個或多個以逗號或空白分隔的頻率，例如 60, 90。使用 Notch filter 時可設定 Q；使用 Sinusoidal regression 時可設定 Window、Overlap，並可勾選「All harmonics」自動處理倍頻。完成後按「confirm」套用；波形、Power spectrum、Spectrogram 與 LFP 圖片匯出會使用同一組設定。
 
-大型正弦波回歸區段會自動使用 OpenCL GPU：設計矩陣的偽逆只在 CPU 建立並快取一次，大量視窗係數、Hann overlap-add 重建與相減則在 GPU 執行；少於 100,000 samples、GPU 不支援 double precision，或 OpenCL 不可用時會安全改用 NumPy。可用環境變數 `PIG_LFP_COMPUTE_BACKEND=cpu|opencl|auto` 強制選擇，並以 `PIG_LFP_OPENCL_MIN_SAMPLES` 調整回歸的自動啟用門檻。LFP 與 LED 共用 `PIG_OPENCL_DEVICE`／`PIG_OPENCL_VENDOR` 裝置選擇及 `.opencl_temp` cache。
+第一次切換到 Filtered 或變更濾波設定時，程式會分段準備波形。時間範圍列上方的紅色表示尚未完成，綠色表示已完成；波形會隨處理進度逐步更新。大型資料可能需要較長時間，程式會依電腦環境自動使用 GPU 或 CPU。
 
 「Power spectrum」與「Spectrogram」會分析目前選擇的 channel 和畫面時間範圍。分析時會使用原始 CSV 在這段時間內的所有取樣點，不會因為畫面波形顯示得比較稀疏而漏掉資料；選擇的時間越長，等待時間通常也越久。
 
@@ -128,7 +128,7 @@ TTL CSV 建議包含：
 
 「Follow video playback」開啟時，完成同步後的波形視窗會跟隨影片播放位置。
 
-使用 Notch filter 顯示或匯出 power spectrum 時，程式會在轉換為 dB 後，依 notch 中心頻率與 Q 推算的頻寬，使用兩側頻譜做僅供顯示的線性插值，並在圖名標示 `notch gaps display-interpolated`。此步驟不修改 Welch PSD、filtered LFP、波形、spectrogram 或資料匯出內容；Raw 與 Sinusoidal regression 的 power spectrum 也不會套用。
+使用 Notch filter 顯示或匯出 Power spectrum 時，圖中的 notch 頻率缺口會以鄰近頻譜補齊顯示，並在圖名標示「notch gaps display-interpolated」。這只影響 Power spectrum 的顯示方式，不會改變 Filtered 波形或 Spectrogram。
 
 ### 3. 建立或匯入 TTL
 
@@ -200,9 +200,7 @@ TTL CSV 建議包含：
 
 同一個 channel 再次偵測時，會取代該 channel 上一次自動找到的峰值；其他 channel 的結果不會被刪除。表格內可修改 note、點選峰值跳到影片位置，或刪除選定峰值。
 
-較大的峰值搜尋會自動以 OpenCL 分段計算統計並掃描正負候選峰；plateau、distance、prominence、跨區段去重與 marker 建立仍由 NumPy／SciPy 在 CPU 完成，因此不改變既有峰值定義。支援 NVIDIA、AMD、Intel 的標準 OpenCL GPU，實際可用性取決於已安裝的驅動；沒有 OpenCL 時會自動回到 CPU。沒有 FP64 的裝置仍可加速 float32 candidate，而 periodic regression 與 peak candidate 是兩個獨立 capability，不會因回歸缺少 FP64 就停用 float32 peak scan。
-
-`PIG_LFP_COMPUTE_BACKEND=auto|cpu|opencl` 同時控制 LFP 計算選擇：`auto` 讓小資料留在 CPU 並在 GPU 失敗時安全 fallback，`cpu` 不初始化 OpenCL，`opencl` 則要求所需功能可用並回報 device、vendor、platform、dtype 與原始錯誤。`PIG_LFP_OPENCL_PEAK_MIN_SAMPLES` 可調整 peak detection 的自動啟用門檻（依 end-to-end benchmark 預設為 10,000,000 samples）；它與 periodic regression 使用的 `PIG_LFP_OPENCL_MIN_SAMPLES` 分開。完成訊息會顯示實際 statistics/candidate backend、OpenCL chunk 數與簡短 fallback 原因。可用 `python -m benchmarks.run_peak_benchmark --sample-rate 1000 --duration 300` 執行可重現 benchmark；完整參數見 `benchmarks/README.md`。
+偵測完成後，上方 LFP 波形會補充顯示峰值附近的波形細節；切換 channel 或 Raw／Filtered 時會自動更新。大型資料會依電腦環境自動使用 GPU 或 CPU，沒有可用 GPU 時不影響偵測結果，只是處理時間可能較長。
 
 完成峰值偵測後，可按「Analyze Peaks」查看所選 channel 每分鐘的 LFP peak 數量長條圖。圖表會合併統計正向與負向峰值，不會分開顯示。此功能必須先有完成同步的 LFP peak 才能使用。
 
@@ -230,7 +228,7 @@ TTL CSV 建議包含：
 可選擇：
 
 - 要輸出的 channel 和時間範圍；
-- Raw 原始訊號或 Filtered 濾波後訊號，以及 Bandpass／Notch 設定；
+- Raw 原始訊號或 Filtered 濾波後訊號，以及 Bandpass／Line noise 設定；
 - 波形圖、Power spectrum、Spectrogram，可同時選擇多種；
 - 目的資料夾。
 
