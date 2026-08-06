@@ -267,7 +267,7 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         line_noise_layout.addStretch()
         layout.addLayout(line_noise_layout)
 
-        layout.addWidget(self.axis_file_label)
+        layout.addWidget(self.three_axis_file_label)
         layout.addLayout(waveform_grid, stretch=1)
         layout.addWidget(self.timeline_area)
 

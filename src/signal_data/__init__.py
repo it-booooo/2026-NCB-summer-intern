@@ -12,7 +12,6 @@ from .background_workers import (
     LfpCoarseWorker,
     LfpExportDataWorker,
     LfpPeakDisplayWorker,
-    LfpSegmentWorker,
     PeakDetectionWorker,
 )
 from .lfp_dataset import LfpDataset
