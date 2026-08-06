@@ -14,6 +14,7 @@ from .background_workers import (
     LfpSegmentWorker,
     PeakDetectionWorker,
 )
+from .gpu_backend import cupy_status, select_backend
 from .lfp_dataset import LfpDataset
 from .gpu_backend import cupy_status, select_backend
 from .lfp_processing import (

@@ -441,10 +441,32 @@ class LfpPeakPanel(MarkerViewPanel):
         ]
         self.marker_store.replace_all([*retained, *markers])
         self._complete_peak_request(request_id)
+        acceleration = result.get("acceleration", {})
+        backend = acceleration.get("backend", "cpu")
+        elapsed = float(acceleration.get("elapsed_sec", 0.0))
+        detail = f"\n\nCompute: {backend} | elapsed: {elapsed:.1f} s"
+        if backend == "cupy":
+            detail += (
+                f" | GPU stats chunks: "
+                f"{acceleration.get('gpu_statistics_chunks', 0)}"
+                f" | GPU peak chunks: "
+                f"{acceleration.get('gpu_peak_chunks', 0)}"
+            )
+        else:
+            status = acceleration.get("cupy_status", {})
+            reason = status.get("last_operation_error") or status.get("reason")
+            if reason:
+                detail += f"\nCuPy fallback: {reason}"
+            detail += (
+                f"\nPython: {status.get('python', 'unknown')}"
+                f"\nCuPy: {status.get('cupy_path', 'unavailable')}"
+                f"\nCUDA_PATH: {status.get('cuda_path', 'unset')}"
+                f"\nTEMP: {status.get('temp', 'unset')}"
+            )
         QMessageBox.information(
             self,
             "LFP peaks",
-            f"Added {len(markers)} peak markers from channel {channel}.",
+            f"Added {len(markers)} peak markers from channel {channel}.{detail}",
         )
 
     def _fail_peak_detection(self, request_id, identity, message):
