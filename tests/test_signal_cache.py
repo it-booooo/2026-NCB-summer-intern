@@ -134,6 +134,30 @@ class SignalCacheTests(unittest.TestCase):
         self.assertFalse(any(self.cache_root.glob("coarse-*")))
         self.assertFalse(any(self.cache_root.glob("*.tmp")))
 
+    def test_filtered_coarse_reports_priority_range_first(self):
+        source = self.source()
+        callbacks = []
+        settings = LfpFilterSettings(show_filtered=True)
+
+        result = source.coarse(
+            5,
+            3,
+            settings,
+            range_callback=lambda start, end, times, values: callbacks.append(
+                (start, end, np.asarray(times).copy(), np.asarray(values).copy())
+            ),
+            priority_sample_index=100,
+        )
+
+        self.assertGreater(len(callbacks), 1)
+        priority_point = 100 // 3
+        self.assertLessEqual(callbacks[0][0], priority_point)
+        self.assertGreater(callbacks[0][1], priority_point)
+        reconstructed = np.empty_like(result.values)
+        for start, end, _times, values in callbacks:
+            reconstructed[start:end] = values
+        np.testing.assert_allclose(reconstructed, result.values)
+
     def test_clear_cache_closes_handles_and_removes_source_entries(self):
         source = self.source()
         source.ensure_cache(260)

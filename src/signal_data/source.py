@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import shutil
 import tempfile
@@ -20,6 +21,7 @@ import numpy as np
 CACHE_FORMAT_VERSION = 3
 OVERVIEW_ALGORITHM_VERSION = 3
 FILTER_COARSE_ALGORITHM_VERSION = 4
+FILTER_DISPLAY_BLOCK_SECONDS = 10.0
 DEFAULT_CHUNK_ROWS = 250_000
 DEFAULT_OVERVIEW_MAX_POINTS = 5_000
 DEFAULT_CACHE_MAX_BYTES = 20 * 1024 * 1024 * 1024
@@ -591,6 +593,8 @@ class SignalDataSource:
         settings=None,
         cancel_event: threading.Event | None = None,
         progress_callback=None,
+        range_callback=None,
+        priority_sample_index: int | None = None,
     ) -> SignalOverview:
         """Return an atomically cached full-range coarse for one global step."""
         channel_id = int(channel_id)
@@ -609,6 +613,9 @@ class SignalDataSource:
                     settings,
                     cancel_event=cancel_event,
                     progress_callback=progress_callback,
+                    range_callback=range_callback,
+                    priority_channel=channel_id,
+                    priority_sample_index=priority_sample_index,
                 )
             else:
                 self._touch_cache(coarse_path)
@@ -678,6 +685,9 @@ class SignalDataSource:
         *,
         cancel_event: threading.Event | None,
         progress_callback=None,
+        range_callback=None,
+        priority_channel: int | None = None,
+        priority_sample_index: int | None = None,
     ) -> None:
         from .lfp_processing import filter_padding_samples, prepare_lfp_signal
 
@@ -695,14 +705,21 @@ class SignalDataSource:
                 shape=(sample_count,),
             )
             try:
+                source_times_for_coarse = np.asarray(
+                    source_times[indices], dtype="<f8"
+                ).copy()
                 self._write_array_atomic(
                     temporary / "time_us.bin",
-                    np.asarray(source_times[indices], dtype="<f8"),
+                    source_times_for_coarse,
                 )
             finally:
                 del source_times
-            channel_count = max(len(self.channels), 1)
-            for channel_index, channel in enumerate(self.channels):
+            channel_order = list(self.channels)
+            if priority_channel in channel_order:
+                channel_order.remove(priority_channel)
+                channel_order.insert(0, priority_channel)
+            channel_count = max(len(channel_order), 1)
+            for channel_index, channel in enumerate(channel_order):
                 self._check_cancel(cancel_event)
                 source_values = np.memmap(
                     source_path / self._value_name(channel),
@@ -719,9 +736,28 @@ class SignalDataSource:
                         sample_rate = self._sample_rate(channel)
                         padding = filter_padding_samples(settings, sample_rate)
                         output = np.empty(indices.size, dtype="<f4")
-                        output_offset = 0
-                        points_per_batch = max(self.chunk_rows // step, 1)
-                        for point_start in range(0, indices.size, points_per_batch):
+                        display_points = math.ceil(
+                            sample_rate * FILTER_DISPLAY_BLOCK_SECONDS / step
+                        )
+                        points_per_batch = max(
+                            min(self.chunk_rows // step, display_points), 1
+                        )
+                        point_starts = list(
+                            range(0, indices.size, points_per_batch)
+                        )
+                        if channel == priority_channel and priority_sample_index is not None:
+                            priority_point = max(
+                                min(int(priority_sample_index) // step, indices.size - 1),
+                                0,
+                            )
+                            point_starts.sort(
+                                key=lambda start: abs(
+                                    start
+                                    + min(points_per_batch, indices.size - start) / 2
+                                    - priority_point
+                                )
+                            )
+                        for point_start in point_starts:
                             self._check_cancel(cancel_event)
                             point_end = min(
                                 point_start + points_per_batch, indices.size
@@ -741,10 +777,14 @@ class SignalDataSource:
                             )
                             relative = requested - loaded_left
                             selected = filtered[relative]
-                            output[output_offset : output_offset + selected.size] = (
-                                selected
-                            )
-                            output_offset += selected.size
+                            output[point_start:point_end] = selected
+                            if range_callback is not None and channel == priority_channel:
+                                range_callback(
+                                    point_start,
+                                    point_end,
+                                    np.asarray(source_times_for_coarse[point_start:point_end]),
+                                    np.asarray(selected, dtype="<f4").copy(),
+                                )
                         coarse_values = output
                     self._write_array_atomic(
                         temporary / self._value_name(channel), coarse_values

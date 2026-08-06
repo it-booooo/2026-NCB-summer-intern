@@ -33,6 +33,8 @@ class SharedTimelineSlider:
         self.callbacks = []
         self.drag_state = None
         self.time_origin_sec = None
+        self.filter_status_visible = False
+        self.filter_status_ranges = []
         self.min_width = max((full_xlim[1] - full_xlim[0]) / 10000, 1e-6)
 
         self.ax.set_xlim(full_xlim)
@@ -88,6 +90,17 @@ class SharedTimelineSlider:
 
         self.ax.add_patch(self.track)
         self.ax.add_patch(self.poly)
+        self.filter_status_track = Rectangle(
+            (full_xlim[0], 0.76),
+            full_xlim[1] - full_xlim[0],
+            0.16,
+            facecolor="#d9534f",
+            edgecolor="none",
+            visible=False,
+            zorder=1,
+        )
+        self.ax.add_patch(self.filter_status_track)
+        self.filter_status_patches = []
         self.update_artists()
 
         canvas = self.ax.figure.canvas
@@ -128,6 +141,34 @@ class SharedTimelineSlider:
         if emit:
             for callback in self.callbacks:
                 callback(self.val)
+
+    def set_filter_status(self, visible, completed_ranges=()):
+        """Show filtered-cache completion above the shared time-range track."""
+        self.filter_status_visible = bool(visible)
+        self.filter_status_ranges = [
+            (float(left), float(right)) for left, right in completed_ranges
+        ]
+        self.filter_status_track.set_visible(self.filter_status_visible)
+        for patch in self.filter_status_patches:
+            patch.remove()
+        self.filter_status_patches = []
+        if self.filter_status_visible:
+            for left, right in self.filter_status_ranges:
+                left = max(left, self.full_xlim[0])
+                right = min(right, self.full_xlim[1])
+                if right <= left:
+                    continue
+                patch = Rectangle(
+                    (left, 0.76),
+                    right - left,
+                    0.16,
+                    facecolor="#3ca65c",
+                    edgecolor="none",
+                    zorder=2,
+                )
+                self.ax.add_patch(patch)
+                self.filter_status_patches.append(patch)
+        self.ax.figure.canvas.draw_idle()
 
     def update_artists(self):
         """Update artists.

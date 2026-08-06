@@ -972,19 +972,47 @@ class PeakDetectionWorker(SignalWorker):
 class LfpCoarseWorker(SignalWorker):
     """Build an all-channel coarse cache without blocking the GUI."""
 
-    def __init__(self, request_id, dataset, channel, step, settings):
+    range_completed = Signal(object, object)
+
+    def __init__(
+        self, request_id, dataset, channel, step, settings, current_time_s=None
+    ):
         super().__init__(request_id, dataset)
         self.channel = int(channel)
         self.step = max(int(step), 1)
         self.settings = settings
+        self.current_time_s = current_time_s
 
     def execute(self):
+        priority_index = None
+        if self.current_time_s is not None:
+            time_us = int(round(float(self.current_time_s) * 1_000_000.0))
+            priority_index = self.dataset.source.segment_indices(
+                self.channel,
+                time_us,
+                time_us + 1,
+                self.cancel_event,
+            )[0]
+
+        def report_range(point_start, point_end, time_us, values):
+            self.range_completed.emit(
+                self.request_id,
+                {
+                    "point_start": int(point_start),
+                    "point_end": int(point_end),
+                    "time_us": np.asarray(time_us),
+                    "values": np.asarray(values),
+                },
+            )
+
         result = self.dataset.source.coarse(
             self.channel,
             self.step,
             self.settings,
             cancel_event=self.cancel_event,
             progress_callback=lambda value: self.report(round(value * 100)),
+            range_callback=report_range,
+            priority_sample_index=priority_index,
         )
         return {
             "channel": self.channel,
@@ -992,4 +1020,41 @@ class LfpCoarseWorker(SignalWorker):
             "settings": self.settings,
             "time_us": np.asarray(result.time_us),
             "values": np.asarray(result.values),
+        }
+
+
+class LfpDisplaySegmentWorker(SignalWorker):
+    """Filter one display interval so Qt can repaint before the next interval."""
+
+    def __init__(
+        self, request_id, dataset, channel, start_s, end_s, step, settings
+    ):
+        super().__init__(request_id, dataset)
+        self.channel = int(channel)
+        self.start_s = float(start_s)
+        self.end_s = float(end_s)
+        self.step = max(int(step), 1)
+        self.settings = settings
+
+    def execute(self):
+        left_index, _ = self.dataset.source.segment_indices(
+            self.channel,
+            int(round(self.start_s * 1_000_000.0)),
+            int(round(self.end_s * 1_000_000.0)),
+            self.cancel_event,
+        )
+        segment = self.dataset.segment(
+            self.channel,
+            self.start_s,
+            self.end_s,
+            self.settings,
+            self.cancel_event,
+        )
+        self.check_cancel()
+        return {
+            "point_start": left_index // self.step,
+            "time_us": np.asarray(segment.time_us[:: self.step]).copy(),
+            "values": np.asarray(segment.values[:: self.step]).copy(),
+            "start_s": self.start_s,
+            "end_s": self.end_s,
         }

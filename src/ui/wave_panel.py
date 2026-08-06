@@ -1,8 +1,9 @@
 import numpy as np
 import uuid
+from dataclasses import replace
 from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QTimer, Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -14,7 +15,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
-    QProgressDialog,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -70,8 +70,15 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self.spectrum_dialogs = []
         self._lfp_coarse_workers = {}
         self._lfp_coarse_request_id = None
-        self._lfp_coarse_progress = None
         self._lfp_coarse_key = None
+        self._lfp_coarse_queue = []
+        self._lfp_coarse_total_segments = 0
+        self._lfp_coarse_finished_segments = 0
+        self._lfp_coarse_channel = None
+        self._lfp_coarse_step_value = 1
+        self._lfp_coarse_settings = None
+        self._lfp_filter_completed_ranges = []
+        self._lfp_filter_status_visible = False
         self._lfp_peak_display_workers = {}
         self._lfp_peak_display_request_id = None
         self._lfp_peak_display_request_key = None
@@ -820,6 +827,10 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self.timeline_slider = slider
         self.timeline_canvas = canvas
         self.timeline_full_xlim = full_xlim
+        slider.set_filter_status(
+            self._lfp_filter_status_visible,
+            self._lfp_filter_completed_ranges,
+        )
         self.invalidate_current_time_backgrounds()
         canvas.draw_idle()
 
@@ -1105,6 +1116,11 @@ class WavePanel(LfpAnalysisMixin, QWidget):
             return
         if not show_filtered:
             self._cancel_lfp_coarse_workers()
+            self._set_lfp_filter_status(False)
+        else:
+            bounds = self.timeline_limits()
+            self._lfp_filter_completed_ranges = [] if bounds is None else [bounds]
+            self._set_lfp_filter_status(True)
         self.lfp_fig.set_lfp_signal_view(show_filtered)
         self.update_current_time_marker()
         self.update_lfp_peak_artist()
@@ -1284,8 +1300,10 @@ class WavePanel(LfpAnalysisMixin, QWidget):
             return
 
         current_xlim = self.data_state.timeline_xlim
-        self.lfp_fig = None
-        self.lfp_callback_connected = False
+        if self.lfp_fig is not None:
+            self.lfp_fig.set_lfp_filter_settings(
+                self.current_lfp_filter_settings()
+            )
         self.invalidate_current_time_backgrounds("lfp")
         self.plot_lfp()
 
@@ -1326,13 +1344,41 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         channel = self.selected_channel(self.lfp_channel_selector)
         self.data_state.selected_lfp_channel = channel
         settings = self.current_lfp_filter_settings()
+        if not settings.show_filtered:
+            self._set_lfp_filter_status(False)
         if (
             channel is not None
             and settings.show_filtered
             and not self._filtered_coarse_ready(settings, channel)
         ):
+            if self.lfp_fig is None:
+                try:
+                    self.lfp_fig = draw.LFP(
+                        channels=channel,
+                        step=self.data_state.lfp_step,
+                        filter_settings=replace(settings, show_filtered=False),
+                        dataset=self.ensure_lfp_dataset(),
+                    )
+                    self.lfp_fig.set_lfp_filter_settings(settings)
+                    self.set_figure(
+                        self.lfp_waveform_area, "lfp_canvas", self.lfp_fig
+                    )
+                    self.lfp_fig.refresh_lfp_plot(recalculate_auto=True)
+                    if not self.lfp_callback_connected:
+                        self.lfp_fig.add_lfp_xlim_callback(
+                            lambda value: self.on_plot_xlim_changed(value, "lfp")
+                        )
+                        self.lfp_callback_connected = True
+                    self.create_or_update_timeline()
+                except Exception as error:
+                    QMessageBox.warning(self, "LFP plot failed", str(error))
+                    return
             self._start_filtered_coarse(settings, self.plot_lfp, channel)
             return
+        if settings.show_filtered:
+            bounds = self.timeline_limits()
+            self._lfp_filter_completed_ranges = [] if bounds is None else [bounds]
+            self._set_lfp_filter_status(True)
         created_figure = False
         try:
             if self.lfp_fig is None:
@@ -1479,60 +1525,98 @@ class WavePanel(LfpAnalysisMixin, QWidget):
             channel = self.selected_channel(self.lfp_channel_selector)
         if channel is None:
             return
+        self._start_incremental_filtered_display(dataset, channel, settings)
+
+    def _start_incremental_filtered_display(self, dataset, channel, settings):
         step = self._lfp_coarse_step(channel)
-        key = (dataset.source.identity_token(), step, settings)
-        if (
-            key == self._lfp_coarse_key
-            and any(worker.isRunning() for worker in self._lfp_coarse_workers.values())
-        ):
+        key = (dataset.source.identity_token(), channel, step, settings)
+        if key == self._lfp_coarse_key and self._lfp_coarse_workers:
             return
-        request_id = uuid.uuid4().hex
         self._cancel_lfp_coarse_workers()
+        request_id = uuid.uuid4().hex
         self._lfp_coarse_request_id = request_id
         self._lfp_coarse_key = key
-        worker = signal_func.LfpCoarseWorker(
-            request_id,
-            dataset,
-            channel,
-            step,
-            settings,
+
+        bounds = dataset.record_bounds_s(channel)
+        ranges = []
+        left = float(bounds[0])
+        while left < bounds[1]:
+            right = min(left + 10.0, float(bounds[1]))
+            ranges.append((left, right))
+            left = right
+        center = self.sync_state.current_record_time_sec
+        if center is None or not np.isfinite(center):
+            center = (bounds[0] + bounds[1]) / 2.0
+        ranges.sort(key=lambda item: abs((item[0] + item[1]) / 2.0 - center))
+
+        self._lfp_coarse_queue = ranges
+        self._lfp_coarse_total_segments = len(ranges)
+        self._lfp_coarse_finished_segments = 0
+        self._lfp_coarse_channel = channel
+        self._lfp_coarse_step_value = step
+        self._lfp_coarse_settings = settings
+        self._lfp_filter_completed_ranges = []
+        self._set_lfp_filter_status(True)
+        if self.lfp_fig is not None:
+            self.lfp_fig.begin_lfp_partial_filtered()
+        self._start_next_filtered_segment(request_id)
+
+    def _start_next_filtered_segment(self, request_id):
+        if request_id != self._lfp_coarse_request_id:
+            return
+        if not self._lfp_coarse_queue:
+            bounds = self.timeline_limits()
+            if bounds is not None:
+                self._lfp_filter_completed_ranges = [bounds]
+                self._set_lfp_filter_status(True)
+            self._lfp_coarse_key = None
+            self.update_current_time_marker()
+            self.update_lfp_peak_artist()
+            return
+
+        start_s, end_s = self._lfp_coarse_queue.pop(0)
+        worker_id = uuid.uuid4().hex
+        worker = signal_func.LfpDisplaySegmentWorker(
+            worker_id,
+            self.ensure_lfp_dataset(),
+            self._lfp_coarse_channel,
+            start_s,
+            end_s,
+            self._lfp_coarse_step_value,
+            self._lfp_coarse_settings,
         )
-        self._lfp_coarse_workers[request_id] = worker
-        progress = QProgressDialog(
-            "Building filtered overview…",
-            "Cancel",
-            0,
-            100,
-            self,
-        )
-        progress.setWindowTitle("Filtered LFP")
-        progress.setWindowModality(Qt.WindowModality.NonModal)
-        progress.setAutoClose(False)
-        self._lfp_coarse_progress = progress
-        worker.progress.connect(self._update_lfp_coarse_progress)
+        self._lfp_coarse_workers[worker_id] = worker
         worker.completed.connect(
-            lambda result_id, identity, _result: self._finish_lfp_coarse(
-                result_id,
-                identity,
-                settings,
-                callback,
+            lambda _worker_id, identity, result: self._finish_filtered_segment(
+                request_id, identity, result
             )
         )
-        worker.failed.connect(self._fail_lfp_coarse)
-        worker.canceled.connect(
-            lambda result_id, _identity: self._complete_lfp_coarse_request(
-                result_id
+        worker.failed.connect(
+            lambda _worker_id, identity, message: self._fail_lfp_coarse(
+                request_id, identity, message
             )
         )
-        progress.canceled.connect(worker.cancel)
         worker.finished.connect(
-            lambda result_id=request_id: self._discard_lfp_coarse_worker(
-                result_id
+            lambda worker_id=worker_id, worker=worker: self._filtered_segment_finished(
+                request_id, worker_id, worker
             )
         )
         worker.finished.connect(worker.deleteLater)
         worker.start()
-        progress.show()
+
+    def _finish_filtered_segment(self, request_id, identity, result):
+        if not self._lfp_coarse_result_is_current(request_id, identity):
+            return
+        self._lfp_coarse_finished_segments += 1
+        self._update_lfp_coarse_range(request_id, result)
+
+    def _filtered_segment_finished(self, request_id, worker_id, worker):
+        self._lfp_coarse_workers.pop(worker_id, None)
+        if request_id != self._lfp_coarse_request_id or worker.cancel_event.is_set():
+            return
+        QTimer.singleShot(
+            0, lambda: self._start_next_filtered_segment(request_id)
+        )
 
     def _lfp_coarse_result_is_current(self, request_id, identity):
         dataset = self.data_state.lfp_dataset
@@ -1547,50 +1631,53 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         except OSError:
             return False
 
-    def _update_lfp_coarse_progress(self, request_id, value):
+    def _set_lfp_filter_status(self, visible):
+        self._lfp_filter_status_visible = bool(visible)
+        if self.timeline_slider is not None:
+            self.timeline_slider.set_filter_status(
+                self._lfp_filter_status_visible,
+                self._lfp_filter_completed_ranges,
+            )
+
+    def _update_lfp_coarse_range(self, request_id, payload):
         if request_id != self._lfp_coarse_request_id:
             return
-        if self._lfp_coarse_progress is not None and widget_is_valid(
-            self._lfp_coarse_progress
-        ):
-            self._lfp_coarse_progress.setValue(value)
-
-    def _finish_lfp_coarse(
-        self,
-        request_id,
-        identity,
-        settings,
-        callback,
-    ):
-        if not self._lfp_coarse_result_is_current(request_id, identity):
+        times = np.asarray(payload.get("time_us", ()), dtype=float)
+        values = np.asarray(payload.get("values", ()), dtype=float)
+        if times.size == 0 or times.shape != values.shape:
             return
-        if settings != self.current_lfp_filter_settings():
-            self._complete_lfp_coarse_request(request_id)
-            return
-        self._complete_lfp_coarse_request(request_id)
-        callback()
+        left = float(times[0] / 1_000_000.0)
+        right = float(times[-1] / 1_000_000.0)
+        if times.size > 1:
+            right += float((times[-1] - times[-2]) / 1_000_000.0)
+        else:
+            right += 1e-9
+        ranges = sorted(self._lfp_filter_completed_ranges + [(left, right)])
+        merged = []
+        for range_left, range_right in ranges:
+            if merged and range_left <= merged[-1][1] + 1e-9:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], range_right))
+            else:
+                merged.append((range_left, range_right))
+        self._lfp_filter_completed_ranges = merged
+        self._set_lfp_filter_status(True)
+        if self.lfp_fig is not None:
+            self.lfp_fig.append_lfp_partial_filtered(
+                payload["point_start"], times, values
+            )
 
     def _fail_lfp_coarse(self, request_id, identity, message):
         if not self._lfp_coarse_result_is_current(request_id, identity):
             return
-        self._complete_lfp_coarse_request(request_id)
-        QMessageBox.warning(self, "Filtered LFP failed", message)
-
-    def _complete_lfp_coarse_request(self, request_id):
-        if request_id != self._lfp_coarse_request_id:
-            return
-        if self._lfp_coarse_progress is not None and widget_is_valid(
-            self._lfp_coarse_progress
-        ):
-            self._lfp_coarse_progress.close()
-        self._lfp_coarse_progress = None
+        self._lfp_coarse_request_id = None
+        self._lfp_coarse_queue = []
         self._lfp_coarse_key = None
-
-    def _discard_lfp_coarse_worker(self, request_id):
-        self._lfp_coarse_workers.pop(request_id, None)
+        QMessageBox.warning(self, "Filtered LFP failed", message)
 
     def _cancel_lfp_coarse_workers(self, wait=False):
         workers = list(self._lfp_coarse_workers.values())
+        self._lfp_coarse_request_id = None
+        self._lfp_coarse_queue = []
         for worker in workers:
             worker.cancel()
         if wait:

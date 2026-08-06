@@ -150,6 +150,7 @@ def LFP(
 
     navigation = install_x_navigation(fig, ax, full_xlim)
     resolved_auto_stride: int | None = None
+    partial_chunks = {}
 
     def refresh_lfp_plot(*, recalculate_auto: bool = False) -> None:
         """Rebuild the fixed full-range plot data with the configured step."""
@@ -203,6 +204,54 @@ def LFP(
         filter_label.set_text(signal_func.filter_description(label_settings))
         fig.canvas.draw_idle()
 
+    def set_lfp_filter_settings(settings) -> None:
+        """Replace the settings used by subsequent full or partial refreshes."""
+        nonlocal filter_settings
+        filter_settings = settings
+        label_settings = _filter_settings_for_view(filter_settings, show_filtered)
+        filter_label.set_text(signal_func.filter_description(label_settings))
+
+    def begin_lfp_partial_filtered() -> None:
+        """Clear the line so completed filtered chunks can be drawn incrementally."""
+        nonlocal show_filtered, partial_chunks
+        show_filtered = True
+        partial_chunks = {}
+        line.set_data([], [])
+        fig.current_view = "filtered"
+        filter_label.set_text(signal_func.filter_description(filter_settings))
+        fig.canvas.draw_idle()
+
+    def append_lfp_partial_filtered(point_start, times, values) -> None:
+        """Add one completed filtered overview chunk to the visible line."""
+        nonlocal partial_chunks
+        if not show_filtered:
+            return
+        start = int(point_start)
+        partial_chunks[start] = (
+            start + np.asarray(values).size,
+            np.asarray(times, dtype=float) / 1_000_000.0,
+            np.asarray(values, dtype=float),
+        )
+        ordered = [(key, *partial_chunks[key]) for key in sorted(partial_chunks)]
+        if ordered:
+            display_times = []
+            display_values = []
+            previous_end = None
+            for start, end, chunk_times, chunk_values in ordered:
+                if previous_end is not None and start > previous_end:
+                    display_times.append(np.asarray([np.nan]))
+                    display_values.append(np.asarray([np.nan]))
+                display_times.append(chunk_times)
+                display_values.append(chunk_values)
+                previous_end = end
+            line.set_data(
+                np.concatenate(display_times),
+                np.concatenate(display_values),
+            )
+            ax.relim()
+            ax.autoscale_view(scalex=False, scaley=True)
+        fig.canvas.draw_idle()
+
     def set_lfp_peak_samples(
         channel: int,
         filtered: bool,
@@ -243,6 +292,9 @@ def LFP(
 
     fig.set_lfp_channel = set_lfp_channel
     fig.set_lfp_signal_view = set_lfp_signal_view
+    fig.set_lfp_filter_settings = set_lfp_filter_settings
+    fig.begin_lfp_partial_filtered = begin_lfp_partial_filtered
+    fig.append_lfp_partial_filtered = append_lfp_partial_filtered
     fig.set_lfp_peak_samples = set_lfp_peak_samples
     fig.set_lfp_xlim = navigation.set_xlim
     fig.reset_lfp_x_zoom = navigation.reset_x_zoom

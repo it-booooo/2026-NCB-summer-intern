@@ -17,6 +17,7 @@ from src.markers import (
 from src.signal_data import (
     LfpAnalysisWorker,
     LfpDataset,
+    LfpDisplaySegmentWorker,
     LfpExportDataWorker,
     LfpFilterSettings,
     PeakDetectionWorker,
@@ -210,6 +211,36 @@ class PureSignalWorkerTests(unittest.TestCase):
         self.assertFalse(
             any(key in result for key in ("figure", "widget", "canvas"))
         )
+
+    def test_display_segment_worker_returns_only_requested_downsampled_interval(self):
+        worker = LfpDisplaySegmentWorker(
+            "display-1",
+            self.dataset,
+            2,
+            0.5,
+            1.0,
+            5,
+            LfpFilterSettings(
+                show_filtered=True,
+                bandpass_enabled=True,
+                bandpass_low_hz=2.0,
+                bandpass_high_hz=30.0,
+            ),
+        )
+        completed = []
+        worker.completed.connect(
+            lambda _request_id, _identity, result: completed.append(result)
+        )
+
+        worker.run()
+
+        self.assertEqual(len(completed), 1)
+        result = completed[0]
+        self.assertGreater(len(result["values"]), 1)
+        self.assertLessEqual(len(result["values"]), 11)
+        self.assertEqual(result["time_us"].shape, result["values"].shape)
+        self.assertGreaterEqual(result["time_us"][0], 500_000)
+        self.assertLessEqual(result["time_us"][-1], 1_000_000)
 
     def test_spectrogram_worker_returns_static_image_and_metadata(self):
         worker = LfpAnalysisWorker(

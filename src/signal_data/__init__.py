@@ -10,6 +10,7 @@ from .csv_loader import (
 from .background_workers import (
     LfpAnalysisWorker,
     LfpCoarseWorker,
+    LfpDisplaySegmentWorker,
     LfpExportDataWorker,
     LfpPeakDisplayWorker,
     PeakDetectionWorker,
@@ -55,6 +56,7 @@ __all__ = [
     "LfpAnalysisService",
     "LfpAnalysisWorker",
     "LfpCoarseWorker",
+    "LfpDisplaySegmentWorker",
     "LfpExportDataWorker",
     "LfpPeakDisplayWorker",
     "LfpDataset",
