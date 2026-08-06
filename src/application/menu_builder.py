@@ -57,11 +57,6 @@ class MenuBuilder:
         )
         self._add_action(
             settings_menu,
-            "Set Power Line Frequency",
-            self.settings_controller.set_power_line_frequency,
-        )
-        self._add_action(
-            settings_menu,
             "Set LFP peak thresholds",
             self.settings_controller.set_lfp_peak_thresholds,
         )

@@ -47,6 +47,7 @@ def render_lfp_analysis(
                 channel,
                 frequencies,
                 power,
+                frequency_range_hz=frequency_range_hz,
                 notch_display_options=notch_display_options,
             )
             del frequencies, power
@@ -240,6 +241,7 @@ def _power_spectrum_figure(
     channel,
     frequencies,
     power,
+    frequency_range_hz=None,
     notch_display_options=None,
 ):
     figure = Figure(figsize=(7.6, 4.4), constrained_layout=True)
@@ -264,6 +266,9 @@ def _power_spectrum_figure(
     ax.set_title(title)
     ax.set_xlabel("Frequency (Hz)")
     ax.set_ylabel("PSD (dB/Hz)")
+    if frequency_range_hz is not None:
+        low_hz, high_hz = map(float, frequency_range_hz)
+        ax.set_xlim(low_hz, high_hz)
     ax.grid(True, linewidth=0.4, alpha=0.35)
     return figure
 

@@ -15,8 +15,8 @@ from lfp_analysis_process import (
     _power_spectrum_figure,
 )
 from src.signal_data.background_workers import (
+    _frequency_plot_range,
     _notch_spectrum_display_options,
-    _spectrogram_frequency_range,
 )
 from src.signal_data.lfp_processing import (
     LfpFilterSettings,
@@ -108,6 +108,25 @@ class LfpProcessingEquivalenceTests(unittest.TestCase):
         self.assertIn("display-interpolated", figure.axes[0].get_title())
         figure.clear()
 
+    def test_filtered_power_spectrum_uses_active_bandpass_range(self):
+        settings = LfpFilterSettings(
+            show_filtered=True,
+            bandpass_enabled=True,
+            bandpass_low_hz=5.0,
+            bandpass_high_hz=40.0,
+        )
+        frequency_range = _frequency_plot_range(settings)
+        figure = _power_spectrum_figure(
+            2,
+            np.array([0.0, 25.0, 50.0]),
+            np.ones(3),
+            frequency_range_hz=frequency_range,
+        )
+
+        self.assertEqual(frequency_range, (5.0, 40.0))
+        self.assertEqual(figure.axes[0].get_xlim(), (5.0, 40.0))
+        figure.clear()
+
     def test_notch_display_options_apply_only_to_filtered_notch_psd(self):
         notch = LfpFilterSettings(
             show_filtered=True,
@@ -171,7 +190,7 @@ class LfpProcessingEquivalenceTests(unittest.TestCase):
             bandpass_low_hz=5.0,
             bandpass_high_hz=40.0,
         )
-        frequency_range = _spectrogram_frequency_range(settings)
+        frequency_range = _frequency_plot_range(settings)
         figure = _spectrogram_figure(
             2,
             0.0,
@@ -194,7 +213,7 @@ class LfpProcessingEquivalenceTests(unittest.TestCase):
             bandpass_high_hz=40.0,
         )
 
-        self.assertIsNone(_spectrogram_frequency_range(settings))
+        self.assertIsNone(_frequency_plot_range(settings))
 
 
 if __name__ == "__main__":

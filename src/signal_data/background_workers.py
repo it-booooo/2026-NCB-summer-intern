@@ -386,7 +386,7 @@ class LfpAnalysisWorker(SignalWorker):
             record_time_origin_sec=self.record_time_origin_sec,
             cancel_event=self.cancel_event,
             dpi=ANALYSIS_DISPLAY_DPI,
-            frequency_range_hz=_spectrogram_frequency_range(self.settings),
+            frequency_range_hz=_frequency_plot_range(self.settings),
             notch_display_options=_notch_spectrum_display_options(self.settings),
         )
 
@@ -498,7 +498,7 @@ class LfpExportDataWorker(SignalWorker):
                     cancel_event=self.cancel_event,
                     dpi=self.image_dpi,
                     annotation=self.annotation,
-                    frequency_range_hz=_spectrogram_frequency_range(
+                    frequency_range_hz=_frequency_plot_range(
                         self.settings
                     ),
                     notch_display_options=_notch_spectrum_display_options(
@@ -514,8 +514,8 @@ class LfpExportDataWorker(SignalWorker):
             return result
 
 
-def _spectrogram_frequency_range(settings):
-    """Return the active bandpass bounds used by a filtered spectrogram."""
+def _frequency_plot_range(settings):
+    """Return the active bandpass bounds used by filtered frequency plots."""
     if (
         settings is None
         or not settings.show_filtered

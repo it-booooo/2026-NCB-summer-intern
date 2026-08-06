@@ -90,21 +90,6 @@ class AnalysisSettingsController:
             "Signal caches were cleared and will be rebuilt when needed.",
         )
 
-    def set_power_line_frequency(self):
-        items = ["60 Hz", "50 Hz"]
-        values = [60.0, 50.0]
-        current_index = 1 if self.data_state.line_noise_hz == 50.0 else 0
-        text, accepted = QInputDialog.getItem(
-            self.parent,
-            "Set Power Line Frequency",
-            "Power Line Frequency:",
-            items,
-            current_index,
-            False,
-        )
-        if accepted:
-            self.wave_panel.set_line_noise_hz(values[items.index(text)])
-
     def set_lfp_peak_thresholds(self):
         dialog = QDialog(self.parent)
         dialog.setWindowTitle("Set LFP peak thresholds")

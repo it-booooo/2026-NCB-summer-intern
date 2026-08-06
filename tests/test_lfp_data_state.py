@@ -6,6 +6,15 @@ from src.signal_data import LfpAnalysisService
 
 
 class LfpDataStateTests(unittest.TestCase):
+    def test_line_noise_defaults_to_60_hz(self):
+        state = DataState()
+
+        self.assertEqual(state.line_noise_hz, 60.0)
+        self.assertEqual(
+            state.lfp_filter_settings["line_noise_frequencies_hz"],
+            [60.0],
+        )
+
     def test_lfp_info_is_derived_from_dataset(self):
         info = {"path": "current.csv", "channels": [2, 5]}
         dataset = Mock(info=info, channels=[2, 5])

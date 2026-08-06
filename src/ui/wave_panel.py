@@ -414,14 +414,6 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         spinbox.setMaximumWidth(95)
         return spinbox
 
-    def format_line_noise_label(self):
-        """Format line noise label.
-
-        Args:
-            None.
-        """
-        return f"{self.data_state.line_noise_hz:g} Hz" if self.data_state.line_noise_hz else "not set"
-
     @staticmethod
     def format_line_noise_frequencies(frequencies):
         return ", ".join(
@@ -1285,34 +1277,6 @@ class WavePanel(LfpAnalysisMixin, QWidget):
             for worker in workers:
                 worker.wait(10_000)
         return not any(worker.isRunning() for worker in workers)
-
-    def set_line_noise_hz(self, line_noise_hz):
-        """Set line noise hz."""
-        next_value = 60.0 if line_noise_hz is None else float(line_noise_hz)
-        if self.data_state.line_noise_hz == next_value:
-            return
-
-        self.data_state.line_noise_hz = next_value
-        self.line_frequencies_edit.setText(f"{next_value:g}")
-        if self._applied_lfp_filter_settings.line_noise_method != "none":
-            current = self._applied_lfp_filter_settings
-            self._applied_lfp_filter_settings = signal_func.LfpFilterSettings(
-                show_filtered=current.show_filtered,
-                bandpass_enabled=current.bandpass_enabled,
-                bandpass_low_hz=current.bandpass_low_hz,
-                bandpass_high_hz=current.bandpass_high_hz,
-                line_noise_hz=next_value,
-                notch_quality=current.notch_quality,
-                line_noise_method=current.line_noise_method,
-                regression_window_seconds=current.regression_window_seconds,
-                regression_overlap=current.regression_overlap,
-                regression_harmonics=current.regression_harmonics,
-                regression_all_harmonics=current.regression_all_harmonics,
-                line_noise_frequencies_hz=(next_value,),
-            )
-            self.store_lfp_filter_settings(self._applied_lfp_filter_settings)
-            self.refresh_lfp_processing()
-        self.mark_lfp_filter_settings_pending()
 
     def refresh_lfp_processing(self, *_args):
         """Refresh lfp processing."""
