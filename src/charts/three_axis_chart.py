@@ -7,24 +7,24 @@ from ..signal_data import SignalDataset
 from .chart_helpers import format_signal_label, install_x_navigation, resolve_plot_step
 
 
-class AcceleratorFigure(Figure):
-    set_axis_xlim: Callable[[float, float], None]
-    reset_axis_x_zoom: Callable[[], None]
-    add_axis_xlim_callback: Callable[[Callable[[tuple[float, float]], None]], None]
-    axis_full_xlim: tuple[float, float]
-    axis_plot_step: int
+class ThreeAxisFigure(Figure):
+    set_three_axis_xlim: Callable[[float, float], None]
+    reset_three_axis_x_zoom: Callable[[], None]
+    add_three_axis_xlim_callback: Callable[[Callable[[tuple[float, float]], None]], None]
+    three_axis_full_xlim: tuple[float, float]
+    three_axis_plot_step: int
 
 
-def accelerator(
+def create_three_axis_figure(
     info: dict | None = None,
     dataset: SignalDataset | None = None,
     compact: bool = False,
     step: int | None = None,
-) -> AcceleratorFigure:
-    """Read accelerator data and draw waveform.
+) -> ThreeAxisFigure:
+    """Read three-axis sensor data and draw its waveform.
 
     Args:
-        info: CSV metadata returned by data_io.parse_lfp_csv_info().
+        info: CSV metadata returned by parse_signal_csv_info().
             Required keys:
             - path: CSV file path selected from the GUI import action.
             - sample_rates: Sample rate values used when exporting check results.
@@ -54,7 +54,7 @@ def accelerator(
 
     overview = dataset.overview(260)
 
-    fig = AcceleratorFigure(
+    fig = ThreeAxisFigure(
         figsize=(8, 2.2) if compact else (16, 4),
         constrained_layout=False,
     )
@@ -108,11 +108,11 @@ def accelerator(
 
     navigation = install_x_navigation(fig, ax, full_xlim)
 
-    fig.set_axis_xlim = navigation.set_xlim
-    fig.reset_axis_x_zoom = navigation.reset_x_zoom
-    fig.add_axis_xlim_callback = navigation.add_xlim_callback
-    fig.axis_full_xlim = full_xlim
-    fig.axis_plot_step = plot_step
+    fig.set_three_axis_xlim = navigation.set_xlim
+    fig.reset_three_axis_x_zoom = navigation.reset_x_zoom
+    fig.add_three_axis_xlim_callback = navigation.add_xlim_callback
+    fig.three_axis_full_xlim = full_xlim
+    fig.three_axis_plot_step = plot_step
 
     if not compact:
         ax.set_title("3-axis Vector Magnitude - Channel 260")

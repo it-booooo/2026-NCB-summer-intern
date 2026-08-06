@@ -165,7 +165,6 @@ class LedController(QObject):
         self.led_worker = LedDetectionWorker(
             video_path=self.video_state.metadata.path,
             roi=self.led_state.roi,
-            rotate_180=self.video_state.rotate_180_enabled,
             rotation_degrees=self.video_state.rotation_degrees,
             fps=self.video_state.metadata.using_fps,
             scan_start_frame=scan_start_frame,

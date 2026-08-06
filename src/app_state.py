@@ -40,7 +40,6 @@ class VideoState:
     current_frame: int = 0
     is_playing: bool = False
     rotation_degrees: int = 0
-    rotate_180_enabled: bool = False
 
 
 @dataclass
@@ -48,9 +47,9 @@ class DataState:
     """Imported LFP/3-axis data and cross-component plotting settings."""
 
     lfp_dataset: LfpDataset | None = None
-    axis_dataset: SignalDataset | None = None
+    three_axis_dataset: SignalDataset | None = None
     lfp_step: int | None = None
-    axis_step: int | None = None
+    three_axis_step: int | None = None
     line_noise_hz: float = 60.0
     timeline_xlim: tuple[float, float] | None = None
     selected_lfp_channel: int | None = None
@@ -78,30 +77,11 @@ class DataState:
         dataset = self.lfp_dataset
         return None if dataset is None else dataset.info
 
-    def load_lfp_info(self, info: dict[str, Any]) -> LfpDataset:
-        """Prepare and atomically install a dataset from legacy metadata."""
-        from .signal_data import LfpDataset
-
-        dataset = LfpDataset.from_csv(info)
-        if self.lfp_dataset is not None and self.lfp_dataset is not dataset:
-            self.lfp_dataset.close(wait=True)
-        self.lfp_dataset = dataset
-        return dataset
-
     @property
-    def axis_info(self) -> dict[str, Any] | None:
-        """Compatibility view of metadata owned by the active axis dataset."""
-        dataset = self.axis_dataset
+    def three_axis_info(self) -> dict[str, Any] | None:
+        """Return metadata owned by the active three-axis dataset."""
+        dataset = self.three_axis_dataset
         return None if dataset is None else dataset.info
-
-    def load_axis_info(self, info: dict[str, Any]) -> SignalDataset:
-        """Prepare and atomically install an axis dataset from legacy metadata."""
-        from .signal_data import SignalDataset
-
-        dataset = SignalDataset.from_csv(info)
-        self.axis_dataset = dataset
-        return dataset
-
 
 @dataclass
 class SyncState:

@@ -18,7 +18,6 @@ class LedDetectionWorker(QThread):
         self,
         video_path,
         roi,
-        rotate_180,
         rotation_degrees,
         fps,
         scan_start_frame,
@@ -30,7 +29,6 @@ class LedDetectionWorker(QThread):
         super().__init__(parent)
         self.video_path = video_path
         self.roi = roi
-        self.rotate_180 = rotate_180
         self.rotation_degrees = rotation_degrees
         self.fps = fps
         self.scan_start_frame = scan_start_frame
@@ -50,12 +48,11 @@ class LedDetectionWorker(QThread):
             coarse_step = coarse_scan_step_for_fps(self.fps)
             refine_window_sec = 1.0
             max_events = max(int(self.max_events or 0), 0)
-            scan_acceleration_info = {}
+            scan_backend_info = {}
             if self.cached_points is None:
                 points = compute_led_brightness_curve(
                     self.video_path,
                     roi=self.roi,
-                    rotate_180=self.rotate_180,
                     rotation_degrees=self.rotation_degrees,
                     using_fps=self.fps,
                     frame_step=coarse_step,
@@ -63,11 +60,11 @@ class LedDetectionWorker(QThread):
                     end_frame=self.scan_end_frame,
                     should_stop=self.isInterruptionRequested,
                     progress_callback=self.progress_changed.emit,
-                    acceleration_info=scan_acceleration_info,
+                    backend_info=scan_backend_info,
                 )
             else:
                 points = self.cached_points
-                scan_acceleration_info["brightness_backend"] = "cache"
+                scan_backend_info["brightness_backend"] = "cache"
                 scan_total_frames = max(
                     self.scan_end_frame - self.scan_start_frame + 1,
                     1,
@@ -87,7 +84,7 @@ class LedDetectionWorker(QThread):
             )
 
             events = coarse_events
-            refine_acceleration_info = {}
+            refine_backend_info = {}
             if coarse_events and not self.isInterruptionRequested():
                 self.stage_changed.emit("Refining LED events...")
                 refined_events, refined_threshold, _ = (
@@ -95,7 +92,6 @@ class LedDetectionWorker(QThread):
                         self.video_path,
                         roi=self.roi,
                         coarse_events=coarse_events,
-                        rotate_180=self.rotate_180,
                         rotation_degrees=self.rotation_degrees,
                         using_fps=self.fps,
                         window_sec=refine_window_sec,
@@ -103,7 +99,7 @@ class LedDetectionWorker(QThread):
                         scan_end_frame=self.scan_end_frame,
                         should_stop=self.isInterruptionRequested,
                         max_events=max_events,
-                        acceleration_info=refine_acceleration_info,
+                        backend_info=refine_backend_info,
                     )
                 )
                 events = refined_events
@@ -120,9 +116,9 @@ class LedDetectionWorker(QThread):
             stats["refine_window_sec"] = refine_window_sec
             stats["scan_elapsed_sec"] = scan_elapsed_sec
             stats["detect_elapsed_sec"] = detect_elapsed_sec
-            stats.update(scan_acceleration_info)
+            stats.update(scan_backend_info)
             if coarse_events:
-                stats["refine_brightness_backend"] = refine_acceleration_info.get(
+                stats["refine_brightness_backend"] = refine_backend_info.get(
                     "brightness_backend",
                     "cpu",
                 )

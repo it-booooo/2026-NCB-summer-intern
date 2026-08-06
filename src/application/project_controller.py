@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QMessageBox
 class ProjectController:
     """Own project dirty state, title, and unsaved-change prompts."""
 
-    APPLICATION_TITLE = "Pig Behavior Video-LFP Synchronization Tool"
+    APPLICATION_TITLE = "Pig Behavior Sync"
 
     def __init__(self, parent, project_state):
         self.parent = parent

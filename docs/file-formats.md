@@ -130,13 +130,10 @@ record_time_sec = video_time_sec - time_offset_sec
 | `current_frame` | `int = 0` | 當前影格，從 0 開始 | 是 |
 | `is_playing` | `bool = False` | 播放器是否正在播放 | 否 |
 | `rotation_degrees` | `int = 0` | 顯示／分析旋轉角度，只允許 0/90/180/270 | 是 |
-| `rotate_180_enabled` | `bool = False` | 舊版相容旗標，等價於旋轉 180 度 | 是，相容用途 |
 
 規則：
 
 - `rotation_degrees` 是目前主要欄位。
-- `rotate_180_enabled` 必須與 `rotation_degrees == 180` 一致。
-- 新程式不要只更新其中一個欄位。
 - 新影片載入時會重設目前影格、播放狀態、旋轉與部分同步／LED state。
 
 ### 3.3 `DataState`
@@ -147,18 +144,18 @@ record_time_sec = video_time_sec - time_offset_sec
 | --- | --- | --- | --- |
 | `lfp_info` | `dict \| None` | LFP 檔案路徑及解析後 metadata | 來源路徑存於 manifest，其餘重建 |
 | `lfp_dataset` | `LfpDataset \| None` | 完整 LFP DataFrame 與訊號 cache | 否 |
-| `axis_info` | `dict \| None` | 三軸檔案路徑及解析後 metadata | 來源路徑存於 manifest，其餘重建 |
+| `three_axis_info` | `dict \| None` | 三軸檔案路徑及解析後 metadata | 來源路徑存於 manifest，其餘重建 |
 | `lfp_step` | `int \| None` | LFP 顯示抽樣／繪圖步長 | 是 |
-| `axis_step` | `int \| None` | 三軸顯示抽樣／繪圖步長 | 是 |
+| `three_axis_step` | `int \| None` | 三軸顯示抽樣／繪圖步長 | 是 |
 | `line_noise_hz` | `float = 60.0` | UI 共用的電源線頻率 | 是 |
 | `timeline_xlim` | `tuple[float, float] \| None` | 共用時間軸左右範圍，秒 | 是 |
 | `selected_lfp_channel` | `int \| None` | 目前選取的實際通道 ID | 是 |
 | `lfp_filter_settings` | `dict` | LFP 顯示／分析濾波設定 | 是 |
 | `follow_video_playback` | `bool = True` | 波形是否跟隨影片播放位置 | 是 |
 
-### `lfp_info`／`axis_info`
+### `lfp_info`／`three_axis_info`
 
-由 `parse_lfp_csv_info()` 產生，標準形狀為：
+由 `parse_signal_csv_info()` 產生，標準形狀為：
 
 ```python
 {
@@ -464,10 +461,9 @@ Marker(
 | `LFP_DETECTION` | `lfp_detection` |
 | `PROJECT_IMPORT` | `project_import` |
 
-相容 alias：
+Source 文字值：
 
 - `lfp_detection` → `LFP_DETECTION`
-- `timeline` → `TTL_IMPORT`
 
 ### Position
 
@@ -547,7 +543,7 @@ Marker 必須先保存它原生所在的 domain：
 
 ```text
 CSV
- → parse_lfp_csv_info()
+ → parse_signal_csv_info()
  → DataState.lfp_info
  → LfpDataset.from_csv()
  → DataState.lfp_dataset
@@ -635,7 +631,7 @@ PROJECT_VERSION = 3
 
 - `video`
 - `lfp`
-- `axis`
+- `three_axis`
 - `ttl`
 
 來源檔不內嵌於專案。fingerprint 使用檔案大小與開頭／中間／結尾的抽樣 SHA-256，屬快速 identity，不是完整檔案 hash。
@@ -649,11 +645,10 @@ PROJECT_VERSION = 3
     "video": {
         "current_frame": int,
         "rotation_degrees": int,
-        "rotate_180_enabled": bool,
     },
     "data": {
         "lfp_step": int | None,
-        "axis_step": int | None,
+        "three_axis_step": int | None,
         "line_noise_hz": float,
         "timeline_xlim": [float, float] | None,
         "selected_lfp_channel": int | None,
@@ -740,7 +735,6 @@ Record domain：
 {
     "roi": list[int] | None,
     "rotation_degrees": int,
-    "rotate_180": bool,  # 相容欄位
     "fps": float,
     "start_frame": int,
     "end_frame": int,
@@ -815,7 +809,7 @@ UI 正式接受 `.mp4`，以 OpenCV `VideoCapture` 解析。內部邏輯應使�
 
 這些是輸出邊界，不是 canonical state：
 
-- 事件 CSV/XLSX：`event_type`, `video_time_sec`, `frame_index`, `note`；
+- Marker CSV/XLSX：`marker_type`, `video_time_sec`, `frame_index`, `note`；
 - TTL CSV/XLSX：`marker_index`, `local_time(us)`, `local_time`, `record_time(us)`, `record_time`；
 - 檢查報告 CSV：`Type`, `File`, `Value`；
 - 圖表：PNG、JPG/JPEG、PDF、SVG。

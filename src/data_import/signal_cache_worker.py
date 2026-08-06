@@ -97,7 +97,7 @@ class ProjectSignalCacheWorker(QThread):
             dataset
             for dataset in (
                 self.staged.get("lfp_dataset"),
-                self.staged.get("axis_dataset"),
+                self.staged.get("three_axis_dataset"),
             )
             if dataset is not None
         ]

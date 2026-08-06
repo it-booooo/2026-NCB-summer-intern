@@ -53,16 +53,16 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self.setMinimumHeight(270)
 
         self.lfp_canvas = None
-        self.axis_canvas = None
+        self.three_axis_canvas = None
         self.timeline_canvas = None
         self.timeline_fig = None
         self.timeline_slider = None
         self.timeline_full_xlim = None
         self.lfp_fig = None
-        self.axis_fig = None
+        self.three_axis_fig = None
         self.updating_timeline = False
         self.lfp_callback_connected = False
-        self.axis_callback_connected = False
+        self.three_axis_callback_connected = False
         self.current_time_lines = {}
         self.current_time_backgrounds = {}
         self.event_interval_artists = []
@@ -78,7 +78,7 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self._lfp_peak_display_key = None
 
         self.lfp_file_label = QLabel("LFP CSV: Not imported")
-        self.axis_file_label = QLabel("3-axis CSV: Not imported")
+        self.three_axis_file_label = QLabel("3-axis CSV: Not imported")
 
         self.lfp_channel_selector = PlaybackAwareComboBox()
         self.lfp_channel_selector.addItem("No LFP channel")
@@ -179,7 +179,7 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self.spectrogram_button = QPushButton("Spectrogram")
         self.spectrogram_button.setEnabled(False)
         self.spectrogram_button.setToolTip(
-            "Calculate the time-frequency map of the selected LFP time range."
+            "Calculate the spectrogram of the selected LFP time range."
         )
         self.spectrogram_button.clicked.connect(
             lambda _checked=False: self.show_lfp_analysis("spectrogram")
@@ -204,16 +204,16 @@ class WavePanel(LfpAnalysisMixin, QWidget):
             "Import LFP CSV to show waveform"
         )
         self.lfp_waveform_area.setFixedHeight(100)
-        self.axis_waveform_area = self.create_waveform_area(
+        self.three_axis_waveform_area = self.create_waveform_area(
             "Import 3-axis CSV to show waveform"
         )
-        self.axis_waveform_area.setFixedHeight(80)
+        self.three_axis_waveform_area.setFixedHeight(80)
 
         waveform_grid.addWidget(QLabel("LFP"), 0, 0)
         waveform_grid.addWidget(self.lfp_waveform_area, 0, 1)
 
         waveform_grid.addWidget(QLabel("3-axis"), 1, 0)
-        waveform_grid.addWidget(self.axis_waveform_area, 1, 1)
+        waveform_grid.addWidget(self.three_axis_waveform_area, 1, 1)
 
         self.timeline_area = self.create_waveform_area("Shared time range")
         self.timeline_area.setFixedHeight(44)
@@ -503,8 +503,8 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         if self.lfp_fig is not None:
             limits.append(self.lfp_fig.lfp_full_xlim)
 
-        if self.axis_fig is not None:
-            limits.append(self.axis_fig.axis_full_xlim)
+        if self.three_axis_fig is not None:
+            limits.append(self.three_axis_fig.three_axis_full_xlim)
 
         if not limits:
             return None
@@ -523,8 +523,8 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         if self.lfp_fig is not None and source != "lfp":
             self.lfp_fig.set_lfp_xlim(left, right, emit=False)
 
-        if self.axis_fig is not None and source != "axis":
-            self.axis_fig.set_axis_xlim(left, right, emit=False)
+        if self.three_axis_fig is not None and source != "three_axis":
+            self.three_axis_fig.set_three_axis_xlim(left, right, emit=False)
 
         if self.timeline_slider is not None and source != "timeline":
             self.timeline_slider.set_val((left, right), emit=False)
@@ -703,7 +703,7 @@ class WavePanel(LfpAnalysisMixin, QWidget):
     def figure_items(self):
         return [
             ("lfp", self.lfp_fig, self.lfp_canvas),
-            ("axis", self.axis_fig, self.axis_canvas),
+            ("three_axis", self.three_axis_fig, self.three_axis_canvas),
             ("timeline", self.timeline_fig, self.timeline_canvas),
         ]
 
@@ -865,7 +865,11 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self.current_time_lines = {}
         self.invalidate_current_time_backgrounds()
 
-        for canvas in [self.lfp_canvas, self.axis_canvas, self.timeline_canvas]:
+        for canvas in [
+            self.lfp_canvas,
+            self.three_axis_canvas,
+            self.timeline_canvas,
+        ]:
             if canvas is not None:
                 canvas.draw_idle()
 
@@ -1400,42 +1404,41 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self.update_lfp_peak_artist()
         self.update_current_time_marker()
 
-    def plot_axis(self):
-        """Plot axis.
+    def plot_three_axis(self):
+        """Plot the three-axis signal.
 
         Args:
             None.
         """
-        dataset = self.data_state.axis_dataset
+        dataset = self.data_state.three_axis_dataset
         if dataset is None:
             return
 
         try:
-            self.axis_fig = draw.accelerator(
+            self.three_axis_fig = draw.create_three_axis_figure(
                 dataset=dataset,
                 compact=True,
-                step=self.data_state.axis_step,
+                step=self.data_state.three_axis_step,
             )
         except Exception as error:
             QMessageBox.warning(self, "3-axis plot failed", str(error))
             return
 
-        self.set_figure(self.axis_waveform_area, "axis_canvas", self.axis_fig)
+        self.set_figure(
+            self.three_axis_waveform_area,
+            "three_axis_canvas",
+            self.three_axis_fig,
+        )
 
-        if not self.axis_callback_connected:
-            self.axis_fig.add_axis_xlim_callback(
-                lambda value: self.on_plot_xlim_changed(value, "axis")
+        if not self.three_axis_callback_connected:
+            self.three_axis_fig.add_three_axis_xlim_callback(
+                lambda value: self.on_plot_xlim_changed(value, "three_axis")
             )
-            self.axis_callback_connected = True
+            self.three_axis_callback_connected = True
 
         self.create_or_update_timeline()
         self.update_event_interval_artists()
         self.update_current_time_marker()
-
-    def set_lfp_info(self, info):
-        """Compatibility entry point that prepares and installs an LFP dataset."""
-        dataset = self.data_state.load_lfp_info(info)
-        self.set_lfp_dataset(dataset)
 
     def set_lfp_dataset(self, dataset):
         """Atomically install a prepared LFP dataset and refresh its controls."""
@@ -1646,22 +1649,19 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         peak_display_stopped = self._cancel_lfp_peak_display_workers(wait=wait)
         return analysis_stopped and coarse_stopped and peak_display_stopped
 
-    def set_axis_info(self, info):
-        """Compatibility entry point that prepares and installs an axis dataset."""
-        dataset = self.data_state.load_axis_info(info)
-        self.set_axis_dataset(dataset)
-
-    def set_axis_dataset(self, dataset):
-        """Atomically install a prepared axis dataset and refresh its plot."""
-        self.data_state.axis_dataset = dataset
-        self.axis_fig = None
-        self.axis_callback_connected = False
+    def set_three_axis_dataset(self, dataset):
+        """Atomically install a prepared three-axis dataset and refresh its plot."""
+        self.data_state.three_axis_dataset = dataset
+        self.three_axis_fig = None
+        self.three_axis_callback_connected = False
         if dataset is None:
-            self.axis_file_label.setText("3-axis CSV: not loaded")
+            self.three_axis_file_label.setText("3-axis CSV: not loaded")
             return
         info = dataset.info
-        self.axis_file_label.setText(f"3-axis CSV: {info['filename']} (channel 260)")
-        self.plot_axis()
+        self.three_axis_file_label.setText(
+            f"3-axis CSV: {info['filename']} (channel 260)"
+        )
+        self.plot_three_axis()
 
     def set_plot_step(self, plot_name, step):
         """Set plot step."""
@@ -1673,12 +1673,12 @@ class WavePanel(LfpAnalysisMixin, QWidget):
                 "lfp_callback_connected",
                 self.plot_lfp,
             ),
-            "axis": (
-                "axis_step",
-                "axis_info",
-                "axis_fig",
-                "axis_callback_connected",
-                self.plot_axis,
+            "three_axis": (
+                "three_axis_step",
+                "three_axis_info",
+                "three_axis_fig",
+                "three_axis_callback_connected",
+                self.plot_three_axis,
             ),
         }[plot_name]
         step = None if step is None else max(int(step), 0)

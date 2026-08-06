@@ -53,12 +53,12 @@ class MenuBuilder:
         self._add_action(
             settings_menu,
             "Set 3-axis step",
-            lambda: self.settings_controller.set_plot_step("axis"),
+            lambda: self.settings_controller.set_plot_step("three_axis"),
         )
         self._add_action(
             settings_menu,
-            "Set power noise frequency",
-            self.settings_controller.set_power_noise_frequency,
+            "Set Power Line Frequency",
+            self.settings_controller.set_power_line_frequency,
         )
         self._add_action(
             settings_menu,

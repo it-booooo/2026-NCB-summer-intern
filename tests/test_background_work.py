@@ -20,7 +20,7 @@ from src.signal_data import (
     LfpExportDataWorker,
     LfpFilterSettings,
     PeakDetectionWorker,
-    parse_lfp_csv_info,
+    parse_signal_csv_info,
 )
 from src.signal_data.source import _SOURCES, CacheBuildCancelled
 
@@ -43,7 +43,7 @@ class ChunkedDataCheckTests(unittest.TestCase):
                 peak_indices=(),
             ),
         )
-        self.info = parse_lfp_csv_info(self.path)
+        self.info = parse_signal_csv_info(self.path)
 
     def tearDown(self):
         self.directory.cleanup()
@@ -125,7 +125,7 @@ class ChunkedDataCheckTests(unittest.TestCase):
         output = self.root / "many-missing-report.csv"
         tracemalloc.start()
         check(
-            parse_lfp_csv_info(path),
+            parse_signal_csv_info(path),
             output,
             chunk_rows=17,
         )
@@ -161,7 +161,7 @@ class PureSignalWorkerTests(unittest.TestCase):
                 peak_amplitude=20.0,
             ),
         )
-        info = parse_lfp_csv_info(path)
+        info = parse_signal_csv_info(path)
         info["_signal_cache_root"] = str(root / "cache")
         self.dataset = LfpDataset.from_csv(info)
 

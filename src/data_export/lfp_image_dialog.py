@@ -67,7 +67,7 @@ class LfpImageExportDialog(QDialog):
 
         self.signal_selector = QComboBox()
         self.signal_selector.addItem("Raw", False)
-        self.signal_selector.addItem("Processed", True)
+        self.signal_selector.addItem("Filtered", True)
         self.signal_selector.setCurrentIndex(
             1 if bool(panel.signal_view_selector.currentData()) else 0
         )

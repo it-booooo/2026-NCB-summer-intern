@@ -7,7 +7,7 @@ from lfp_analysis_process import (
     _compute_power_spectrum as process_power_spectrum,
 )
 from lfp_analysis_process import (
-    _compute_time_frequency as process_time_frequency,
+    _compute_spectrogram as process_spectrogram,
 )
 from lfp_analysis_process import _spectrogram_figure
 from lfp_analysis_process import (
@@ -21,7 +21,7 @@ from src.signal_data.background_workers import (
 from src.signal_data.lfp_processing import (
     LfpFilterSettings,
     compute_power_spectrum,
-    compute_time_frequency,
+    compute_spectrogram,
 )
 
 
@@ -149,11 +149,11 @@ class LfpProcessingEquivalenceTests(unittest.TestCase):
             mode="psd",
         )
 
-        actual = compute_time_frequency(self.values, 1000.0)
+        actual = compute_spectrogram(self.values, 1000.0)
 
         for actual_array, expected_array in zip(actual, expected):
             np.testing.assert_array_equal(actual_array, expected_array)
-        process_result = process_time_frequency(self.values, 1000.0)
+        process_result = process_spectrogram(self.values, 1000.0)
         for process_array, expected_array in zip(
             process_result,
             expected,

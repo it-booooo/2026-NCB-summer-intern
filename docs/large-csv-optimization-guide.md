@@ -23,9 +23,9 @@
 
 ```text
 ImportController.import_signal()
-  -> parse_lfp_csv_info()
+  -> parse_signal_csv_info()
        -> parse_signal_csv_metadata()
-  -> WavePanel.set_lfp_info()
+  -> WavePanel.set_lfp_dataset()
   -> WavePanel.plot_lfp()
   -> WavePanel.ensure_lfp_dataset()
   -> LfpDataset.from_csv()
@@ -47,7 +47,7 @@ ImportController.import_signal()
 | `src/signal_data/lfp_dataset.py` | 保存完整 DataFrame 與 signal cache | 所有資料常駐；多份完整副本 |
 | `src/signal_data/lfp_processing.py` | 濾波及區段擷取 | 對完整陣列複製、遮罩及濾波 |
 | `src/charts/lfp_chart.py` | 建立 LFP 圖表 | 預先處理所有通道及兩種 signal |
-| `src/charts/acceleration_chart.py` | 讀取及繪製 3-axis | 重建圖表時重新讀完整 CSV |
+| `src/charts/three_axis_chart.py` | 讀取及繪製 3-axis | 重建圖表時重新讀完整 CSV |
 | `src/data_validation/input_checks.py` | 完整性檢查 | 再次完整讀取並產生大型 boolean array |
 | `src/ui/lfp_peak_panel.py` | 全時段 peak detection | 對完整時間軸與 signal 建立陣列 |
 
@@ -231,7 +231,7 @@ def parse_signal_csv_header(path) -> dict:
     ...
 ```
 
-`parse_lfp_csv_info()` 僅呼叫此函式一次。保留既有 `parse_signal_csv_metadata()` 與 `parse_signal_csv_units()` 時，可讓它們包裝新函式以維持相容性。
+`parse_signal_csv_info()` 僅呼叫此函式一次。保留既有 `parse_signal_csv_metadata()` 與 `parse_signal_csv_units()` 時，可讓它們包裝新函式。
 
 這項修改只減少兩次 header 開檔，不會解決主要的大型資料瓶頸，因此不要把它當作 20 小時支援已完成。
 
@@ -329,7 +329,7 @@ available_channels.index(channel) + 1
 
 ### 5.7 3-axis 共用資料存取策略
 
-`acceleration_chart.py` 不應在每次重建圖表時重新完整讀檔。至少先加入針對 path + channel 的 cache；最終應使用相同 `SignalDataSource`。
+`three_axis_chart.py` 不應在每次重建圖表時重新完整讀檔。至少先加入針對 path + channel 的 cache；最終應使用相同 `SignalDataSource`。
 
 ### Phase 2 驗收
 

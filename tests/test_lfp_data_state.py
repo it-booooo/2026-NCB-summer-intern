@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 from src.app_state import DataState
 from src.signal_data import LfpAnalysisService
@@ -23,41 +23,15 @@ class LfpDataStateTests(unittest.TestCase):
         self.assertIs(service.dataset(), dataset)
         self.assertEqual(service.available_channels(), [2, 5])
 
-    def test_failed_compatibility_import_keeps_current_dataset(self):
-        current = Mock(info={"path": "current.csv"})
-        state = DataState(lfp_dataset=current)
-
-        with patch(
-            "src.signal_data.LfpDataset.from_csv",
-            side_effect=ValueError("invalid LFP"),
-        ), self.assertRaisesRegex(ValueError, "invalid LFP"):
-            state.load_lfp_info({"path": "broken.csv"})
-
-        self.assertIs(state.lfp_dataset, current)
-
-
-class AxisDataStateTests(unittest.TestCase):
-    def test_axis_info_is_derived_from_dataset(self):
-        info = {"path": "axis.csv"}
+class ThreeAxisDataStateTests(unittest.TestCase):
+    def test_three_axis_info_is_derived_from_dataset(self):
+        info = {"path": "three_axis.csv"}
         dataset = Mock(info=info)
-        state = DataState(axis_dataset=dataset)
+        state = DataState(three_axis_dataset=dataset)
 
-        self.assertIs(state.axis_info, info)
+        self.assertIs(state.three_axis_info, info)
         with self.assertRaises(AttributeError):
-            state.axis_info = {"path": "other.csv"}
-
-    def test_failed_compatibility_import_keeps_current_dataset(self):
-        current = Mock(info={"path": "current.csv"})
-        state = DataState(axis_dataset=current)
-
-        with patch(
-            "src.signal_data.SignalDataset.from_csv",
-            side_effect=ValueError("invalid axis"),
-        ), self.assertRaisesRegex(ValueError, "invalid axis"):
-            state.load_axis_info({"path": "broken.csv"})
-
-        self.assertIs(state.axis_dataset, current)
-
+            state.three_axis_info = {"path": "other.csv"}
 
 if __name__ == "__main__":
     unittest.main()

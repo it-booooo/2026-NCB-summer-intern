@@ -424,11 +424,11 @@ def compute_power_spectrum(
     )
 
 
-def compute_time_frequency(
+def compute_spectrogram(
     values,
     sample_rate_hz: float,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Compute time frequency.
+    """Compute a spectrogram.
 
     Args:
         values: Signal values to process.
@@ -437,7 +437,7 @@ def compute_time_frequency(
     signal_values = _finite_signal(values)
 
     if signal_values.size < 8:
-        raise ValueError("Need at least 8 samples to calculate time-frequency map.")
+        raise ValueError("Need at least 8 samples to calculate a spectrogram.")
 
     nperseg = min(512, signal_values.size)
     noverlap = nperseg // 2

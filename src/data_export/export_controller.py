@@ -38,8 +38,8 @@ from ..project_format import (
     validate_project_json_sizes,
 )
 from .file_writers import (
-    export_events_csv,
-    export_events_excel,
+    export_markers_csv,
+    export_markers_excel,
     export_ttl_markers_csv,
     export_ttl_markers_excel,
 )
@@ -128,9 +128,9 @@ class ExportController:
                     if self.data_state.lfp_info
                     else None
                 ),
-                "axis": (
-                    self.data_state.axis_info.get("path")
-                    if self.data_state.axis_info
+                "three_axis": (
+                    self.data_state.three_axis_info.get("path")
+                    if self.data_state.three_axis_info
                     else None
                 ),
                 "ttl": (
@@ -168,7 +168,6 @@ class ExportController:
                     {
                         "roi": roi,
                         "rotation_degrees": rotation_degrees,
-                        "rotate_180": int(rotation_degrees) == 180,
                         "fps": fps,
                         "start_frame": start_frame,
                         "end_frame": end_frame,
@@ -181,11 +180,10 @@ class ExportController:
                 "video": {
                     "current_frame": self.video_state.current_frame,
                     "rotation_degrees": self.video_state.rotation_degrees,
-                    "rotate_180_enabled": self.video_state.rotate_180_enabled,
                 },
                 "data": {
                     "lfp_step": self.data_state.lfp_step,
-                    "axis_step": self.data_state.axis_step,
+                    "three_axis_step": self.data_state.three_axis_step,
                     "line_noise_hz": self.data_state.line_noise_hz,
                     "timeline_xlim": self.data_state.timeline_xlim,
                     "selected_lfp_channel": self.data_state.selected_lfp_channel,
@@ -315,7 +313,7 @@ class ExportController:
                 "Configure and batch-export the LFP waveform, power spectrum, and spectrogram.",
             ),
             (
-                "Export Peak analyze Image",
+                "Export LFP Peak Analysis Image",
                 self.export_peak_image,
                 "Export the LFP peak analysis plot as a PNG image.",
             ),
@@ -394,7 +392,9 @@ class ExportController:
                 self.marker_store.by_kind(MarkerKind.LFP_PEAK)
             )
             filename_stem = "lfp_peak_markers"
-            writer = export_events_csv if file_type == "csv" else export_events_excel
+            writer = (
+                export_markers_csv if file_type == "csv" else export_markers_excel
+            )
         else:
             markers = self.exportable_video_marker_rows(
                 marker
@@ -402,7 +402,9 @@ class ExportController:
                 if marker.kind not in {MarkerKind.TTL, MarkerKind.LFP_PEAK}
             )
             filename_stem = "video_markers"
-            writer = export_events_csv if file_type == "csv" else export_events_excel
+            writer = (
+                export_markers_csv if file_type == "csv" else export_markers_excel
+            )
 
         if not markers:
             QMessageBox.information(
@@ -439,7 +441,7 @@ class ExportController:
             )
             rows.append(
                 {
-                    "event_type": marker.kind.value,
+                    "marker_type": marker.kind.value,
                     "video_time_sec": video_time,
                     "frame_index": frame_index,
                     "note": marker.note,
@@ -484,8 +486,8 @@ class ExportController:
         if self.data_state.lfp_info is not None:
             exports.append(("LFP", self.data_state.lfp_info))
 
-        if self.data_state.axis_info is not None:
-            exports.append(("3-axis", self.data_state.axis_info))
+        if self.data_state.three_axis_info is not None:
+            exports.append(("3-axis", self.data_state.three_axis_info))
 
         if not exports:
             QMessageBox.information(
@@ -562,7 +564,7 @@ class ExportController:
             or not widget_is_valid(self.parent)
         ):
             return False
-        for info in (self.data_state.lfp_info, self.data_state.axis_info):
+        for info in (self.data_state.lfp_info, self.data_state.three_axis_info):
             if info is None:
                 continue
             try:
@@ -633,12 +635,14 @@ class ExportController:
             None.
         """
         window = self.parent
-        if self.data_state.axis_info is None:
+        if self.data_state.three_axis_info is None:
             QMessageBox.information(
                 window, "No 3-axis data", "Please import 3-axis CSV data first."
             )
             return
-        stem = self.data_state.axis_info.get("filename", "axis").rsplit(".", 1)[0]
+        stem = self.data_state.three_axis_info.get(
+            "filename", "three_axis"
+        ).rsplit(".", 1)[0]
         path, _ = QFileDialog.getSaveFileName(
             window,
             "Export 3-axis Waveform Image",
@@ -648,10 +652,10 @@ class ExportController:
         if not path:
             return
         try:
-            figure = charts.accelerator(
-                dataset=self.data_state.axis_dataset,
+            figure = charts.create_three_axis_figure(
+                dataset=self.data_state.three_axis_dataset,
                 compact=False,
-                step=self.data_state.axis_step,
+                step=self.data_state.three_axis_step,
             )
             figure.savefig(path, dpi=300)
         except Exception as error:
@@ -946,7 +950,7 @@ class ExportController:
         info = self.data_state.lfp_info
         filename = info.get("filename", "lfp") if info else "lfp"
         stem = filename.rsplit(".", 1)[0]
-        mode = "processed" if settings.show_filtered else "raw"
+        mode = "filtered" if settings.show_filtered else "raw"
         middle = f"_{suffix}" if suffix else ""
         return f"{stem}_channel_{channel}_{mode}{middle}.png"
     def export_peak_image(self):

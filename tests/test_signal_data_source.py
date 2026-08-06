@@ -9,14 +9,14 @@ import numpy as np
 matplotlib.use("Agg")
 
 from benchmarks.signal_csv_fixture import SignalFixtureConfig, generate_signal_csv
-from src.charts.acceleration_chart import accelerator
+from src.charts.three_axis_chart import create_three_axis_figure
 from src.charts.lfp_chart import LFP
 from src.plot_steps import resolve_visible_plot_step
 from src.signal_data import (
     LfpDataset,
     LfpFilterSettings,
     SignalDataset,
-    parse_lfp_csv_info,
+    parse_signal_csv_info,
 )
 from src.signal_data import lfp_dataset as lfp_dataset_module
 from src.signal_data.source import SignalDataSource, _SOURCES
@@ -35,7 +35,7 @@ class SignalDataSourceTests(unittest.TestCase):
                 channels=(2, 5, 8, 13, 21, 34, 55, 260),
             ),
         )
-        self.info = parse_lfp_csv_info(self.path)
+        self.info = parse_signal_csv_info(self.path)
         self.info["_signal_cache_root"] = str(
             Path(self.directory.name) / "signal-cache"
         )
@@ -244,7 +244,7 @@ class SignalDataSourceTests(unittest.TestCase):
         self.assertLessEqual(dataset._segment_cache_bytes, 200)
         self.assertEqual(len(dataset._segment_cache), 1)
 
-    def test_acceleration_rebuild_reuses_path_and_channel_cache(self):
+    def test_three_axis_rebuild_reuses_path_and_channel_cache(self):
         calls = []
         original = SignalDataSource._convert_csv
 
@@ -266,20 +266,23 @@ class SignalDataSourceTests(unittest.TestCase):
             )
 
         with patch.object(SignalDataSource, "_convert_csv", recording_convert):
-            first = accelerator(info=self.info, compact=True, step=1)
-            second = accelerator(info=self.info, compact=True, step=4)
+            first = create_three_axis_figure(info=self.info, compact=True, step=1)
+            second = create_three_axis_figure(info=self.info, compact=True, step=4)
 
-        self.assertEqual(first.axis_plot_step, 1)
-        self.assertEqual(second.axis_plot_step, 4)
+        self.assertEqual(first.three_axis_plot_step, 1)
+        self.assertEqual(second.three_axis_plot_step, 4)
         self.assertEqual(calls, [260])
 
-    def test_acceleration_uses_provided_dataset(self):
+    def test_three_axis_uses_provided_dataset(self):
         dataset = SignalDataset.from_csv(self.info)
         with patch.object(dataset, "overview", wraps=dataset.overview) as overview:
-            figure = accelerator(dataset=dataset, compact=True)
+            figure = create_three_axis_figure(dataset=dataset, compact=True)
 
         overview.assert_called_once_with(260)
-        self.assertEqual(figure.axis_full_xlim, dataset.record_bounds_s(260))
+        self.assertEqual(
+            figure.three_axis_full_xlim,
+            dataset.record_bounds_s(260),
+        )
 
 
 if __name__ == "__main__":

@@ -51,7 +51,7 @@ def render_lfp_analysis(
             )
             del frequencies, power
         elif analysis_type == "spectrogram":
-            frequencies, times, power = _compute_time_frequency(
+            frequencies, times, power = _compute_spectrogram(
                 values,
                 float(sample_rate_hz),
             )
@@ -123,10 +123,10 @@ def _compute_power_spectrum(values, sample_rate_hz):
     )
 
 
-def _compute_time_frequency(values, sample_rate_hz):
+def _compute_spectrogram(values, sample_rate_hz):
     signal_values = _finite_signal(values)
     if signal_values.size < 8:
-        raise ValueError("Need at least 8 samples to calculate time-frequency map.")
+        raise ValueError("Need at least 8 samples to calculate a spectrogram.")
     nperseg = min(512, signal_values.size)
     return signal.spectrogram(
         signal_values,

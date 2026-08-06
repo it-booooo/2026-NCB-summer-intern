@@ -80,22 +80,20 @@ def mean_brightness(frame_bgr, roi=None):
 def compute_led_brightness_curve(
     video_path,
     roi=None,
-    rotate_180=False,
-    rotation_degrees=None,
+    rotation_degrees=0,
     using_fps=30.0,
     frame_step=1,
     start_frame=0,
     end_frame=None,
     should_stop=None,
     progress_callback=None,
-    acceleration_info=None,
+    backend_info=None,
 ):
     """Compute led brightness curve.
 
     Args:
         video_path: Path of the video being processed.
         roi: LED region of interest as (x, y, width, height).
-        rotate_180: Backward-compatible 180-degree rotation flag.
         rotation_degrees: Display/analysis rotation.
         using_fps: Frame rate used for time conversion.
         start_frame: First video frame to process.
@@ -103,11 +101,9 @@ def compute_led_brightness_curve(
         should_stop: Callback that returns true when processing should stop.
         progress_callback: Callback receiving scan progress updates.
     """
-    if acceleration_info is not None:
-        acceleration_info.clear()
+    if backend_info is not None:
+        backend_info.clear()
 
-    if rotation_degrees is None:
-        rotation_degrees = 180 if rotate_180 else 0
     rotation_degrees = normalize_rotation_degrees(rotation_degrees)
     rotate_180 = rotation_degrees == 180
 
@@ -127,7 +123,7 @@ def compute_led_brightness_curve(
             end_frame=end_frame,
             should_stop=should_stop,
             progress_callback=progress_callback,
-            acceleration_info=acceleration_info,
+            backend_info=backend_info,
         )
         return [
             LedBrightnessPoint(
@@ -138,8 +134,8 @@ def compute_led_brightness_curve(
             for frame_index, video_time_sec, brightness in opencl_points
         ]
     except Exception as error:
-        if acceleration_info is not None:
-            acceleration_info.update(
+        if backend_info is not None:
+            backend_info.update(
                 {
                     "brightness_backend": "cpu",
                     "opencl_fallback_reason": str(error),
@@ -152,8 +148,8 @@ def compute_led_brightness_curve(
         cap.release()
         raise ValueError(f"Could not open video: {video_path}")
     try:
-        if acceleration_info is not None:
-            acceleration_info.update(
+        if backend_info is not None:
+            backend_info.update(
                 {
                     "video_decode_backend": decode_backend,
                     "video_decode_fallback_reason": decode_fallback_reason,
@@ -214,8 +210,8 @@ def compute_led_brightness_curve(
                 )
                 progress_callback(completed_frames, scan_total_frames)
 
-        if acceleration_info is not None:
-            acceleration_info.setdefault("brightness_backend", "cpu")
+        if backend_info is not None:
+            backend_info.setdefault("brightness_backend", "cpu")
 
         if progress_callback is not None:
             completed_frames = min(
@@ -404,8 +400,7 @@ def refine_led_event_pairs_from_frame_deltas(
     video_path,
     roi,
     coarse_events,
-    rotate_180=False,
-    rotation_degrees=None,
+    rotation_degrees=0,
     using_fps=30.0,
     window_sec=1.0,
     scan_start_frame=0,
@@ -417,14 +412,13 @@ def refine_led_event_pairs_from_frame_deltas(
     min_gap_sec=0.5,
     max_events=1,
     duration_weight=0.1,
-    acceleration_info=None,
+    backend_info=None,
 ):
     """Refine led event pairs from frame deltas.
 
     Args:
         video_path: Path of the video being processed.
         roi: LED region of interest as (x, y, width, height).
-        rotate_180: Backward-compatible 180-degree rotation flag.
         rotation_degrees: Display/analysis rotation.
         using_fps: Frame rate used for time conversion.
         should_stop: Callback that returns true when processing should stop.
@@ -469,14 +463,13 @@ def refine_led_event_pairs_from_frame_deltas(
         fine_points = compute_led_brightness_curve(
             video_path,
             roi=roi,
-            rotate_180=rotate_180,
             rotation_degrees=rotation_degrees,
             using_fps=fps,
             frame_step=1,
             start_frame=start_frame,
             end_frame=end_frame,
             should_stop=should_stop,
-            acceleration_info=acceleration_info,
+            backend_info=backend_info,
         )
         events, threshold, _ = detect_led_event_pairs_from_frame_deltas(
             fine_points,

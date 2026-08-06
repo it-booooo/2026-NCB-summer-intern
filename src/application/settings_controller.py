@@ -28,7 +28,7 @@ class AnalysisSettingsController:
     def set_plot_step(self, plot_name):
         title, step_attribute = {
             "lfp": ("Set LFP step", "lfp_step"),
-            "axis": ("Set 3-axis step", "axis_step"),
+            "three_axis": ("Set 3-axis step", "three_axis_step"),
         }[plot_name]
         current_step = getattr(self.data_state, step_attribute)
         step, accepted = QInputDialog.getInt(
@@ -49,7 +49,7 @@ class AnalysisSettingsController:
         """Clear active signal disk caches after explicit confirmation."""
         datasets = [
             self.data_state.lfp_dataset,
-            self.data_state.axis_dataset,
+            self.data_state.three_axis_dataset,
         ]
         datasets = [dataset for dataset in datasets if dataset is not None]
         if not datasets:
@@ -90,14 +90,14 @@ class AnalysisSettingsController:
             "Signal caches were cleared and will be rebuilt when needed.",
         )
 
-    def set_power_noise_frequency(self):
+    def set_power_line_frequency(self):
         items = ["60 Hz", "50 Hz"]
         values = [60.0, 50.0]
         current_index = 1 if self.data_state.line_noise_hz == 50.0 else 0
         text, accepted = QInputDialog.getItem(
             self.parent,
-            "Set power noise frequency",
-            "Power noise filter:",
+            "Set Power Line Frequency",
+            "Power Line Frequency:",
             items,
             current_index,
             False,
