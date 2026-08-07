@@ -190,6 +190,39 @@ class SignalDataSourceTests(unittest.TestCase):
             self.assertEqual(stepped.lfp_plot_step, 2)
             self.assertEqual(calls, [260])
 
+    def test_partial_filter_results_replace_base_data_used_by_peak_overlay(self):
+        dataset = LfpDataset.from_csv(self.info)
+        figure = LFP(
+            info=self.info,
+            channels=260,
+            dataset=dataset,
+            filter_settings=LfpFilterSettings(show_filtered=False),
+        )
+        regression = LfpFilterSettings(
+            show_filtered=True,
+            line_noise_method="regression",
+            line_noise_frequencies_hz=(60.0,),
+        )
+        figure.set_lfp_filter_settings(regression)
+        figure.begin_lfp_partial_filtered()
+        figure.append_lfp_partial_filtered(
+            0,
+            np.asarray([1_000_000.0, 2_000_000.0]),
+            np.asarray([101.0, 102.0]),
+        )
+
+        figure.set_lfp_peak_samples(
+            260,
+            True,
+            np.asarray([1.5]),
+            np.asarray([103.0]),
+        )
+
+        np.testing.assert_array_equal(
+            figure.line.get_ydata(),
+            np.asarray([101.0, 103.0, 102.0]),
+        )
+
     def test_xlim_change_does_not_reload_or_recalculate_step(self):
         dataset = LfpDataset.from_csv(self.info)
         figure = LFP(channels=5, step=None, dataset=dataset)

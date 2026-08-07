@@ -70,6 +70,40 @@ class LfpFilterStateFlowTests(unittest.TestCase):
         self.assertEqual(host._lfp_filter_completed_ranges, [(12.5, 98.0)])
         host._set_lfp_filter_status.assert_called_once_with(True)
 
+    def test_finished_worker_does_not_advance_without_a_successful_result(self):
+        worker = SimpleNamespace(
+            cancel_event=SimpleNamespace(is_set=Mock(return_value=False))
+        )
+        host = SimpleNamespace(
+            _lfp_coarse_workers={"worker": worker},
+            _lfp_coarse_request_id="request",
+        )
+        host._start_next_filtered_segment = Mock()
+
+        WavePanel._filtered_segment_finished(
+            host, "request", "worker", worker
+        )
+        self.app.processEvents()
+
+        self.assertEqual(host._lfp_coarse_workers, {})
+        host._start_next_filtered_segment.assert_not_called()
+
+    def test_queue_is_only_marked_complete_after_every_result(self):
+        host = SimpleNamespace(
+            _lfp_coarse_request_id="request",
+            _lfp_coarse_queue=[],
+            _lfp_coarse_finished_segments=1,
+            _lfp_coarse_total_segments=2,
+            _lfp_coarse_channel=3,
+            _mark_lfp_filter_complete=Mock(),
+            update_current_time_marker=Mock(),
+            update_lfp_peak_artist=Mock(),
+        )
+
+        WavePanel._start_next_filtered_segment(host, "request")
+
+        host._mark_lfp_filter_complete.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

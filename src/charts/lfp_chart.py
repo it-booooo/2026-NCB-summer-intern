@@ -213,9 +213,11 @@ def LFP(
 
     def begin_lfp_partial_filtered() -> None:
         """Clear the line so completed filtered chunks can be drawn incrementally."""
-        nonlocal show_filtered, partial_chunks
+        nonlocal show_filtered, partial_chunks, base_times, base_values
         show_filtered = True
         partial_chunks = {}
+        base_times = np.asarray([], dtype=float)
+        base_values = np.asarray([], dtype=float)
         line.set_data([], [])
         fig.current_view = "filtered"
         filter_label.set_text(signal_func.filter_description(filter_settings))
@@ -223,7 +225,7 @@ def LFP(
 
     def append_lfp_partial_filtered(point_start, times, values) -> None:
         """Add one completed filtered overview chunk to the visible line."""
-        nonlocal partial_chunks
+        nonlocal partial_chunks, base_times, base_values
         if not show_filtered:
             return
         start = int(point_start)
@@ -244,10 +246,9 @@ def LFP(
                 display_times.append(chunk_times)
                 display_values.append(chunk_values)
                 previous_end = end
-            line.set_data(
-                np.concatenate(display_times),
-                np.concatenate(display_values),
-            )
+            base_times = np.concatenate(display_times)
+            base_values = np.concatenate(display_values)
+            line.set_data(base_times, base_values)
             ax.relim()
             ax.autoscale_view(scalex=False, scaley=True)
         fig.canvas.draw_idle()

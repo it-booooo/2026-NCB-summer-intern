@@ -1529,6 +1529,11 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         if request_id != self._lfp_coarse_request_id:
             return
         if not self._lfp_coarse_queue:
+            if (
+                self._lfp_coarse_finished_segments
+                != self._lfp_coarse_total_segments
+            ):
+                return
             self._mark_lfp_filter_complete(self._lfp_coarse_channel)
             self._lfp_coarse_key = None
             self.update_current_time_marker()
@@ -1570,14 +1575,12 @@ class WavePanel(LfpAnalysisMixin, QWidget):
             return
         self._lfp_coarse_finished_segments += 1
         self._update_lfp_coarse_range(request_id, result)
-
-    def _filtered_segment_finished(self, request_id, worker_id, worker):
-        self._lfp_coarse_workers.pop(worker_id, None)
-        if request_id != self._lfp_coarse_request_id or worker.cancel_event.is_set():
-            return
         QTimer.singleShot(
             0, lambda: self._start_next_filtered_segment(request_id)
         )
+
+    def _filtered_segment_finished(self, request_id, worker_id, worker):
+        self._lfp_coarse_workers.pop(worker_id, None)
 
     def _lfp_coarse_result_is_current(self, request_id, identity):
         dataset = self.data_state.lfp_dataset
