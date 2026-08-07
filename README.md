@@ -122,7 +122,7 @@ TTL CSV 建議包含：
 
 第一次切換到 Filtered 或變更濾波設定時，程式會分段準備波形。時間範圍列上方的紅色表示尚未完成，綠色表示已完成；波形會隨處理進度逐步更新。大型資料可能需要較長時間，程式會依電腦環境自動使用 GPU 或 CPU。
 
-「Power spectrum」與「Spectrogram」會分析目前選擇的 channel 和畫面時間範圍。分析時會使用原始 CSV 在這段時間內的所有取樣點，不會因為畫面波形顯示得比較稀疏而漏掉資料；選擇的時間越長，等待時間通常也越久。
+「Power spectrum」與「Spectrogram」會分析目前選擇的 channel 和畫面時間範圍。分析時會使用原始 CSV 在這段時間內的所有取樣點，不會因為畫面波形顯示得比較稀疏而漏掉資料；選擇的時間越長，等待時間通常也越久。Spectrogram 預設會依可見 frequency band 的 PSD 自動調整色階；也可在結果視窗取消「Auto」、自訂 Min／Max dB，再按「Apply」重新產圖。匯出 Spectrogram 時也提供相同的 Auto 與自訂 PSD 色階設定。
 
 使用 Filtered 並啟用 Bandpass 時，Spectrogram 只會顯示 Low 到 High 之間的頻率；使用 Raw 時則顯示完整頻率範圍。如果圖表很寬，可拖曳視窗下方的水平捲軸查看。處理期間會顯示進度，需要時可按「Cancel」中止。
 

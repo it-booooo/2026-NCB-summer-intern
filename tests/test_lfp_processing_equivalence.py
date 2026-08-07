@@ -127,6 +127,19 @@ class LfpProcessingEquivalenceTests(unittest.TestCase):
         self.assertEqual(figure.axes[0].get_xlim(), (5.0, 40.0))
         figure.clear()
 
+    def test_filtered_power_spectrum_autoscales_y_from_visible_frequencies(self):
+        figure = _power_spectrum_figure(
+            2,
+            np.array([0.0, 10.0, 20.0, 30.0, 50.0]),
+            np.array([1e12, 1.0, 10.0, 1.0, 1e12]),
+            frequency_range_hz=(5.0, 40.0),
+        )
+
+        low, high = figure.axes[0].get_ylim()
+        self.assertAlmostEqual(low, -0.5)
+        self.assertAlmostEqual(high, 10.5)
+        figure.clear()
+
     def test_notch_display_options_apply_only_to_filtered_notch_psd(self):
         notch = LfpFilterSettings(
             show_filtered=True,
@@ -204,6 +217,57 @@ class LfpProcessingEquivalenceTests(unittest.TestCase):
 
         self.assertEqual(frequency_range, (5.0, 40.0))
         self.assertEqual(figure.axes[0].get_ylim(), (5.0, 40.0))
+
+    def test_spectrogram_auto_color_scale_uses_visible_frequency_range(self):
+        figure = _spectrogram_figure(
+            2,
+            0.0,
+            1.0,
+            np.array([0.0, 10.0, 20.0]),
+            np.array([0.25, 0.75]),
+            np.array(
+                [
+                    [1e12, 1e12],
+                    [1.0, 10.0],
+                    [1e6, 1e6],
+                ]
+            ),
+            None,
+            frequency_range_hz=(5.0, 15.0),
+        )
+
+        mesh = figure.axes[0].collections[0]
+        self.assertEqual(mesh.get_clim(), (0.0, 10.0))
+        figure.clear()
+
+    def test_spectrogram_accepts_custom_color_scale(self):
+        figure = _spectrogram_figure(
+            2,
+            0.0,
+            1.0,
+            np.array([0.0, 10.0]),
+            np.array([0.25, 0.75]),
+            np.ones((2, 2)),
+            None,
+            color_limits_db=(-80.0, -20.0),
+        )
+
+        mesh = figure.axes[0].collections[0]
+        self.assertEqual(mesh.get_clim(), (-80.0, -20.0))
+        figure.clear()
+
+    def test_spectrogram_rejects_reversed_custom_color_scale(self):
+        with self.assertRaisesRegex(ValueError, "minimum color limit"):
+            _spectrogram_figure(
+                2,
+                0.0,
+                1.0,
+                np.array([0.0, 10.0]),
+                np.array([0.25, 0.75]),
+                np.ones((2, 2)),
+                None,
+                color_limits_db=(-20.0, -80.0),
+            )
 
     def test_raw_spectrogram_keeps_full_frequency_range(self):
         settings = LfpFilterSettings(

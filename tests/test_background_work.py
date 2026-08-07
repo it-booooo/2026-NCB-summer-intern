@@ -261,6 +261,7 @@ class PureSignalWorkerTests(unittest.TestCase):
             1.9,
             LfpFilterSettings(show_filtered=False),
             "spectrogram",
+            spectrogram_color_limits_db=(-80.0, -20.0),
         )
         completed = []
         worker.completed.connect(
@@ -273,6 +274,10 @@ class PureSignalWorkerTests(unittest.TestCase):
         self.assertEqual(result["sample_count"], 191)
         self.assertEqual(result["sample_rate_hz"], 100.0)
         self.assertTrue(result["image_png"].startswith(b"\x89PNG"))
+        self.assertEqual(
+            result["spectrogram_color_limits_db"],
+            (-80.0, -20.0),
+        )
         self.assertNotIn("frequencies", result)
         self.assertNotIn("times", result)
         self.assertNotIn("power", result)
@@ -392,6 +397,30 @@ class PureSignalWorkerTests(unittest.TestCase):
         )
         self.assertFalse(
             any(key in completed[0] for key in ("figure", "widget", "canvas"))
+        )
+
+    def test_export_worker_forwards_custom_spectrogram_color_scale(self):
+        worker = LfpExportDataWorker(
+            "export-spectrogram-scale",
+            self.dataset,
+            5,
+            0.0,
+            1.9,
+            LfpFilterSettings(show_filtered=False),
+            ("spectrogram",),
+            spectrogram_color_limits_db=(-80.0, -20.0),
+        )
+
+        with patch(
+            "src.signal_data.background_workers._render_analysis_file",
+            return_value=b"png",
+        ) as render:
+            result = worker.execute()
+
+        self.assertEqual(result["rendered_images"]["spectrogram"], b"png")
+        self.assertEqual(
+            render.call_args.kwargs["spectrogram_color_limits_db"],
+            (-80.0, -20.0),
         )
 
     def test_pre_cancelled_worker_emits_only_canceled(self):

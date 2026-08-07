@@ -147,8 +147,10 @@ def _render_analysis_file(
     annotation=None,
     frequency_range_hz=None,
     notch_display_options=None,
+    spectrogram_color_limits_db=None,
+    return_metadata=False,
 ):
-    """Run one render process and return only its encoded static image."""
+    """Run one render process and return its image or complete payload."""
     context = multiprocessing.get_context("spawn")
     receiver, sender = context.Pipe(duplex=False)
     process = context.Process(
@@ -168,6 +170,7 @@ def _render_analysis_file(
             annotation,
             frequency_range_hz,
             notch_display_options,
+            spectrogram_color_limits_db,
         ),
         name=f"lfp-{analysis_type}",
         daemon=True,
@@ -215,7 +218,7 @@ def _render_analysis_file(
             raise RuntimeError(
                 payload.get("error", "LFP analysis process failed.")
             )
-        return payload["image_png"]
+        return payload if return_metadata else payload["image_png"]
     finally:
         sender.close()
         receiver.close()
@@ -327,6 +330,7 @@ class LfpAnalysisWorker(SignalWorker):
         settings,
         analysis_type,
         record_time_origin_sec=None,
+        spectrogram_color_limits_db=None,
     ):
         super().__init__(request_id, dataset)
         self.channel = int(channel)
@@ -335,6 +339,7 @@ class LfpAnalysisWorker(SignalWorker):
         self.settings = settings
         self.analysis_type = analysis_type
         self.record_time_origin_sec = record_time_origin_sec
+        self.spectrogram_color_limits_db = spectrogram_color_limits_db
 
     def execute(self):
         self.report(5)
@@ -348,7 +353,7 @@ class LfpAnalysisWorker(SignalWorker):
         ) as prepared:
             self.check_cancel()
             self.report(55)
-            image_png = self._render_in_process(
+            render_result = self._render_in_process(
                 prepared.path,
                 prepared.dtype,
                 prepared.sample_count,
@@ -357,13 +362,18 @@ class LfpAnalysisWorker(SignalWorker):
                 prepared.end_time_s,
             )
             self.report(100)
-            return {
+            result = {
                 "sample_count": prepared.sample_count,
                 "sample_rate_hz": prepared.sample_rate_hz,
                 "start_time_s": prepared.start_time_s,
                 "end_time_s": prepared.end_time_s,
-                "image_png": image_png,
+                "image_png": render_result["image_png"],
             }
+            if "spectrogram_color_limits_db" in render_result:
+                result["spectrogram_color_limits_db"] = render_result[
+                    "spectrogram_color_limits_db"
+                ]
+            return result
 
     def _render_in_process(
         self,
@@ -388,6 +398,8 @@ class LfpAnalysisWorker(SignalWorker):
             dpi=ANALYSIS_DISPLAY_DPI,
             frequency_range_hz=_frequency_plot_range(self.settings),
             notch_display_options=_notch_spectrum_display_options(self.settings),
+            spectrogram_color_limits_db=self.spectrogram_color_limits_db,
+            return_metadata=True,
         )
 
 
@@ -406,6 +418,7 @@ class LfpExportDataWorker(SignalWorker):
         record_time_origin_sec=None,
         image_dpi=300,
         annotation=None,
+        spectrogram_color_limits_db=None,
     ):
         super().__init__(request_id, dataset)
         self.channel = int(channel)
@@ -416,6 +429,7 @@ class LfpExportDataWorker(SignalWorker):
         self.record_time_origin_sec = record_time_origin_sec
         self.image_dpi = int(image_dpi)
         self.annotation = annotation
+        self.spectrogram_color_limits_db = spectrogram_color_limits_db
 
     def execute(self):
         self.report(5)
@@ -503,6 +517,11 @@ class LfpExportDataWorker(SignalWorker):
                     ),
                     notch_display_options=_notch_spectrum_display_options(
                         self.settings
+                    ),
+                    spectrogram_color_limits_db=(
+                        self.spectrogram_color_limits_db
+                        if image_type == "spectrogram"
+                        else None
                     ),
                 )
                 self.report(

@@ -774,6 +774,9 @@ class ExportController:
             record_time_origin_sec,
             options.dpi,
             annotation,
+            spectrogram_color_limits_db=(
+                options.spectrogram_color_limits_db
+            ),
         )
         self._lfp_export_request_id = request_id
         self._lfp_export_workers[request_id] = worker

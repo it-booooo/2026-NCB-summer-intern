@@ -2,16 +2,18 @@
 
 import uuid
 
-import numpy as np
 from matplotlib.figure import Figure
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
+    QCheckBox,
     QDialog,
     QDoubleSpinBox,
+    QHBoxLayout,
     QLabel,
     QMessageBox,
     QProgressDialog,
+    QPushButton,
     QScrollArea,
     QVBoxLayout,
 )
@@ -163,7 +165,12 @@ class LfpAnalysisMixin:
 
         return channel, left, right, settings
     
-    def show_lfp_analysis(self, analysis_type):
+    def show_lfp_analysis(
+        self,
+        analysis_type,
+        *,
+        spectrogram_color_limits_db=None,
+    ):
         """Calculate and display the selected frequency-domain analysis."""
         failure_title, dialog_title, dialog_size = {
             "power_spectrum": (
@@ -180,7 +187,7 @@ class LfpAnalysisMixin:
     
         analysis = self._prepare_lfp_analysis(failure_title)
         if analysis is None:
-            return
+            return False
     
         channel, left, right, settings = analysis
         dataset = self.ensure_lfp_dataset()
@@ -196,6 +203,7 @@ class LfpAnalysisMixin:
             settings,
             analysis_type,
             self.sync_state.record_time_origin_sec,
+            spectrogram_color_limits_db,
         )
         workers = getattr(self, "_lfp_analysis_workers", {})
         self._lfp_analysis_workers = workers
@@ -230,6 +238,7 @@ class LfpAnalysisMixin:
                 left=left,
                 right=right,
                 settings=settings,
+                spectrogram_color_limits_db=spectrogram_color_limits_db,
             )
         )
         worker.failed.connect(
@@ -254,6 +263,7 @@ class LfpAnalysisMixin:
         worker.finished.connect(worker.deleteLater)
         worker.start()
         progress.show()
+        return True
 
     def _analysis_result_is_current(self, request_id, identity):
         if (
@@ -290,14 +300,16 @@ class LfpAnalysisMixin:
         left,
         right,
         settings,
+        spectrogram_color_limits_db=None,
     ):
         if not self._analysis_result_is_current(request_id, identity):
             result.clear()
             return
         sample_count = result["sample_count"]
         sample_rate_hz = result["sample_rate_hz"]
-        start_time_s = result["start_time_s"]
-        end_time_s = result["end_time_s"]
+        rendered_color_limits_db = result.get(
+            "spectrogram_color_limits_db"
+        )
         try:
             image_png = result.pop("image_png")
             image = QImage.fromData(image_png, "PNG")
@@ -323,6 +335,9 @@ class LfpAnalysisMixin:
             settings,
             pixmap,
             dialog_size,
+            analysis_type=analysis_type,
+            spectrogram_auto_scale=(spectrogram_color_limits_db is None),
+            spectrogram_color_limits_db=rendered_color_limits_db,
         )
 
     def _fail_lfp_analysis(
@@ -369,6 +384,10 @@ class LfpAnalysisMixin:
         settings,
         pixmap,
         size,
+        *,
+        analysis_type=None,
+        spectrogram_auto_scale=True,
+        spectrogram_color_limits_db=None,
     ):
         """Open lfp analysis dialog.
 
@@ -396,6 +415,13 @@ class LfpAnalysisMixin:
 
         layout = QVBoxLayout()
         layout.addWidget(status)
+        if analysis_type == "spectrogram":
+            self._add_spectrogram_scale_controls(
+                layout,
+                dialog,
+                auto_scale=spectrogram_auto_scale,
+                color_limits_db=spectrogram_color_limits_db,
+            )
         layout.addWidget(scroll_area)
         dialog.setLayout(layout)
         dialog._lfp_image_label = image_label
@@ -413,6 +439,101 @@ class LfpAnalysisMixin:
         scroll_area.fit_pixmap_height()
         dialog.raise_()
         dialog.activateWindow()
+
+    def _add_spectrogram_scale_controls(
+        self,
+        layout,
+        dialog,
+        *,
+        auto_scale,
+        color_limits_db,
+    ):
+        """Add automatic and custom PSD color-scale controls to a dialog."""
+        if color_limits_db is None:
+            color_limits_db = (-120.0, 0.0)
+        color_low, color_high = map(float, color_limits_db)
+
+        controls = QHBoxLayout()
+        controls.addWidget(QLabel("PSD color scale"))
+        auto_checkbox = QCheckBox("Auto")
+        auto_checkbox.setChecked(bool(auto_scale))
+        auto_checkbox.setToolTip(
+            "Automatically scale colors from PSD values in the visible frequency band."
+        )
+        controls.addWidget(auto_checkbox)
+
+        minimum_spin = self._create_spectrogram_db_spinbox(color_low)
+        maximum_spin = self._create_spectrogram_db_spinbox(color_high)
+        controls.addWidget(QLabel("Min"))
+        controls.addWidget(minimum_spin)
+        controls.addWidget(QLabel("Max"))
+        controls.addWidget(maximum_spin)
+
+        apply_button = QPushButton("Apply")
+        apply_button.setToolTip("Rerender the spectrogram with this color scale.")
+        controls.addWidget(apply_button)
+        controls.addStretch()
+        layout.addLayout(controls)
+
+        def update_manual_controls(automatic):
+            minimum_spin.setEnabled(not automatic)
+            maximum_spin.setEnabled(not automatic)
+
+        auto_checkbox.toggled.connect(update_manual_controls)
+        update_manual_controls(auto_checkbox.isChecked())
+        apply_button.clicked.connect(
+            lambda _checked=False: self._apply_spectrogram_scale(
+                dialog,
+                auto_checkbox,
+                minimum_spin,
+                maximum_spin,
+            )
+        )
+
+        dialog._spectrogram_auto_scale = auto_checkbox
+        dialog._spectrogram_color_min = minimum_spin
+        dialog._spectrogram_color_max = maximum_spin
+        dialog._spectrogram_scale_apply = apply_button
+
+    @staticmethod
+    def _create_spectrogram_db_spinbox(value):
+        spinbox = QDoubleSpinBox()
+        spinbox.setDecimals(2)
+        spinbox.setRange(-1_000_000.0, 1_000_000.0)
+        spinbox.setSingleStep(1.0)
+        spinbox.setSuffix(" dB")
+        spinbox.setValue(float(value))
+        spinbox.setMaximumWidth(120)
+        return spinbox
+
+    def _apply_spectrogram_scale(
+        self,
+        dialog,
+        auto_checkbox,
+        minimum_spin,
+        maximum_spin,
+    ):
+        """Validate the selected color scale and rerun the spectrogram render."""
+        color_limits_db = None
+        if not auto_checkbox.isChecked():
+            color_low = float(minimum_spin.value())
+            color_high = float(maximum_spin.value())
+            if color_low >= color_high:
+                QMessageBox.warning(
+                    dialog,
+                    "Invalid color scale",
+                    "Minimum PSD must be below maximum PSD.",
+                )
+                return False
+            color_limits_db = (color_low, color_high)
+
+        started = self.show_lfp_analysis(
+            "spectrogram",
+            spectrogram_color_limits_db=color_limits_db,
+        )
+        if started:
+            dialog.close()
+        return bool(started)
     
     def forget_spectrum_dialog(self, dialog_or_result=0):
         """Release the static image and every owned dialog reference."""

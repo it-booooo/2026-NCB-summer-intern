@@ -27,6 +27,7 @@ def render_lfp_analysis(
     annotation=None,
     frequency_range_hz=None,
     notch_display_options=None,
+    spectrogram_color_limits_db=None,
 ):
     """Compute and render inside a disposable process."""
     figure = None
@@ -65,7 +66,9 @@ def render_lfp_analysis(
                 power,
                 record_time_origin_sec,
                 frequency_range_hz,
+                spectrogram_color_limits_db,
             )
+            color_limits = figure.axes[0].collections[0].get_clim()
             del frequencies, times, power
         else:
             raise ValueError(f"Unsupported LFP analysis: {analysis_type}")
@@ -76,12 +79,15 @@ def render_lfp_analysis(
         canvas = FigureCanvasAgg(figure)
         output = io.BytesIO()
         canvas.print_png(output)
-        connection.send(
-            {
-                "ok": True,
-                "image_png": output.getvalue(),
-            }
-        )
+        payload = {
+            "ok": True,
+            "image_png": output.getvalue(),
+        }
+        if analysis_type == "spectrogram":
+            payload["spectrogram_color_limits_db"] = tuple(
+                map(float, color_limits)
+            )
+        connection.send(payload)
     except Exception as error:
         connection.send(
             {
@@ -269,8 +275,35 @@ def _power_spectrum_figure(
     if frequency_range_hz is not None:
         low_hz, high_hz = map(float, frequency_range_hz)
         ax.set_xlim(low_hz, high_hz)
+        _autoscale_visible_y(ax, frequencies, power_db)
     ax.grid(True, linewidth=0.4, alpha=0.35)
     return figure
+
+
+def _autoscale_visible_y(ax, x_values, y_values, margin=0.05):
+    """Scale the y-axis from finite data inside the current x-axis window."""
+    x_values = np.asarray(x_values)
+    y_values = np.asarray(y_values)
+    left, right = sorted(map(float, ax.get_xlim()))
+    visible = (
+        np.isfinite(x_values)
+        & np.isfinite(y_values)
+        & (x_values >= left)
+        & (x_values <= right)
+    )
+    if not np.any(visible):
+        return
+
+    visible_y = y_values[visible]
+    low = float(np.min(visible_y))
+    high = float(np.max(visible_y))
+    span = high - low
+    padding = (
+        span * float(margin)
+        if span > 0.0
+        else max(abs(low) * float(margin), 1.0)
+    )
+    ax.set_ylim(low - padding, high + padding)
 
 
 def _spectrogram_figure(
@@ -282,6 +315,7 @@ def _spectrogram_figure(
     power,
     record_time_origin_sec,
     frequency_range_hz=None,
+    color_limits_db=None,
 ):
     duration_sec = abs(float(end_time_s) - float(start_time_s))
     figure_width = min(24.0, 8.0 + duration_sec / 120.0)
@@ -296,12 +330,20 @@ def _spectrogram_figure(
     np.maximum(power_db, tiny, out=power_db)
     np.log10(power_db, out=power_db)
     power_db *= 10.0
+    color_low, color_high = _spectrogram_color_limits(
+        frequencies,
+        power_db,
+        frequency_range_hz=frequency_range_hz,
+        color_limits_db=color_limits_db,
+    )
     mesh = ax.pcolormesh(
         plot_times,
         frequencies,
         power_db,
         shading="auto",
         cmap="viridis",
+        vmin=color_low,
+        vmax=color_high,
     )
     figure.colorbar(mesh, ax=ax, label="PSD (dB/Hz)")
     ax.set_title(f"LFP Spectrogram - Channel {channel}")
@@ -314,3 +356,44 @@ def _spectrogram_figure(
         low_hz, high_hz = map(float, frequency_range_hz)
         ax.set_ylim(low_hz, high_hz)
     return figure
+
+
+def _spectrogram_color_limits(
+    frequencies,
+    power_db,
+    *,
+    frequency_range_hz=None,
+    color_limits_db=None,
+):
+    """Resolve automatic or custom PSD color limits in dB/Hz."""
+    if color_limits_db is not None:
+        low, high = map(float, color_limits_db)
+        if not (np.isfinite(low) and np.isfinite(high)):
+            raise ValueError("Spectrogram color limits must be finite.")
+        if low >= high:
+            raise ValueError(
+                "Spectrogram minimum color limit must be below the maximum."
+            )
+        return low, high
+
+    frequencies = np.asarray(frequencies)
+    power_db = np.asarray(power_db)
+    visible = np.isfinite(frequencies)
+    if frequency_range_hz is not None:
+        low_hz, high_hz = sorted(map(float, frequency_range_hz))
+        visible &= (frequencies >= low_hz) & (frequencies <= high_hz)
+
+    visible_power = power_db[visible]
+    finite_power = visible_power[np.isfinite(visible_power)]
+    if finite_power.size == 0:
+        raise ValueError(
+            "Spectrogram does not contain finite values in the visible range."
+        )
+
+    low = float(np.min(finite_power))
+    high = float(np.max(finite_power))
+    if low == high:
+        padding = max(abs(low) * 0.05, 1.0)
+        low -= padding
+        high += padding
+    return low, high

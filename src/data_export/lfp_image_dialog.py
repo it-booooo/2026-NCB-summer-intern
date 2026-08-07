@@ -31,6 +31,7 @@ class LfpImageExportOptions:
     image_types: tuple[str, ...]
     dpi: int
     directory: Path
+    spectrogram_color_limits_db: tuple[float, float] | None = None
 
 
 class LfpImageExportDialog(QDialog):
@@ -155,6 +156,26 @@ class LfpImageExportDialog(QDialog):
         image_layout.addWidget(self.waveform_checkbox)
         image_layout.addWidget(self.power_checkbox)
         image_layout.addWidget(self.spectrogram_checkbox)
+        self.spectrogram_auto_scale_checkbox = QCheckBox(
+            "Auto PSD color scale"
+        )
+        self.spectrogram_auto_scale_checkbox.setChecked(True)
+        self.spectrogram_auto_scale_checkbox.setToolTip(
+            "Scale colors from PSD values in the visible frequency band."
+        )
+        self.spectrogram_color_min_spin = self.create_db_spinbox(-120.0)
+        self.spectrogram_color_max_spin = self.create_db_spinbox(0.0)
+        spectrogram_scale_layout = QHBoxLayout()
+        spectrogram_scale_layout.setContentsMargins(20, 0, 0, 0)
+        spectrogram_scale_layout.addWidget(
+            self.spectrogram_auto_scale_checkbox
+        )
+        spectrogram_scale_layout.addWidget(QLabel("Min"))
+        spectrogram_scale_layout.addWidget(self.spectrogram_color_min_spin)
+        spectrogram_scale_layout.addWidget(QLabel("Max"))
+        spectrogram_scale_layout.addWidget(self.spectrogram_color_max_spin)
+        spectrogram_scale_layout.addStretch()
+        image_layout.addLayout(spectrogram_scale_layout)
         # image_form = QFormLayout()
         # image_form.addRow("Resolution", self.dpi_spin)
         # image_layout.addLayout(image_form)
@@ -195,7 +216,33 @@ class LfpImageExportDialog(QDialog):
         self.method_selector.currentIndexChanged.connect(
             self.update_processing_controls
         )
+        self.spectrogram_checkbox.toggled.connect(
+            self.update_spectrogram_scale_controls
+        )
+        self.spectrogram_auto_scale_checkbox.toggled.connect(
+            self.update_spectrogram_scale_controls
+        )
         self.update_processing_controls()
+        self.update_spectrogram_scale_controls()
+
+    @staticmethod
+    def create_db_spinbox(value):
+        spinbox = QDoubleSpinBox()
+        spinbox.setDecimals(2)
+        spinbox.setRange(-1_000_000.0, 1_000_000.0)
+        spinbox.setSingleStep(1.0)
+        spinbox.setSuffix(" dB")
+        spinbox.setValue(float(value))
+        spinbox.setMaximumWidth(120)
+        return spinbox
+
+    def update_spectrogram_scale_controls(self, *_args):
+        """Enable manual color limits only for a selected custom export."""
+        selected = self.spectrogram_checkbox.isChecked()
+        self.spectrogram_auto_scale_checkbox.setEnabled(selected)
+        manual = selected and not self.spectrogram_auto_scale_checkbox.isChecked()
+        self.spectrogram_color_min_spin.setEnabled(manual)
+        self.spectrogram_color_max_spin.setEnabled(manual)
 
     def update_processing_controls(self, *_args):
         """Update processing controls."""
@@ -274,6 +321,19 @@ class LfpImageExportDialog(QDialog):
             )
             return
 
+        if (
+            self.spectrogram_checkbox.isChecked()
+            and not self.spectrogram_auto_scale_checkbox.isChecked()
+            and self.spectrogram_color_min_spin.value()
+            >= self.spectrogram_color_max_spin.value()
+        ):
+            QMessageBox.warning(
+                self,
+                "Invalid color scale",
+                "Minimum PSD must be below maximum PSD.",
+            )
+            return
+
         try:
             self.panel.settings_from_processing_controls(
                 self.signal_selector,
@@ -332,4 +392,15 @@ class LfpImageExportDialog(QDialog):
             image_types=self.selected_image_types(),
             dpi=300,
             directory=Path(self.destination_edit.text().strip()),
+            spectrogram_color_limits_db=(
+                None
+                if (
+                    not self.spectrogram_checkbox.isChecked()
+                    or self.spectrogram_auto_scale_checkbox.isChecked()
+                )
+                else (
+                    float(self.spectrogram_color_min_spin.value()),
+                    float(self.spectrogram_color_max_spin.value()),
+                )
+            ),
         )

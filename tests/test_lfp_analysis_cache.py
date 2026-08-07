@@ -111,7 +111,7 @@ class FilteredAnalysisCacheTests(unittest.TestCase):
             patch.object(
                 LfpAnalysisWorker,
                 "_render_in_process",
-                return_value=b"png",
+                return_value={"image_png": b"png"},
             ),
         ):
             power = LfpAnalysisWorker(

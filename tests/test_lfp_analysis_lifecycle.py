@@ -140,6 +140,51 @@ class LfpAnalysisLifecycleTests(unittest.TestCase):
         self.assertEqual(result, {})
         self.host.open_lfp_analysis_dialog.assert_called_once()
 
+    def test_spectrogram_dialog_supports_auto_and_custom_color_scale(self):
+        figure = Figure(figsize=(2, 1))
+        figure.add_subplot(111).plot([0, 1], [0, 1])
+        pixmap = self.host._figure_to_pixmap(figure)
+        self.host._dispose_figure(figure)
+        self.host.open_lfp_analysis_dialog(
+            "Spectrogram",
+            2,
+            0.0,
+            1.0,
+            101,
+            100.0,
+            None,
+            pixmap,
+            (820, 560),
+            analysis_type="spectrogram",
+            spectrogram_auto_scale=True,
+            spectrogram_color_limits_db=(-75.0, -15.0),
+        )
+        dialog = self.host.spectrum_dialogs[-1]
+
+        self.assertTrue(dialog._spectrogram_auto_scale.isChecked())
+        self.assertFalse(dialog._spectrogram_color_min.isEnabled())
+        self.assertFalse(dialog._spectrogram_color_max.isEnabled())
+        self.assertEqual(dialog._spectrogram_color_min.value(), -75.0)
+        self.assertEqual(dialog._spectrogram_color_max.value(), -15.0)
+
+        dialog._spectrogram_auto_scale.setChecked(False)
+        dialog._spectrogram_color_min.setValue(-80.0)
+        dialog._spectrogram_color_max.setValue(-20.0)
+        self.host.show_lfp_analysis = Mock(return_value=True)
+        applied = self.host._apply_spectrogram_scale(
+            dialog,
+            dialog._spectrogram_auto_scale,
+            dialog._spectrogram_color_min,
+            dialog._spectrogram_color_max,
+        )
+
+        self.assertTrue(applied)
+        self.host.show_lfp_analysis.assert_called_once_with(
+            "spectrogram",
+            spectrogram_color_limits_db=(-80.0, -20.0),
+        )
+        self.app.processEvents()
+
 
 if __name__ == "__main__":
     unittest.main()
