@@ -537,7 +537,7 @@ class ImportController:
             if staged["timeline_xlim"] is not None:
                 context.wave_panel.set_shared_xlim(
                     *staged["timeline_xlim"],
-                    source="timeline",
+                    source="project",
                 )
             context.sync_controller.update_waveform_current_time()
 

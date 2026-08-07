@@ -746,8 +746,16 @@ class WavePanel(LfpAnalysisMixin, QWidget):
                     self.background_signature(canvas, ax),
                     canvas.copy_from_bbox(ax.bbox),
                 )
-                ax.draw_artist(line)
-                canvas.blit(ax.bbox)
+                QTimer.singleShot(
+                    0,
+                    lambda key=key, canvas=canvas, ax=ax, line=line: (
+                        self.draw_marker_line(key, canvas, ax, line)
+                        if widget_is_valid(self)
+                        and widget_is_valid(canvas)
+                        and line.axes is ax
+                        else None
+                    ),
+                )
             except Exception:
                 self.invalidate_current_time_backgrounds(key)
             return
@@ -789,10 +797,10 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         if full_xlim is None:
             return
 
+        current_xlim = self.data_state.timeline_xlim
         if self.timeline_full_xlim == full_xlim and self.timeline_slider is not None:
-            current_xlim = self.data_state.timeline_xlim
             if current_xlim is not None:
-                self.set_shared_xlim(*current_xlim, source="timeline")
+                self.set_shared_xlim(*current_xlim, source="state")
             return
 
         old_canvas = self.timeline_canvas
@@ -809,10 +817,15 @@ class WavePanel(LfpAnalysisMixin, QWidget):
 
         fig = Figure(figsize=(8, 0.50), constrained_layout=False)
         slider_ax = fig.add_axes((0.12, 0.34, 0.76, 0.34))
+        initial_xlim = (
+            clamp_xlim(float(current_xlim[0]), float(current_xlim[1]), full_xlim)
+            if current_xlim is not None
+            else full_xlim
+        )
         slider = SharedTimelineSlider(
             slider_ax,
             full_xlim,
-            full_xlim,
+            initial_xlim,
         )
         slider.set_time_origin(self.sync_state.record_time_origin_sec)
         slider.on_changed(lambda value: self.on_plot_xlim_changed(value, "timeline"))
@@ -834,7 +847,7 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self.invalidate_current_time_backgrounds()
         canvas.draw_idle()
 
-        self.set_shared_xlim(*full_xlim, source="timeline")
+        self.set_shared_xlim(*initial_xlim, source="timeline")
         self.update_event_interval_artists()
         self.update_current_time_marker()
 
@@ -1308,7 +1321,7 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self.plot_lfp()
 
         if current_xlim is not None:
-            self.set_shared_xlim(*current_xlim, source="timeline")
+            self.set_shared_xlim(*current_xlim, source="state")
 
     def current_lfp_record_xlim(self):
         selected_xlim = self.data_state.timeline_xlim
@@ -1755,4 +1768,4 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         plot()
 
         if current_xlim is not None:
-            self.set_shared_xlim(*current_xlim, source="timeline")
+            self.set_shared_xlim(*current_xlim, source="state")
