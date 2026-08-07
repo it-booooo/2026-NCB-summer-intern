@@ -5,6 +5,7 @@ import threading
 import tracemalloc
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from benchmarks.signal_csv_fixture import SignalFixtureConfig, generate_signal_csv
 from src.background_requests import request_matches
@@ -232,9 +233,18 @@ class PureSignalWorkerTests(unittest.TestCase):
             lambda _request_id, _identity, result: completed.append(result)
         )
 
-        worker.run()
+        with patch.object(
+            self.dataset,
+            "segment",
+            wraps=self.dataset.segment,
+        ) as segment:
+            worker.run()
 
         self.assertEqual(len(completed), 1)
+        self.assertEqual(
+            segment.call_args.kwargs["dispatch_sample_count"],
+            self.dataset.source.sample_count(2),
+        )
         result = completed[0]
         self.assertGreater(len(result["values"]), 1)
         self.assertLessEqual(len(result["values"]), 11)

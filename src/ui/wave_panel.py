@@ -1538,10 +1538,17 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self._lfp_coarse_key = key
 
         bounds = dataset.record_bounds_s(channel)
+        segment_seconds = 10.0
+        if settings.line_noise_method == "regression":
+            sample_rate_hz = float(dataset.sample_rate_hz(channel))
+            segment_seconds = max(
+                segment_seconds,
+                signal_func.regression_opencl_minimum_samples() / sample_rate_hz,
+            )
         ranges = []
         left = float(bounds[0])
         while left < bounds[1]:
-            right = min(left + 10.0, float(bounds[1]))
+            right = min(left + segment_seconds, float(bounds[1]))
             ranges.append((left, right))
             left = right
         center = self.sync_state.current_record_time_sec

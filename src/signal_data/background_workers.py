@@ -1049,6 +1049,7 @@ class LfpDisplaySegmentWorker(SignalWorker):
             self.end_s,
             self.settings,
             self.cancel_event,
+            dispatch_sample_count=self.dataset.source.sample_count(self.channel),
         )
         self.check_cancel()
         return {

@@ -151,6 +151,7 @@ class LfpDataset(SignalDataset):
         settings: LfpFilterSettings | None,
         cancel_event: threading.Event | None = None,
         progress_callback=None,
+        dispatch_sample_count: int | None = None,
     ) -> LfpSegment:
         """Filter a padded raw interval, then crop to the exact requested indices."""
         channel = int(channel)
@@ -231,6 +232,7 @@ class LfpDataset(SignalDataset):
                 sample_rate_hz,
                 effective_settings,
                 sample_offset=loaded_left,
+                dispatch_sample_count=dispatch_sample_count,
             )
             crop_left = block_left - loaded_left
             crop_right = crop_left + (block_right - block_left)
@@ -330,6 +332,7 @@ class LfpDataset(SignalDataset):
                 sample_rate_hz,
                 effective_settings,
                 sample_offset=loaded_left,
+                dispatch_sample_count=sample_count,
             )
             crop_left = block_left - loaded_left
             crop_right = crop_left + (block_right - block_left)
@@ -432,6 +435,7 @@ class LfpDataset(SignalDataset):
                         sample_rate_hz,
                         effective_settings,
                         sample_offset=loaded_left,
+                        dispatch_sample_count=sample_count,
                     )
                 else:
                     prepared_values = loaded_values

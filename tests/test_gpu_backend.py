@@ -3,7 +3,11 @@ from unittest.mock import patch
 
 import numpy as np
 
-from src.signal_data.gpu_backend import opencl_status, select_backend
+from src.signal_data.gpu_backend import (
+    opencl_status,
+    periodic_noise_regression_opencl,
+    select_backend,
+)
 from src.signal_data.lfp_processing import remove_periodic_noise
 
 
@@ -29,6 +33,26 @@ class GpuBackendTests(unittest.TestCase):
             return_value=(None, "missing"),
         ):
             self.assertEqual(select_backend(1_000_000, requested="auto"), "cpu")
+
+    def test_blocked_regression_dispatches_from_total_workload_size(self):
+        values = np.ones(10_000, dtype=np.float32)
+        with patch(
+            "src.signal_data.gpu_backend.select_backend",
+            return_value="cpu",
+        ) as selector:
+            result = periodic_noise_regression_opencl(
+                values,
+                1000.0,
+                [60.0],
+                4000,
+                2000,
+                0,
+                np.float32,
+                dispatch_sample_count=250_000,
+            )
+
+        self.assertIsNone(result)
+        selector.assert_called_once_with(250_000, None)
 
     def test_forced_opencl_reports_an_unavailable_runtime(self):
         with patch(

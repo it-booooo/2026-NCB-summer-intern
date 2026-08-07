@@ -121,6 +121,7 @@ def prepare_lfp_signal(
     settings: LfpFilterSettings | None,
     *,
     sample_offset: int = 0,
+    dispatch_sample_count: int | None = None,
 ) -> np.ndarray:
     """Prepare lfp signal.
 
@@ -171,6 +172,7 @@ def prepare_lfp_signal(
             window_seconds=settings.regression_window_seconds,
             overlap=settings.regression_overlap,
             sample_offset=sample_offset,
+            dispatch_sample_count=dispatch_sample_count,
         )
 
     return filtered
@@ -233,6 +235,7 @@ def remove_periodic_noise(
     *,
     sample_offset: int = 0,
     backend: str | None = None,
+    dispatch_sample_count: int | None = None,
 ) -> np.ndarray:
     """Remove fixed-frequency sinusoids with overlapping local regressions.
 
@@ -245,8 +248,11 @@ def remove_periodic_noise(
     padded blocks; ordinary callers should leave it at zero.
 
     ``backend`` accepts ``"auto"``, ``"cpu"`` or ``"opencl"``.  The default
-    uses OpenCL for large arrays when a compatible GPU is available and
-    otherwise preserves the NumPy implementation.
+    uses OpenCL for large workloads when a compatible GPU is available and
+    otherwise preserves the NumPy implementation. ``dispatch_sample_count``
+    lets a large job that is processed in smaller UI or I/O blocks select its
+    backend from the total workload instead of incorrectly treating each block
+    as an independent small job.
     """
     _validate_sample_rate(sample_rate_hz)
     window_seconds = float(window_seconds)
@@ -328,6 +334,7 @@ def remove_periodic_noise(
         sample_offset,
         output_dtype,
         requested=backend,
+        dispatch_sample_count=dispatch_sample_count,
     )
     if gpu_result is not None:
         return gpu_result

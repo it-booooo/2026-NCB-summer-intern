@@ -774,6 +774,7 @@ class SignalDataSource:
                                 sample_rate,
                                 settings,
                                 sample_offset=loaded_left,
+                                dispatch_sample_count=sample_count,
                             )
                             relative = requested - loaded_left
                             selected = filtered[relative]

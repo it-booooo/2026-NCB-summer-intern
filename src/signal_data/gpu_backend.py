@@ -495,6 +495,12 @@ def _minimum_gpu_samples() -> int:
         return DEFAULT_GPU_MIN_SAMPLES
 
 
+def regression_opencl_minimum_samples() -> int:
+    """Return the workload threshold used by automatic regression dispatch."""
+
+    return _minimum_gpu_samples()
+
+
 def _minimum_peak_gpu_samples() -> int:
     try:
         return max(
@@ -983,6 +989,7 @@ def periodic_noise_regression_opencl(
     output_dtype,
     *,
     requested: str | None = None,
+    dispatch_sample_count: int | None = None,
 ):
     """Run overlapping sinusoidal regressions on an OpenCL GPU.
 
@@ -1001,7 +1008,12 @@ def periodic_noise_regression_opencl(
                 "OpenCL sinusoidal regression supports float32 and float64 output."
             )
         return None
-    if select_backend(input_values.size, requested) != "opencl":
+    selection_count = (
+        input_values.size
+        if dispatch_sample_count is None
+        else max(int(dispatch_sample_count), 0)
+    )
+    if select_backend(selection_count, requested) != "opencl":
         return None
     runtime, _reason = _opencl_runtime()
     try:
