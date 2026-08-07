@@ -454,14 +454,14 @@ class ImportController:
             data = staged["data"]
             self.data_state.lfp_step = data.get("lfp_step")
             self.data_state.three_axis_step = data.get("three_axis_step")
-            self.data_state.line_noise_hz = float(data.get("line_noise_hz", 60.0))
             self.data_state.timeline_xlim = staged["timeline_xlim"]
             selected_channel = data.get("selected_lfp_channel")
             self.data_state.selected_lfp_channel = (
                 int(selected_channel) if selected_channel is not None else None
             )
-            self.data_state.lfp_filter_settings = dict(
-                data.get("lfp_filter_settings", {})
+            self.data_state.lfp_filter_settings = data.get(
+                "lfp_filter_settings",
+                signal_data.LfpFilterSettings(),
             )
             self.data_state.follow_video_playback = bool(
                 data.get("follow_video_playback", True)

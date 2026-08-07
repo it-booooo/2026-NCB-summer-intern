@@ -7,7 +7,6 @@ from PySide6.QtCore import QThread, Signal
 from ..signal_data import (
     CacheBuildCancelled,
     LfpFilterSettings,
-    parse_line_noise_frequencies,
 )
 
 
@@ -131,69 +130,11 @@ class ProjectSignalCacheWorker(QThread):
                         step,
                         cancel_event=self.cancel_event,
                     )
-                    settings_data = self.staged.get("data", {}).get(
+                    settings = self.staged.get("data", {}).get(
                         "lfp_filter_settings",
-                        {},
+                        LfpFilterSettings(),
                     )
-                    if settings_data.get("show_filtered", False):
-                        settings = LfpFilterSettings(
-                            show_filtered=True,
-                            bandpass_enabled=bool(
-                                settings_data.get("bandpass_enabled", False)
-                            ),
-                            bandpass_low_hz=float(
-                                settings_data.get("bandpass_low_hz", 1.0)
-                            ),
-                            bandpass_high_hz=float(
-                                settings_data.get("bandpass_high_hz", 100.0)
-                            ),
-                            line_noise_hz=settings_data.get(
-                                "line_noise_hz",
-                                60.0,
-                            ),
-                            notch_quality=float(
-                                settings_data.get("notch_quality", 30.0)
-                            ),
-                            line_noise_method=settings_data.get(
-                                "line_noise_method",
-                                "notch"
-                                if (
-                                    settings_data.get("line_noise_hz") is not None
-                                    or settings_data.get(
-                                        "line_noise_frequencies_hz"
-                                    )
-                                )
-                                else "none",
-                            ),
-                            regression_window_seconds=float(
-                                settings_data.get(
-                                    "regression_window_seconds", 4.0
-                                )
-                            ),
-                            regression_overlap=float(
-                                settings_data.get("regression_overlap", 0.5)
-                            ),
-                            regression_harmonics=int(
-                                settings_data.get("regression_harmonics", 1)
-                            ),
-                            regression_all_harmonics=bool(
-                                settings_data.get(
-                                    "regression_all_harmonics",
-                                    int(
-                                        settings_data.get(
-                                            "regression_harmonics", 1
-                                        )
-                                    )
-                                    > 1,
-                                )
-                            ),
-                            line_noise_frequencies_hz=parse_line_noise_frequencies(
-                                settings_data.get(
-                                    "line_noise_frequencies_hz",
-                                    settings_data.get("line_noise_hz"),
-                                )
-                            ),
-                        )
+                    if settings.show_filtered:
                         dataset.source.coarse(
                             channel,
                             step,

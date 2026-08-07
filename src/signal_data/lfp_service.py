@@ -1,6 +1,3 @@
-from .lfp_processing import LfpFilterSettings, parse_line_noise_frequencies
-
-
 class LfpAnalysisService:
     """Provide LFP data to analysis features without exposing the LFP widget."""
 
@@ -16,18 +13,7 @@ class LfpAnalysisService:
         return [] if dataset is None else dataset.channels
 
     def filter_settings(self):
-        settings = dict(self.data_state.lfp_filter_settings)
-        settings["line_noise_frequencies_hz"] = parse_line_noise_frequencies(
-            settings.get(
-                "line_noise_frequencies_hz",
-                settings.get("line_noise_hz"),
-            )
-        )
-        settings.setdefault(
-            "regression_all_harmonics",
-            int(settings.get("regression_harmonics", 1)) > 1,
-        )
-        return LfpFilterSettings(**settings)
+        return self.data_state.lfp_filter_settings
 
     def dataset(self):
         dataset = self.data_state.lfp_dataset

@@ -6,6 +6,7 @@ from PySide6.QtCore import QThread, Signal
 from ..led_detection import LedBrightnessPoint
 from ..markers import Marker, marker_from_dict
 from ..project_archive import load_project_archive
+from ..project_format import deserialize_lfp_filter_settings
 
 
 def prepare_project_objects(archive_data):
@@ -14,6 +15,11 @@ def prepare_project_objects(archive_data):
         return archive_data
 
     state = archive_data["state"]
+    data = state.get("data", {})
+    if "lfp_filter_settings" in data:
+        data["lfp_filter_settings"] = deserialize_lfp_filter_settings(
+            data["lfp_filter_settings"]
+        )
     state["markers"] = [
         item if isinstance(item, Marker) else marker_from_dict(item)
         for item in state.get("markers", [])

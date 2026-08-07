@@ -8,6 +8,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 from src.app_state import AppState
 from src.data_import.project_load_worker import prepare_project_objects
+from src.lfp_settings import LfpFilterSettings
 from src.led_detection import LedBrightnessPoint
 from src.markers import (
     Marker,
@@ -20,6 +21,8 @@ from src.markers import (
 from src.project_archive import load_project_archive
 from src.project_format import PROJECT_FORMAT, PROJECT_VERSION
 from src.project_format import (
+    deserialize_lfp_filter_settings,
+    serialize_lfp_filter_settings,
     validate_manifest,
     validate_project_json_sizes,
     validate_state,
@@ -173,6 +176,101 @@ class AnalysisSettingsTests(unittest.TestCase):
 
 
 class ProjectArchiveTests(unittest.TestCase):
+    def test_default_lfp_filter_settings_are_json_round_trip_safe(self):
+        settings = LfpFilterSettings()
+
+        payload = serialize_lfp_filter_settings(settings)
+
+        validated = validate_state({"data": {"lfp_filter_settings": payload}})
+
+        self.assertIs(validated["data"]["lfp_filter_settings"], payload)
+        self.assertEqual(deserialize_lfp_filter_settings(payload), settings)
+
+    def test_lfp_filter_settings_json_round_trip(self):
+        settings = LfpFilterSettings(
+            show_filtered=True,
+            bandpass_enabled=True,
+            bandpass_low_hz=5.0,
+            bandpass_high_hz=80.0,
+            line_noise_hz=50.0,
+            line_noise_frequencies_hz=(50.0, 100.0),
+            line_noise_method="regression",
+            regression_all_harmonics=True,
+        )
+
+        payload = serialize_lfp_filter_settings(settings)
+        encoded = json.dumps(payload)
+        restored = deserialize_lfp_filter_settings(json.loads(encoded))
+
+        self.assertIsInstance(payload, dict)
+        self.assertEqual(payload["line_noise_frequencies_hz"], [50.0, 100.0])
+        self.assertEqual(restored, settings)
+
+    def test_project_archive_round_trip_prepares_lfp_settings_object(self):
+        settings = LfpFilterSettings(
+            show_filtered=True,
+            line_noise_method="regression",
+            line_noise_hz=60.0,
+            line_noise_frequencies_hz=(60.0, 120.0),
+            regression_all_harmonics=True,
+        )
+        manifest = {
+            "format": PROJECT_FORMAT,
+            "version": PROJECT_VERSION,
+            "sources": {},
+        }
+        state = {
+            "data": {
+                "lfp_filter_settings": serialize_lfp_filter_settings(settings)
+            }
+        }
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "analysis.pigproj"
+            with ZipFile(path, "w", compression=ZIP_DEFLATED) as archive:
+                archive.writestr("manifest.json", json.dumps(manifest))
+                archive.writestr("state.json", json.dumps(state))
+
+            loaded = prepare_project_objects(load_project_archive(path))
+
+        self.assertEqual(
+            loaded["state"]["data"]["lfp_filter_settings"],
+            settings,
+        )
+
+    def test_legacy_project_lfp_dictionary_and_scalar_are_migrated(self):
+        legacy = {
+            "data": {
+                "line_noise_hz": 50.0,
+                "lfp_filter_settings": {
+                    "show_filtered": True,
+                    "line_noise_method": "regression",
+                    "regression_harmonics": 2,
+                },
+            }
+        }
+        manifest = {
+            "format": PROJECT_FORMAT,
+            "version": PROJECT_VERSION,
+            "sources": {},
+        }
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "legacy.pigproj"
+            with ZipFile(path, "w", compression=ZIP_DEFLATED) as archive:
+                archive.writestr("manifest.json", json.dumps(manifest))
+                archive.writestr("state.json", json.dumps(legacy))
+
+            loaded = prepare_project_objects(load_project_archive(path))
+
+        migrated_data = loaded["state"]["data"]
+        settings = migrated_data["lfp_filter_settings"]
+
+        self.assertNotIn("line_noise_hz", migrated_data)
+        self.assertEqual(settings.line_noise_hz, 50.0)
+        self.assertEqual(settings.line_noise_frequencies_hz, (50.0,))
+        self.assertTrue(settings.regression_all_harmonics)
+
     def test_project_archive_is_read_and_validated_without_qt(self):
         manifest = {
             "format": PROJECT_FORMAT,

@@ -2,18 +2,30 @@ import unittest
 from unittest.mock import Mock
 
 from src.app_state import DataState
-from src.signal_data import LfpAnalysisService
+from src.signal_data import LfpAnalysisService, LfpFilterSettings
 
 
 class LfpDataStateTests(unittest.TestCase):
-    def test_line_noise_defaults_to_60_hz(self):
+    def test_filter_defaults_come_from_lfp_filter_settings(self):
         state = DataState()
 
-        self.assertEqual(state.line_noise_hz, 60.0)
-        self.assertEqual(
-            state.lfp_filter_settings["line_noise_frequencies_hz"],
-            [60.0],
+        self.assertIsInstance(state.lfp_filter_settings, LfpFilterSettings)
+        self.assertEqual(state.lfp_filter_settings, LfpFilterSettings())
+        self.assertIsNone(state.lfp_filter_settings.line_noise_hz)
+        self.assertEqual(state.lfp_filter_settings.line_noise_frequencies_hz, ())
+
+    def test_filter_settings_are_stored_as_one_shared_object(self):
+        settings = LfpFilterSettings(
+            show_filtered=True,
+            bandpass_enabled=True,
+            bandpass_low_hz=5.0,
+            bandpass_high_hz=80.0,
         )
+        state = DataState()
+        state.lfp_filter_settings = settings
+
+        self.assertIs(state.lfp_filter_settings, settings)
+        self.assertIs(LfpAnalysisService(state).filter_settings(), settings)
 
     def test_lfp_info_is_derived_from_dataset(self):
         info = {"path": "current.csv", "channels": [2, 5]}

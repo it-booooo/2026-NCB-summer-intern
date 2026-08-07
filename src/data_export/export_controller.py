@@ -35,6 +35,7 @@ from ..project_format import (
     PROJECT_FORMAT,
     PROJECT_VERSION,
     file_fingerprint,
+    serialize_lfp_filter_settings,
     validate_project_json_sizes,
 )
 from .file_writers import (
@@ -184,10 +185,11 @@ class ExportController:
                 "data": {
                     "lfp_step": self.data_state.lfp_step,
                     "three_axis_step": self.data_state.three_axis_step,
-                    "line_noise_hz": self.data_state.line_noise_hz,
                     "timeline_xlim": self.data_state.timeline_xlim,
                     "selected_lfp_channel": self.data_state.selected_lfp_channel,
-                    "lfp_filter_settings": self.data_state.lfp_filter_settings,
+                    "lfp_filter_settings": serialize_lfp_filter_settings(
+                        self.data_state.lfp_filter_settings
+                    ),
                     "follow_video_playback": self.data_state.follow_video_playback,
                 },
                 "analysis": {

@@ -63,6 +63,7 @@ class FilteredAnalysisCacheTests(unittest.TestCase):
 
     def test_identical_filtered_requests_reuse_one_persistent_file(self):
         settings = self.settings()
+        equivalent = self.settings()
         with patch.object(
             self.dataset,
             "write_analysis_values",
@@ -76,13 +77,15 @@ class FilteredAnalysisCacheTests(unittest.TestCase):
                 self.assertTrue(first.persistent)
                 self.assertFalse(first.cache_hit)
             with self.dataset.analysis_values_file(
-                2, 2.0, 8.0, settings
+                2, 2.0, 8.0, equivalent
             ) as second:
                 self.assertEqual(Path(second.path), first_path)
                 self.assertTrue(second.persistent)
                 self.assertTrue(second.cache_hit)
 
         self.assertEqual(writer.call_count, 1)
+        self.assertIsNot(settings, equivalent)
+        self.assertEqual(settings, equivalent)
         self.assertTrue(first_path.is_file())
         self.assertEqual(len(self.cache_directories()), 1)
 

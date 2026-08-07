@@ -315,89 +315,47 @@ class WavePanel(LfpAnalysisMixin, QWidget):
     def apply_project_state(self):
         """Apply the shared project state to the waveform controls."""
         settings = self.data_state.lfp_filter_settings
-        show_filtered = bool(settings.get("show_filtered", False))
+        show_filtered = bool(settings.show_filtered)
         self.signal_view_selector.setCurrentIndex(1 if show_filtered else 0)
         self.bandpass_checkbox.setChecked(
-            bool(settings.get("bandpass_enabled", False))
+            bool(settings.bandpass_enabled)
         )
         self.bandpass_low_spin.setValue(
-            float(settings.get("bandpass_low_hz", 1.0))
+            float(settings.bandpass_low_hz)
         )
         self.bandpass_high_spin.setValue(
-            float(settings.get("bandpass_high_hz", 100.0))
+            float(settings.bandpass_high_hz)
         )
-        method = settings.get(
-            "line_noise_method",
-            "notch"
-            if (
-                settings.get("line_noise_hz") is not None
-                or settings.get("line_noise_frequencies_hz")
-            )
-            else "none",
-        )
+        method = settings.line_noise_method
         method_index = self.filter_method_selector.findData(method)
         self.filter_method_selector.setCurrentIndex(max(method_index, 0))
-        frequencies = settings.get("line_noise_frequencies_hz")
-        if frequencies is None:
-            line_frequency = settings.get("line_noise_hz")
-            frequencies = (
-                [self.data_state.line_noise_hz]
-                if line_frequency is None
-                else [line_frequency]
+        frequencies = signal_func.line_noise_frequencies(settings)
+        if frequencies or settings != signal_func.LfpFilterSettings():
+            self.line_frequencies_edit.setText(
+                self.format_line_noise_frequencies(frequencies)
             )
-        self.line_frequencies_edit.setText(
-            self.format_line_noise_frequencies(frequencies)
-        )
-        self.notch_quality_spin.setValue(float(settings.get("notch_quality", 30.0)))
+        self.notch_quality_spin.setValue(float(settings.notch_quality))
         self.regression_window_spin.setValue(
-            float(settings.get("regression_window_seconds", 4.0))
+            float(settings.regression_window_seconds)
         )
         self.regression_overlap_spin.setValue(
-            float(settings.get("regression_overlap", 0.5)) * 100.0
+            float(settings.regression_overlap) * 100.0
         )
         self.regression_all_harmonics_checkbox.setChecked(
             bool(
-                settings.get(
-                    "regression_all_harmonics",
-                    int(settings.get("regression_harmonics", 1)) > 1,
-                )
+                settings.regression_all_harmonics
+                or settings.regression_harmonics > 1
             )
         )
         self.follow_video_checkbox.setChecked(self.data_state.follow_video_playback)
         self._applied_lfp_filter_settings = self.pending_lfp_filter_settings()
+        self.data_state.lfp_filter_settings = self._applied_lfp_filter_settings
         self.update_line_noise_control_states()
         self.apply_filter_button.setEnabled(False)
 
     def store_lfp_filter_settings(self, settings):
         """Keep the applied filter configuration in the project state."""
-        frequencies = signal_func.line_noise_frequencies(settings)
-        if frequencies:
-            self.data_state.line_noise_hz = float(frequencies[0])
-        self.data_state.lfp_filter_settings = {
-            "show_filtered": bool(settings.show_filtered),
-            "bandpass_enabled": bool(settings.bandpass_enabled),
-            "bandpass_low_hz": float(settings.bandpass_low_hz),
-            "bandpass_high_hz": float(settings.bandpass_high_hz),
-            "line_noise_hz": (
-                None
-                if settings.line_noise_hz is None
-                else float(settings.line_noise_hz)
-            ),
-            "line_noise_frequencies_hz": [
-                float(frequency) for frequency in frequencies
-            ],
-            "notch_quality": float(settings.notch_quality),
-            "line_noise_method": settings.line_noise_method,
-            "regression_window_seconds": float(
-                settings.regression_window_seconds
-            ),
-            "regression_overlap": float(settings.regression_overlap),
-            "regression_harmonics": 1,
-            "regression_all_harmonics": bool(
-                settings.regression_all_harmonics
-                or settings.regression_harmonics > 1
-            ),
-        }
+        self.data_state.lfp_filter_settings = settings
         self.project_changed.emit()
 
     def set_follow_video_playback(self, enabled):
@@ -1098,19 +1056,9 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         """Switch lfp signal view."""
         current = self._applied_lfp_filter_settings
         show_filtered = bool(self.signal_view_selector.currentData())
-        self._applied_lfp_filter_settings = signal_func.LfpFilterSettings(
+        self._applied_lfp_filter_settings = replace(
+            current,
             show_filtered=show_filtered,
-            bandpass_enabled=current.bandpass_enabled,
-            bandpass_low_hz=current.bandpass_low_hz,
-            bandpass_high_hz=current.bandpass_high_hz,
-            line_noise_hz=current.line_noise_hz,
-            notch_quality=current.notch_quality,
-            line_noise_method=current.line_noise_method,
-            regression_window_seconds=current.regression_window_seconds,
-            regression_overlap=current.regression_overlap,
-            regression_harmonics=current.regression_harmonics,
-            regression_all_harmonics=current.regression_all_harmonics,
-            line_noise_frequencies_hz=current.line_noise_frequencies_hz,
         )
         self.store_lfp_filter_settings(self._applied_lfp_filter_settings)
         self.mark_lfp_filter_settings_pending()
@@ -1131,9 +1079,7 @@ class WavePanel(LfpAnalysisMixin, QWidget):
             self._cancel_lfp_coarse_workers()
             self._set_lfp_filter_status(False)
         else:
-            bounds = self.timeline_limits()
-            self._lfp_filter_completed_ranges = [] if bounds is None else [bounds]
-            self._set_lfp_filter_status(True)
+            self._mark_lfp_filter_complete()
         self.lfp_fig.set_lfp_signal_view(show_filtered)
         self.update_current_time_marker()
         self.update_lfp_peak_artist()
@@ -1389,9 +1335,7 @@ class WavePanel(LfpAnalysisMixin, QWidget):
             self._start_filtered_coarse(settings, self.plot_lfp, channel)
             return
         if settings.show_filtered:
-            bounds = self.timeline_limits()
-            self._lfp_filter_completed_ranges = [] if bounds is None else [bounds]
-            self._set_lfp_filter_status(True)
+            self._mark_lfp_filter_complete(channel)
         created_figure = False
         try:
             if self.lfp_fig is None:
@@ -1585,10 +1529,7 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         if request_id != self._lfp_coarse_request_id:
             return
         if not self._lfp_coarse_queue:
-            bounds = self.timeline_limits()
-            if bounds is not None:
-                self._lfp_filter_completed_ranges = [bounds]
-                self._set_lfp_filter_status(True)
+            self._mark_lfp_filter_complete(self._lfp_coarse_channel)
             self._lfp_coarse_key = None
             self.update_current_time_marker()
             self.update_lfp_peak_artist()
@@ -1658,6 +1599,19 @@ class WavePanel(LfpAnalysisMixin, QWidget):
                 self._lfp_filter_status_visible,
                 self._lfp_filter_completed_ranges,
             )
+
+    def _mark_lfp_filter_complete(self, channel=None):
+        """Mark the full LFP record green even before the timeline exists."""
+        dataset = self.data_state.lfp_dataset
+        if channel is None:
+            channel = self.selected_channel(self.lfp_channel_selector)
+        bounds = (
+            dataset.record_bounds_s(channel)
+            if dataset is not None and channel is not None
+            else None
+        )
+        self._lfp_filter_completed_ranges = [] if bounds is None else [bounds]
+        self._set_lfp_filter_status(True)
 
     def _update_lfp_coarse_range(self, request_id, payload):
         if request_id != self._lfp_coarse_request_id:

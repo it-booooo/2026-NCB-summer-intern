@@ -4,6 +4,7 @@ from zipfile import ZipFile
 from .project_format import (
     MAX_MANIFEST_BYTES,
     MAX_STATE_BYTES,
+    migrate_project_state,
     validate_manifest,
     validate_state,
 )
@@ -25,7 +26,9 @@ def load_project_archive(path):
             "manifest.json",
             MAX_MANIFEST_BYTES,
         )
-        state = read_project_json(archive, "state.json", MAX_STATE_BYTES)
+        state = migrate_project_state(
+            read_project_json(archive, "state.json", MAX_STATE_BYTES)
+        )
 
     return {
         "sources": validate_manifest(manifest),

@@ -1,28 +1,14 @@
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
 
 import numpy as np
 from scipy import signal
 
+from ..lfp_settings import LfpFilterSettings
+
 FILTER_PADDING_CYCLES = 3.0
 MAX_LINE_NOISE_FREQUENCIES = 64
 MAX_REGRESSION_FREQUENCIES = 256
-
-
-@dataclass(frozen=True)
-class LfpFilterSettings:
-    show_filtered: bool = False
-    bandpass_enabled: bool = False
-    bandpass_low_hz: float = 1.0
-    bandpass_high_hz: float = 100.0
-    line_noise_hz: float | None = None
-    notch_quality: float = 30.0
-    line_noise_method: str = "notch"
-    regression_window_seconds: float = 4.0
-    regression_overlap: float = 0.5
-    regression_harmonics: int = 1
-    regression_all_harmonics: bool = False
-    line_noise_frequencies_hz: tuple[float, ...] = ()
 
 
 @dataclass(frozen=True)

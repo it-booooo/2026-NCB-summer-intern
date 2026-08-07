@@ -1,5 +1,6 @@
 """Signal CSV parsing, reading, and LFP processing."""
 
+from ..lfp_settings import LfpFilterSettings
 from .csv_loader import (
     parse_signal_csv_info,
     parse_signal_csv_metadata,
@@ -29,7 +30,6 @@ from .gpu_backend import (
     select_peak_statistics_backend,
 )
 from .lfp_processing import (
-    LfpFilterSettings,
     LfpSegment,
     compute_power_spectrum,
     compute_spectrogram,
@@ -51,6 +51,8 @@ from .source import (
     signal_data_source,
 )
 from .signal_dataset import SignalDataset
+
+parse_lfp_csv_info = parse_signal_csv_info
 
 __all__ = [
     "CacheBuildCancelled",
@@ -85,6 +87,7 @@ __all__ = [
     "peak_candidate_masks_cpu",
     "peak_candidate_masks_opencl",
     "parse_line_noise_frequencies",
+    "parse_lfp_csv_info",
     "read_csv_preview",
     "regression_opencl_minimum_samples",
     "remove_periodic_noise",

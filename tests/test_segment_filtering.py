@@ -101,16 +101,19 @@ class SegmentFilteringTests(unittest.TestCase):
 
     def test_filter_settings_are_part_of_cache_key(self):
         first = self.settings(5.0)
+        equivalent = self.settings(5.0)
         second = self.settings(10.0)
         with patch(
             "src.signal_data.lfp_dataset.prepare_lfp_signal",
             wraps=prepare_lfp_signal,
         ) as filtering:
             cached = self.dataset.segment(2, 2.0, 4.0, first)
-            repeated = self.dataset.segment(2, 2.0, 4.0, first)
+            repeated = self.dataset.segment(2, 2.0, 4.0, equivalent)
             changed = self.dataset.segment(2, 2.0, 4.0, second)
 
         self.assertIs(cached, repeated)
+        self.assertIsNot(first, equivalent)
+        self.assertEqual(first, equivalent)
         self.assertIsNot(cached, changed)
         self.assertEqual(filtering.call_count, 2)
 

@@ -3,8 +3,10 @@
 import hashlib
 import math
 import string
+from dataclasses import asdict
 from pathlib import Path
 
+from .lfp_settings import LfpFilterSettings
 from .markers import VideoPosition
 
 PROJECT_FORMAT = "pig-analysis-project"
@@ -15,6 +17,121 @@ MAX_STATE_BYTES = 256 * 1024 * 1024
 MAX_EVENTS = 1_000_000
 MAX_TEXT_LENGTH = 100_000
 FINGERPRINT_CHUNK_BYTES = 1024 * 1024
+_MISSING = object()
+
+
+def serialize_lfp_filter_settings(settings: LfpFilterSettings) -> dict:
+    """Convert runtime LFP settings to an explicit JSON-compatible object."""
+    if not isinstance(settings, LfpFilterSettings):
+        raise TypeError("LFP filter settings must be an LfpFilterSettings object.")
+    payload = asdict(settings)
+    payload["line_noise_frequencies_hz"] = [
+        float(frequency) for frequency in settings.line_noise_frequencies_hz
+    ]
+    return payload
+
+
+def migrate_lfp_filter_settings_json(
+    payload,
+    *,
+    legacy_line_noise_hz=_MISSING,
+) -> dict:
+    """Normalize current and legacy project dictionaries at the JSON boundary."""
+    if isinstance(payload, LfpFilterSettings):
+        return serialize_lfp_filter_settings(payload)
+    if payload is None:
+        payload = {}
+    if not isinstance(payload, dict):
+        raise ValueError("Project LFP filter settings are invalid.")
+
+    migrated = serialize_lfp_filter_settings(LfpFilterSettings())
+    migrated.update(payload)
+
+    frequencies = payload.get("line_noise_frequencies_hz")
+    if frequencies is None:
+        scalar_frequency = payload.get("line_noise_hz", legacy_line_noise_hz)
+        if scalar_frequency is _MISSING:
+            frequencies = migrated["line_noise_frequencies_hz"]
+        else:
+            frequencies = [] if scalar_frequency is None else [scalar_frequency]
+        migrated["line_noise_frequencies_hz"] = frequencies
+
+    if "line_noise_hz" not in payload:
+        if frequencies:
+            migrated["line_noise_hz"] = frequencies[0]
+        elif legacy_line_noise_hz is not _MISSING:
+            migrated["line_noise_hz"] = legacy_line_noise_hz
+        else:
+            migrated["line_noise_hz"] = None
+
+    if "line_noise_method" not in payload:
+        migrated["line_noise_method"] = (
+            "notch"
+            if migrated["line_noise_hz"] is not None or frequencies
+            else "none"
+        )
+
+    if "regression_all_harmonics" not in payload:
+        harmonics = migrated["regression_harmonics"]
+        migrated["regression_all_harmonics"] = (
+            isinstance(harmonics, int)
+            and not isinstance(harmonics, bool)
+            and harmonics > 1
+        )
+    return migrated
+
+
+def deserialize_lfp_filter_settings(
+    payload,
+    *,
+    legacy_line_noise_hz=_MISSING,
+) -> LfpFilterSettings:
+    """Convert project JSON, including legacy dictionaries, to runtime settings."""
+    if isinstance(payload, LfpFilterSettings):
+        return payload
+    migrated = migrate_lfp_filter_settings_json(
+        payload,
+        legacy_line_noise_hz=legacy_line_noise_hz,
+    )
+    line_noise_hz = migrated["line_noise_hz"]
+    return LfpFilterSettings(
+        show_filtered=bool(migrated["show_filtered"]),
+        bandpass_enabled=bool(migrated["bandpass_enabled"]),
+        bandpass_low_hz=float(migrated["bandpass_low_hz"]),
+        bandpass_high_hz=float(migrated["bandpass_high_hz"]),
+        line_noise_hz=(
+            None if line_noise_hz is None else float(line_noise_hz)
+        ),
+        notch_quality=float(migrated["notch_quality"]),
+        line_noise_method=str(migrated["line_noise_method"]),
+        regression_window_seconds=float(migrated["regression_window_seconds"]),
+        regression_overlap=float(migrated["regression_overlap"]),
+        regression_harmonics=int(migrated["regression_harmonics"]),
+        regression_all_harmonics=bool(migrated["regression_all_harmonics"]),
+        line_noise_frequencies_hz=tuple(
+            float(frequency)
+            for frequency in migrated["line_noise_frequencies_hz"]
+        ),
+    )
+
+
+def migrate_project_state(state):
+    """Move legacy persisted LFP fields into the canonical settings dictionary."""
+    if not isinstance(state, dict):
+        raise ValueError("Project state must be a JSON object.")
+    data = state.get("data")
+    if not isinstance(data, dict):
+        return state
+
+    migrated_state = dict(state)
+    migrated_data = dict(data)
+    legacy_line_noise_hz = migrated_data.pop("line_noise_hz", _MISSING)
+    migrated_data["lfp_filter_settings"] = migrate_lfp_filter_settings_json(
+        migrated_data.get("lfp_filter_settings"),
+        legacy_line_noise_hz=legacy_line_noise_hz,
+    )
+    migrated_state["data"] = migrated_data
+    return migrated_state
 
 
 def validate_project_json_sizes(manifest_bytes, state_bytes):
@@ -111,9 +228,6 @@ def validate_state(state):
             not isinstance(value, int) or isinstance(value, bool) or value < 0
         ):
             raise ValueError(f"Project {name} is invalid.")
-    line_noise = data.get("line_noise_hz", 60.0)
-    if not _finite_number(line_noise) or float(line_noise) <= 0:
-        raise ValueError("Project line noise frequency is invalid.")
     timeline = data.get("timeline_xlim")
     if timeline is not None and (
         not isinstance(timeline, (list, tuple))
@@ -122,24 +236,15 @@ def validate_state(state):
         or float(timeline[0]) >= float(timeline[1])
     ):
         raise ValueError("Project timeline range is invalid.")
-    lfp_filter_settings = data.get("lfp_filter_settings", {})
-    if not isinstance(lfp_filter_settings, dict):
-        raise ValueError("Project LFP filter settings are invalid.")
-    line_noise_method = lfp_filter_settings.get(
-        "line_noise_method",
-        "notch"
-        if (
-            lfp_filter_settings.get("line_noise_hz") is not None
-            or lfp_filter_settings.get("line_noise_frequencies_hz")
-        )
-        else "none",
+    lfp_filter_settings = migrate_lfp_filter_settings_json(
+        data.get("lfp_filter_settings"),
+        legacy_line_noise_hz=data.get("line_noise_hz", _MISSING),
     )
+    line_noise_method = lfp_filter_settings["line_noise_method"]
     if line_noise_method not in {"none", "notch", "regression"}:
         raise ValueError("Project LFP line-noise method is invalid.")
-    filter_frequencies = lfp_filter_settings.get("line_noise_frequencies_hz")
-    if filter_frequencies is None:
-        legacy_frequency = lfp_filter_settings.get("line_noise_hz")
-        filter_frequencies = [] if legacy_frequency is None else [legacy_frequency]
+    filter_frequencies = lfp_filter_settings["line_noise_frequencies_hz"]
+    show_filtered = bool(lfp_filter_settings["show_filtered"])
     if (
         not isinstance(filter_frequencies, (list, tuple))
         or len(filter_frequencies) > 64
@@ -147,33 +252,39 @@ def validate_state(state):
             not _finite_number(frequency) or float(frequency) <= 0
             for frequency in filter_frequencies
         )
-        or (line_noise_method != "none" and not filter_frequencies)
+        or (
+            show_filtered
+            and line_noise_method != "none"
+            and not filter_frequencies
+        )
     ):
         raise ValueError("Project LFP line-noise frequencies are invalid.")
-    notch_quality = lfp_filter_settings.get("notch_quality", 30.0)
+    line_noise = lfp_filter_settings["line_noise_hz"]
+    if line_noise is not None and (
+        not _finite_number(line_noise) or float(line_noise) <= 0
+    ):
+        raise ValueError("Project line noise frequency is invalid.")
+    notch_quality = lfp_filter_settings["notch_quality"]
     if not _finite_number(notch_quality) or float(notch_quality) <= 0:
         raise ValueError("Project LFP notch quality is invalid.")
-    regression_window = lfp_filter_settings.get("regression_window_seconds", 4.0)
+    regression_window = lfp_filter_settings["regression_window_seconds"]
     if not _finite_number(regression_window) or float(regression_window) <= 0:
         raise ValueError("Project LFP regression window is invalid.")
-    regression_overlap = lfp_filter_settings.get("regression_overlap", 0.5)
+    regression_overlap = lfp_filter_settings["regression_overlap"]
     if (
         not _finite_number(regression_overlap)
         or float(regression_overlap) < 0
         or float(regression_overlap) >= 1
     ):
         raise ValueError("Project LFP regression overlap is invalid.")
-    regression_harmonics = lfp_filter_settings.get("regression_harmonics", 1)
+    regression_harmonics = lfp_filter_settings["regression_harmonics"]
     if (
         not isinstance(regression_harmonics, int)
         or isinstance(regression_harmonics, bool)
         or regression_harmonics < 1
     ):
         raise ValueError("Project LFP regression harmonics are invalid.")
-    regression_all_harmonics = lfp_filter_settings.get(
-        "regression_all_harmonics",
-        regression_harmonics > 1,
-    )
+    regression_all_harmonics = lfp_filter_settings["regression_all_harmonics"]
     if not isinstance(regression_all_harmonics, bool):
         raise ValueError("Project LFP all-harmonics setting is invalid.")
 

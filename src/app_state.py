@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from .lfp_settings import LfpFilterSettings
 from .markers.models import Marker
 
 if TYPE_CHECKING:
@@ -50,24 +51,10 @@ class DataState:
     three_axis_dataset: SignalDataset | None = None
     lfp_step: int | None = None
     three_axis_step: int | None = None
-    line_noise_hz: float = 60.0
     timeline_xlim: tuple[float, float] | None = None
     selected_lfp_channel: int | None = None
-    lfp_filter_settings: dict[str, Any] = field(
-        default_factory=lambda: {
-            "show_filtered": False,
-            "bandpass_enabled": False,
-            "bandpass_low_hz": 1.0,
-            "bandpass_high_hz": 100.0,
-            "line_noise_hz": 60.0,
-            "line_noise_frequencies_hz": [60.0],
-            "notch_quality": 30.0,
-            "line_noise_method": "notch",
-            "regression_window_seconds": 4.0,
-            "regression_overlap": 0.5,
-            "regression_harmonics": 1,
-            "regression_all_harmonics": False,
-        }
+    lfp_filter_settings: LfpFilterSettings = field(
+        default_factory=LfpFilterSettings
     )
     follow_video_playback: bool = True
 

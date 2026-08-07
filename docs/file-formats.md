@@ -147,10 +147,9 @@ record_time_sec = video_time_sec - time_offset_sec
 | `three_axis_info` | `dict \| None` | 三軸檔案路徑及解析後 metadata | 來源路徑存於 manifest，其餘重建 |
 | `lfp_step` | `int \| None` | LFP 顯示抽樣／繪圖步長 | 是 |
 | `three_axis_step` | `int \| None` | 三軸顯示抽樣／繪圖步長 | 是 |
-| `line_noise_hz` | `float = 60.0` | UI 共用的電源線頻率 | 是 |
 | `timeline_xlim` | `tuple[float, float] \| None` | 共用時間軸左右範圍，秒 | 是 |
 | `selected_lfp_channel` | `int \| None` | 目前選取的實際通道 ID | 是 |
-| `lfp_filter_settings` | `dict` | LFP 顯示／分析濾波設定 | 是 |
+| `lfp_filter_settings` | `LfpFilterSettings` | LFP 顯示／分析濾波設定 | 是 |
 | `follow_video_playback` | `bool = True` | 波形是否跟隨影片播放位置 | 是 |
 
 ### `lfp_info`／`three_axis_info`
@@ -194,8 +193,14 @@ record_time_sec = video_time_sec - time_offset_sec
     "bandpass_enabled": False,
     "bandpass_low_hz": 1.0,
     "bandpass_high_hz": 100.0,
-    "line_noise_hz": 60.0,
+    "line_noise_hz": None,
     "notch_quality": 30.0,
+    "line_noise_method": "notch",
+    "regression_window_seconds": 4.0,
+    "regression_overlap": 0.5,
+    "regression_harmonics": 1,
+    "regression_all_harmonics": False,
+    "line_noise_frequencies_hz": (),
 }
 ```
 
@@ -649,7 +654,6 @@ PROJECT_VERSION = 3
     "data": {
         "lfp_step": int | None,
         "three_axis_step": int | None,
-        "line_noise_hz": float,
         "timeline_xlim": [float, float] | None,
         "selected_lfp_channel": int | None,
         "lfp_filter_settings": dict,
