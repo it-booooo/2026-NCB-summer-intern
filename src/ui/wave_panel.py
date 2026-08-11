@@ -1494,93 +1494,59 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self._lfp_coarse_request_id = request_id
         self._lfp_coarse_key = key
 
-        bounds = dataset.record_bounds_s(channel)
-        segment_seconds = 10.0
-        if settings.line_noise_method == "regression":
-            sample_rate_hz = float(dataset.sample_rate_hz(channel))
-            segment_seconds = max(
-                segment_seconds,
-                signal_func.regression_opencl_minimum_samples() / sample_rate_hz,
-            )
-        ranges = []
-        left = float(bounds[0])
-        while left < bounds[1]:
-            right = min(left + segment_seconds, float(bounds[1]))
-            ranges.append((left, right))
-            left = right
-        center = self.sync_state.current_record_time_sec
-        if center is None or not np.isfinite(center):
-            center = (bounds[0] + bounds[1]) / 2.0
-        ranges.sort(key=lambda item: abs((item[0] + item[1]) / 2.0 - center))
-
-        self._lfp_coarse_queue = ranges
-        self._lfp_coarse_total_segments = len(ranges)
-        self._lfp_coarse_finished_segments = 0
         self._lfp_coarse_channel = channel
         self._lfp_coarse_step_value = step
         self._lfp_coarse_settings = settings
         self._lfp_filter_completed_ranges = []
         self._set_lfp_filter_status(True)
         if self.lfp_fig is not None:
+            self.lfp_fig.set_lfp_filter_settings(settings)
             self.lfp_fig.begin_lfp_partial_filtered()
-        self._start_next_filtered_segment(request_id)
-
-    def _start_next_filtered_segment(self, request_id):
-        if request_id != self._lfp_coarse_request_id:
-            return
-        if not self._lfp_coarse_queue:
-            if (
-                self._lfp_coarse_finished_segments
-                != self._lfp_coarse_total_segments
-            ):
-                return
-            self._mark_lfp_filter_complete(self._lfp_coarse_channel)
-            self._lfp_coarse_key = None
-            self.update_current_time_marker()
-            self.update_lfp_peak_artist()
-            return
-
-        start_s, end_s = self._lfp_coarse_queue.pop(0)
-        worker_id = uuid.uuid4().hex
-        worker = signal_func.LfpDisplaySegmentWorker(
-            worker_id,
-            self.ensure_lfp_dataset(),
-            self._lfp_coarse_channel,
-            start_s,
-            end_s,
-            self._lfp_coarse_step_value,
-            self._lfp_coarse_settings,
+        worker = signal_func.LfpCoarseWorker(
+            request_id,
+            dataset,
+            channel,
+            step,
+            settings,
+            current_time_s=self.sync_state.current_record_time_sec,
         )
-        self._lfp_coarse_workers[worker_id] = worker
+        self._lfp_coarse_workers[request_id] = worker
+        worker.range_completed.connect(self._update_lfp_coarse_range)
         worker.completed.connect(
-            lambda _worker_id, identity, result: self._finish_filtered_segment(
-                request_id, identity, result
-            )
+            self._finish_lfp_coarse
         )
-        worker.failed.connect(
-            lambda _worker_id, identity, message: self._fail_lfp_coarse(
-                request_id, identity, message
-            )
-        )
+        worker.failed.connect(self._fail_lfp_coarse)
+        worker.canceled.connect(self._cancelled_lfp_coarse)
         worker.finished.connect(
-            lambda worker_id=worker_id, worker=worker: self._filtered_segment_finished(
-                request_id, worker_id, worker
-            )
+            lambda request_id=request_id: self._discard_lfp_coarse_worker(request_id)
         )
         worker.finished.connect(worker.deleteLater)
         worker.start()
 
-    def _finish_filtered_segment(self, request_id, identity, result):
+    def _finish_lfp_coarse(self, request_id, identity, result):
         if not self._lfp_coarse_result_is_current(request_id, identity):
             return
-        self._lfp_coarse_finished_segments += 1
-        self._update_lfp_coarse_range(request_id, result)
-        QTimer.singleShot(
-            0, lambda: self._start_next_filtered_segment(request_id)
-        )
+        if result.get("settings") != self.current_lfp_filter_settings():
+            self._lfp_coarse_request_id = None
+            self._lfp_coarse_key = None
+            return
+        channel = int(result["channel"])
+        self._lfp_coarse_request_id = None
+        self._lfp_coarse_key = None
+        self._mark_lfp_filter_complete(channel)
+        if self.lfp_fig is not None:
+            self.lfp_fig.set_lfp_filter_settings(result["settings"])
+            self.lfp_fig.set_lfp_signal_view(True)
+        self.update_current_time_marker()
+        self.update_lfp_peak_artist()
 
-    def _filtered_segment_finished(self, request_id, worker_id, worker):
-        self._lfp_coarse_workers.pop(worker_id, None)
+    def _cancelled_lfp_coarse(self, request_id, identity):
+        if self._lfp_coarse_result_is_current(request_id, identity):
+            self._lfp_coarse_request_id = None
+            self._lfp_coarse_key = None
+
+    def _discard_lfp_coarse_worker(self, request_id):
+        self._lfp_coarse_workers.pop(request_id, None)
 
     def _lfp_coarse_result_is_current(self, request_id, identity):
         dataset = self.data_state.lfp_dataset

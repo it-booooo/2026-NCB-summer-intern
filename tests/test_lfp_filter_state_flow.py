@@ -70,39 +70,48 @@ class LfpFilterStateFlowTests(unittest.TestCase):
         self.assertEqual(host._lfp_filter_completed_ranges, [(12.5, 98.0)])
         host._set_lfp_filter_status.assert_called_once_with(True)
 
-    def test_finished_worker_does_not_advance_without_a_successful_result(self):
-        worker = SimpleNamespace(
-            cancel_event=SimpleNamespace(is_set=Mock(return_value=False))
-        )
+    def test_finished_worker_only_removes_its_registry_entry(self):
         host = SimpleNamespace(
-            _lfp_coarse_workers={"worker": worker},
-            _lfp_coarse_request_id="request",
+            _lfp_coarse_workers={"request": object()},
         )
-        host._start_next_filtered_segment = Mock()
 
-        WavePanel._filtered_segment_finished(
-            host, "request", "worker", worker
-        )
-        self.app.processEvents()
+        WavePanel._discard_lfp_coarse_worker(host, "request")
 
         self.assertEqual(host._lfp_coarse_workers, {})
-        host._start_next_filtered_segment.assert_not_called()
 
-    def test_queue_is_only_marked_complete_after_every_result(self):
+    def test_completed_cache_is_not_applied_after_settings_change(self):
+        notch = LfpFilterSettings(
+            show_filtered=True,
+            line_noise_method="notch",
+            line_noise_frequencies_hz=(60.0,),
+        )
+        regression = LfpFilterSettings(
+            show_filtered=True,
+            line_noise_method="regression",
+            line_noise_frequencies_hz=(60.0,),
+        )
         host = SimpleNamespace(
             _lfp_coarse_request_id="request",
-            _lfp_coarse_queue=[],
-            _lfp_coarse_finished_segments=1,
-            _lfp_coarse_total_segments=2,
-            _lfp_coarse_channel=3,
+            _lfp_coarse_key=("source", 3, 1, notch),
+            _lfp_coarse_result_is_current=Mock(return_value=True),
+            current_lfp_filter_settings=Mock(return_value=regression),
             _mark_lfp_filter_complete=Mock(),
             update_current_time_marker=Mock(),
             update_lfp_peak_artist=Mock(),
+            lfp_fig=Mock(),
         )
 
-        WavePanel._start_next_filtered_segment(host, "request")
+        WavePanel._finish_lfp_coarse(
+            host,
+            "request",
+            ("source",),
+            {"channel": 3, "settings": notch},
+        )
 
         host._mark_lfp_filter_complete.assert_not_called()
+        host.lfp_fig.set_lfp_signal_view.assert_not_called()
+        self.assertIsNone(host._lfp_coarse_request_id)
+        self.assertIsNone(host._lfp_coarse_key)
 
 
 if __name__ == "__main__":

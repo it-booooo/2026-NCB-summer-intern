@@ -621,7 +621,7 @@ class LfpDataset(SignalDataset):
         cancel_event,
         progress_callback,
     ) -> AnalysisValuesFile:
-        with self.source.cache_build_lock():
+        with self.source.cache_build_lock(cache_path):
             cached = self._read_filtered_analysis_cache(cache_path, identity)
             if cached is not None:
                 self.source.touch_cache_path(cache_path)

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
 import os
 import shutil
 import tempfile
@@ -20,8 +19,7 @@ import numpy as np
 
 CACHE_FORMAT_VERSION = 3
 OVERVIEW_ALGORITHM_VERSION = 3
-FILTER_COARSE_ALGORITHM_VERSION = 4
-FILTER_DISPLAY_BLOCK_SECONDS = 10.0
+FILTER_COARSE_ALGORITHM_VERSION = 5
 DEFAULT_CHUNK_ROWS = 250_000
 DEFAULT_OVERVIEW_MAX_POINTS = 5_000
 DEFAULT_CACHE_MAX_BYTES = 20 * 1024 * 1024 * 1024
@@ -173,6 +171,8 @@ class SignalDataSource:
             / "signal-cache"
         )
         self._build_lock = threading.RLock()
+        self._cache_build_locks_guard = threading.Lock()
+        self._cache_build_locks: dict[str, threading.RLock] = {}
 
     @property
     def channels(self) -> list[int]:
@@ -603,7 +603,7 @@ class SignalDataSource:
         step = max(int(step), 1)
         identity = self._coarse_identity(step, settings)
         coarse_path = self.cache_root / f"coarse-{self._digest(identity)}"
-        with self._build_lock:
+        with self.cache_build_lock(coarse_path):
             self._check_cancel(cancel_event)
             if not self._valid_coarse(coarse_path, identity):
                 self._build_coarse_directory(
@@ -736,12 +736,11 @@ class SignalDataSource:
                         sample_rate = self._sample_rate(channel)
                         padding = filter_padding_samples(settings, sample_rate)
                         output = np.empty(indices.size, dtype="<f4")
-                        display_points = math.ceil(
-                            sample_rate * FILTER_DISPLAY_BLOCK_SECONDS / step
-                        )
-                        points_per_batch = max(
-                            min(self.chunk_rows // step, display_points), 1
-                        )
+                        # Keep filtering batches large.  The range callback already
+                        # provides incremental display updates; limiting every batch
+                        # to ten seconds made long notch jobs spend most of their
+                        # time repeatedly padding, filtering, copying, and repainting.
+                        points_per_batch = max(self.chunk_rows // step, 1)
                         point_starts = list(
                             range(0, indices.size, points_per_batch)
                         )
@@ -894,10 +893,16 @@ class SignalDataSource:
                     _ACTIVE_CACHE_PATHS.pop(resolved, None)
 
     @contextmanager
-    def cache_build_lock(self):
-        """Serialize cache validation and atomic construction for this source."""
+    def cache_build_lock(self, cache_path: str | Path | None = None):
+        """Serialize construction per derived cache without blocking other work."""
 
-        with self._build_lock:
+        if cache_path is None:
+            lock = self._build_lock
+        else:
+            key = str(Path(cache_path).resolve())
+            with self._cache_build_locks_guard:
+                lock = self._cache_build_locks.setdefault(key, threading.RLock())
+        with lock:
             yield
 
     def commit_cache_directory(self, temporary: Path, final_path: Path) -> None:

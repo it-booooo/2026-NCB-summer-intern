@@ -100,6 +100,40 @@ class FilteredAnalysisCacheTests(unittest.TestCase):
         self.assertNotEqual(paths[0], paths[1])
         self.assertEqual(len(self.cache_directories()), 2)
 
+    def test_coarse_and_analysis_cache_builds_do_not_share_one_lock(self):
+        coarse_entered = threading.Event()
+        release_coarse = threading.Event()
+
+        def hold_coarse_lock():
+            with self.dataset.source.cache_build_lock(
+                self.cache_root / "coarse-test"
+            ):
+                coarse_entered.set()
+                release_coarse.wait(5)
+
+        thread = threading.Thread(target=hold_coarse_lock)
+        thread.start()
+        self.assertTrue(coarse_entered.wait(2))
+        acquired_analysis = threading.Event()
+
+        def acquire_analysis_lock():
+            with self.dataset.source.cache_build_lock(
+                self.cache_root / "analysis-filter-test"
+            ):
+                acquired_analysis.set()
+
+        analysis_thread = threading.Thread(target=acquire_analysis_lock)
+        analysis_thread.start()
+        try:
+            self.assertTrue(acquired_analysis.wait(1))
+        finally:
+            release_coarse.set()
+            thread.join(5)
+            analysis_thread.join(5)
+
+        self.assertFalse(thread.is_alive())
+        self.assertFalse(analysis_thread.is_alive())
+
     def test_power_spectrum_and_spectrogram_workers_share_filtered_values(self):
         settings = self.settings()
         with (
