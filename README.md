@@ -85,6 +85,10 @@ TTL CSV 建議包含：
 - 「File > Export」：匯出標記、檢查結果及圖表。
 - 「Settings」：調整波形在畫面上的顯示密度、電源雜訊頻率、LFP 峰值偵測條件、檢查 GPU，以及清除訊號暫存資料。
 
+![介面概覽](docs/images/user-manual/interface-overview.png)
+
+*圖一、介面概覽*
+
 ## 陸、第一次使用：請照順序操作
 
 最基本的同步流程是：匯入影片與訊號、建立 TTL、找出影片中的 LED On，最後確認同步結果。若只想查看影片或波形，可只匯入需要的檔案，不必完成全部步驟。
@@ -117,7 +121,15 @@ TTL CSV 建議包含：
 
 匯入 LFP 後，先選擇 channel，再選擇 Raw（原始訊號）或 Filtered（濾波後訊號）。勾選「Bandpass」後可設定 Low／High；「Line noise」可選 None、Notch filter 或 Sinusoidal regression。Frequencies 可輸入一個或多個以逗號或空白分隔的頻率，例如 60, 90。使用 Notch filter 時可設定 Q；使用 Sinusoidal regression 時可設定 Window、Overlap，並可勾選「All harmonics」自動處理倍頻。完成後按「confirm」套用；波形、Power spectrum、Spectrogram 與 LFP 圖片匯出會使用同一組設定。
 
+![Q、Window、Overlap 參數說明](docs/images/user-manual/filter-parameters.png)
+
+*圖二、Q、Window、Overlap 參數說明*
+
 第一次切換到 Filtered 或變更濾波設定時，程式會分段準備波形。時間範圍列上方的紅色表示尚未完成，綠色表示已完成；波形會隨處理進度逐步更新。大型資料可能需要較長時間，程式會依電腦環境自動使用 GPU 或 CPU。
+
+![分段繪製波形示意圖](docs/images/user-manual/segmented-waveform.png)
+
+*圖三、分段繪製波形之示意圖*
 
 「Power spectrum」與「Spectrogram」會分析目前選擇的 channel 和畫面時間範圍。分析時會使用原始 CSV 在這段時間內的所有取樣點，不會因為畫面波形顯示得比較稀疏而漏掉資料；選擇的時間越長，等待時間通常也越久。
 
@@ -163,6 +175,10 @@ TTL CSV 建議包含：
 
 **提醒：LED 偵測結果相當仰賴人工框選的精確度。請盡量貼合 LED 範圍，避免包含會移動、反光或明暗變化明顯的背景；框選過大或偏離 LED 都可能造成誤判或漏判。**
 
+![LED Analysis 範例](docs/images/user-manual/led-analysis-example.jpg)
+
+*圖四、LED Analysis 範例示意圖*
+
 目前偵測會配對 LED On 與 LED Off，尋找亮起時間約為 0.6 至 1.5 秒的區間。若掃描完成後沒有找到事件，請重新精確框選 ROI、調整掃描範圍，或改用 Video 頁面手動新增 LED 標記。
 
 可在「Settings > Check OpenCL GPU」確認 GPU 加速狀態；沒有可用裝置時會自動使用 CPU，處理時間可能較長。
@@ -170,6 +186,10 @@ TTL CSV 建議包含：
 變更 ROI、影片旋轉角度或掃描範圍後，應重新執行偵測。再次執行會以新結果取代先前由 LED 自動偵測建立的標記；使用者手動新增的標記不會被刪除。
 
 圖表中的標記會以顏色區分：綠色代表 LED On 或 LED 區段，紅色代表 LED Off，橘色色塊代表 Action Start 至 Action End，紅色標線代表 Seizure-like 或目前影片位置，TTL 則以綠色標線顯示；目前採用的影片同步事件也會在表格中以淡綠色標示。
+
+![Waveform 標記說明](docs/images/user-manual/waveform-markers.png)
+
+*圖五、Waveform 標記說明示意圖*
 
 ### 六、時間同步
 
@@ -200,6 +220,10 @@ TTL CSV 建議包含：
 偵測完成後，上方 LFP 波形會補充顯示峰值附近的波形細節；切換 channel 或 Raw／Filtered 時會自動更新。大型資料會依電腦環境自動使用 GPU 或 CPU，沒有可用 GPU 時不影響偵測結果，只是處理時間可能較長。
 
 完成峰值偵測後，可按「Analyze Peaks」查看所選 channel 每分鐘的 LFP peak 數量長條圖。圖表會合併統計正向與負向峰值，不會分開顯示。此功能必須先有完成同步的 LFP peak 才能使用。
+
+![Find Peak 說明](docs/images/user-manual/find-peak-example.jpg)
+
+*圖六、Find Peak 說明示意圖*
 
 ## 柒、LFP Filter 詳細操作
 
