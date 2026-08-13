@@ -78,7 +78,7 @@ def render_lfp_analysis(
         figure.set_dpi(float(dpi))
         canvas = FigureCanvasAgg(figure)
         output = io.BytesIO()
-        canvas.print_png(output)
+        figure.savefig(output, format="png", bbox_inches="tight")
         payload = {
             "ok": True,
             "image_png": output.getvalue(),

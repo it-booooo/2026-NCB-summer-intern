@@ -6,6 +6,11 @@ from pathlib import Path
 
 from ..synchronization.time_conversion import record_time_parts
 
+# How many rows past the "Time[us]" header to keep scanning for a trailing Unit
+# row before giving up.  Metadata is a handful of rows; this bounds the scan so
+# a file whose Unit row is missing never streams through millions of data rows.
+MAX_ROWS_AFTER_HEADER = 8
+
 
 def read_csv_preview(path, max_rows=8):
     """Read csv preview.
@@ -38,6 +43,7 @@ def parse_signal_csv_metadata(path):
     header_row = None
     data_column_count = None
     value_unit = ""
+    rows_after_header = 0
 
     with open(path, "r", encoding="utf-8-sig", newline="") as csv_file:
         reader = csv.reader(csv_file)
@@ -64,10 +70,17 @@ def parse_signal_csv_metadata(path):
                 if units:
                     value_unit = units[0]
 
-            # Metadata rows may place Unit before or after Time[us]. Stop as
-            # soon as both are known so large signal files are not scanned.
-            if header_row is not None and value_unit:
-                break
+            # The "Time[us]" header is the final metadata row; millions of data
+            # rows follow it.  Stop once the unit is also known, or after a few
+            # rows past the header to catch a Unit line that trails Time[us] --
+            # never scan the whole recording (files without a Unit row used to
+            # read every data row here, adding minutes per import).
+            if header_row is not None:
+                if value_unit:
+                    break
+                rows_after_header += 1
+                if rows_after_header > MAX_ROWS_AFTER_HEADER:
+                    break
 
     return {
         "channels": channels,

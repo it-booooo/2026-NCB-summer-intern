@@ -19,6 +19,7 @@ from src.signal_data import (
     parse_signal_csv_info,
 )
 from src.signal_data import lfp_dataset as lfp_dataset_module
+from src.signal_data import source as source_module
 from src.signal_data.source import SignalDataSource, _SOURCES
 
 
@@ -305,6 +306,89 @@ class SignalDataSourceTests(unittest.TestCase):
         self.assertEqual(first.three_axis_plot_step, 1)
         self.assertEqual(second.three_axis_plot_step, 4)
         self.assertEqual(calls, [260])
+
+    def _reader_output(self, generator):
+        times = []
+        columns = None
+        for chunk_times, value_columns, _chunk_bytes in generator:
+            times.append(np.asarray(chunk_times).copy())
+            if columns is None:
+                columns = {index: [] for index in value_columns}
+            for index, values in value_columns.items():
+                columns[index].append(np.asarray(values).copy())
+        joined_times = np.concatenate(times) if times else np.asarray([])
+        joined_columns = {
+            index: np.concatenate(parts) for index, parts in (columns or {}).items()
+        }
+        return joined_times, joined_columns
+
+    def test_pyarrow_and_pandas_readers_produce_identical_chunks(self):
+        path = Path(self.directory.name) / "reader-equivalence.csv"
+        generate_signal_csv(
+            path,
+            SignalFixtureConfig(
+                sample_rate_hz=200,
+                duration_s=6,
+                channels=(2, 5, 260),
+                # Missing samples on the first and last rows exercise NaN
+                # handling at the window edges.
+                missing_sample_indices=(0, 11, 640, 1199),
+            ),
+        )
+        info = parse_signal_csv_info(path)
+        source = SignalDataSource(
+            str(path),
+            info["metadata"],
+            cache_root=str(Path(self.directory.name) / "reader-cache"),
+        )
+        header_row = info["metadata"]["header_row"]
+        usecols = list(range(len(source.channels) + 1))
+
+        pandas_times, pandas_columns = self._reader_output(
+            source._iter_signal_chunks_pandas(header_row, usecols, None)
+        )
+
+        # A tiny window forces many newline-aligned boundary splits so the
+        # windowed pyarrow parse cannot silently mangle a data row at a window
+        # edge, and must still match pandas byte for byte.
+        with patch.object(source_module, "PYARROW_CSV_BLOCK_BYTES", 137):
+            pyarrow_times, pyarrow_columns = self._reader_output(
+                source._iter_signal_chunks_pyarrow(header_row, usecols, None)
+            )
+
+        self.assertEqual(pyarrow_times.dtype, np.dtype("<f8"))
+        self.assertEqual(pyarrow_times.tobytes(), pandas_times.tobytes())
+        self.assertEqual(sorted(pyarrow_columns), sorted(pandas_columns))
+        for index in pyarrow_columns:
+            self.assertEqual(pyarrow_columns[index].dtype, np.dtype("<f4"))
+            self.assertEqual(
+                pyarrow_columns[index].tobytes(),
+                pandas_columns[index].tobytes(),
+            )
+
+    def test_iter_signal_chunks_falls_back_to_pandas_without_pyarrow(self):
+        source = SignalDataSource(
+            str(self.path),
+            self.info["metadata"],
+            cache_root=str(Path(self.directory.name) / "fallback-cache"),
+        )
+        header_row = self.info["metadata"]["header_row"]
+        usecols = list(range(len(source.channels) + 1))
+        real_import = __import__
+
+        def blocked_import(name, *args, **kwargs):
+            if name == "pyarrow" or name.startswith("pyarrow."):
+                raise ImportError("pyarrow unavailable")
+            return real_import(name, *args, **kwargs)
+
+        with patch("builtins.__import__", side_effect=blocked_import):
+            fallback_times, _columns = self._reader_output(
+                source._iter_signal_chunks(header_row, usecols, None)
+            )
+        direct_times, _direct = self._reader_output(
+            source._iter_signal_chunks_pandas(header_row, usecols, None)
+        )
+        self.assertEqual(fallback_times.tobytes(), direct_times.tobytes())
 
     def test_three_axis_uses_provided_dataset(self):
         dataset = SignalDataset.from_csv(self.info)

@@ -21,6 +21,11 @@ CACHE_FORMAT_VERSION = 3
 OVERVIEW_ALGORITHM_VERSION = 3
 FILTER_COARSE_ALGORITHM_VERSION = 5
 DEFAULT_CHUNK_ROWS = 250_000
+# Bytes per newline-aligned window handed to pyarrow's multi-threaded CSV
+# parser.  Large enough to keep every core busy, small enough to bound peak
+# memory to roughly one window plus its parsed table and keep cancellation
+# responsive; a whole-file parse would instead hold the entire recording in RAM.
+PYARROW_CSV_BLOCK_BYTES = 256 * 1024 * 1024
 DEFAULT_OVERVIEW_MAX_POINTS = 5_000
 DEFAULT_CACHE_MAX_BYTES = 20 * 1024 * 1024 * 1024
 DEFAULT_CACHE_MAX_AGE_DAYS = 30
@@ -302,7 +307,6 @@ class SignalDataSource:
         progress_callback=None,
     ) -> int:
         """Scan the CSV once and write shared time plus every channel."""
-        pd = import_module("pandas")
         channels = self.channels
         if not channels:
             raise ValueError("CSV does not include channel metadata")
@@ -310,8 +314,6 @@ class SignalDataSource:
         if header_row is None:
             raise ValueError("CSV missing Time[us] header row")
         usecols = list(range(len(channels) + 1))
-        dtypes = {0: "float64"}
-        dtypes.update({index: "float32" for index in usecols[1:]})
         sample_count = 0
         previous_time = None
         source_size = max(Path(self.path).stat().st_size, 1)
@@ -324,19 +326,10 @@ class SignalDataSource:
                 )
                 for channel in channels
             }
-            reader = stack.enter_context(
-                pd.read_csv(
-                    self.path,
-                    skiprows=int(header_row) + 1,
-                    header=None,
-                    usecols=usecols,
-                    dtype=dtypes,
-                    chunksize=self.chunk_rows,
-                )
-            )
-            for chunk in reader:
+            for times, value_columns, chunk_bytes in self._iter_signal_chunks(
+                header_row, usecols, cancel_event
+            ):
                 self._check_cancel(cancel_event)
-                times = chunk.iloc[:, 0].to_numpy(dtype="<f8", copy=False)
                 if times.size:
                     if not np.isfinite(times).all():
                         raise ValueError("Signal timestamps must be finite.")
@@ -347,15 +340,15 @@ class SignalDataSource:
                     previous_time = float(times[-1])
                 time_file.write(times.tobytes())
                 for column_index, channel in enumerate(channels, start=1):
-                    values = chunk.iloc[:, column_index].to_numpy(
-                        dtype="<f4", copy=False
+                    value_files[channel].write(
+                        value_columns[column_index].tobytes()
                     )
-                    value_files[channel].write(values.tobytes())
                 sample_count += int(times.size)
                 if progress_callback is not None:
-                    # Pandas does not expose exact input bytes; row memory gives
-                    # a stable monotonic approximation capped below completion.
-                    processed_bytes += int(chunk.memory_usage(deep=True).sum())
+                    # Neither reader exposes exact consumed input bytes; the
+                    # per-chunk buffer size gives a stable monotonic
+                    # approximation capped below completion.
+                    processed_bytes += int(chunk_bytes)
                     progress_callback(min(0.99, processed_bytes / source_size))
             for stream in [time_file, *value_files.values()]:
                 stream.flush()
@@ -365,6 +358,139 @@ class SignalDataSource:
         if progress_callback is not None:
             progress_callback(1.0)
         return sample_count
+
+    def _iter_signal_chunks(
+        self,
+        header_row: int,
+        usecols: list[int],
+        cancel_event: threading.Event | None,
+    ):
+        """Yield (time, {column_index: values}, chunk_bytes) blocks in file order.
+
+        pyarrow's multi-threaded CSV reader is used when available; the pandas
+        reader is an exact-behavior fallback when pyarrow is not installed.
+        """
+        try:
+            import pyarrow as pa  # noqa: F401
+            from pyarrow import csv as pyarrow_csv  # noqa: F401
+        except ImportError:
+            yield from self._iter_signal_chunks_pandas(
+                header_row, usecols, cancel_event
+            )
+            return
+        yield from self._iter_signal_chunks_pyarrow(
+            header_row, usecols, cancel_event
+        )
+
+    def _iter_signal_chunks_pyarrow(
+        self,
+        header_row: int,
+        usecols: list[int],
+        cancel_event: threading.Event | None,
+    ):
+        # Read the data region in newline-aligned byte windows and bulk-parse
+        # each window with pyarrow's multi-threaded CSV reader.  This keeps the
+        # parse several times faster than pandas while bounding peak memory to
+        # roughly one window plus its parsed table -- a whole-file bulk parse
+        # would hold the entire ~3 GB table in RAM for a 20-hour recording.
+        import pyarrow as pa
+        from pyarrow import csv as pyarrow_csv
+
+        # Autogenerated names (f0, f1, ...) avoid depending on the header text;
+        # include_columns keeps the leading time column plus one column per
+        # channel and drops any trailing columns, matching pandas usecols.
+        include_columns = [f"f{index}" for index in usecols]
+        column_types = {"f0": pa.float64()}
+        for index in usecols[1:]:
+            column_types[f"f{index}"] = pa.float32()
+        read_options = pyarrow_csv.ReadOptions(
+            autogenerate_column_names=True,
+            use_threads=True,
+        )
+        convert_options = pyarrow_csv.ConvertOptions(
+            include_columns=include_columns,
+            column_types=column_types,
+        )
+
+        data_offset = self._signal_data_byte_offset(int(header_row) + 1)
+        with open(self.path, "rb") as handle:
+            handle.seek(data_offset)
+            leftover = b""
+            while True:
+                self._check_cancel(cancel_event)
+                chunk = handle.read(PYARROW_CSV_BLOCK_BYTES)
+                if not chunk:
+                    buffer = leftover
+                    leftover = b""
+                else:
+                    data = leftover + chunk
+                    cut = data.rfind(b"\n")
+                    if cut < 0:
+                        # No row boundary yet: keep accumulating until one row
+                        # fits, so no data line is ever split across windows.
+                        leftover = data
+                        continue
+                    buffer = data[: cut + 1]
+                    leftover = data[cut + 1:]
+                if buffer.strip():
+                    table = pyarrow_csv.read_csv(
+                        pa.BufferReader(buffer),
+                        read_options=read_options,
+                        convert_options=convert_options,
+                    )
+                    times = table.column(0).to_numpy(
+                        zero_copy_only=False
+                    ).astype("<f8", copy=False)
+                    value_columns = {
+                        index: table.column(index)
+                        .to_numpy(zero_copy_only=False)
+                        .astype("<f4", copy=False)
+                        for index in range(1, len(usecols))
+                    }
+                    yield times, value_columns, len(buffer)
+                if not chunk:
+                    break
+
+    def _signal_data_byte_offset(self, skip_lines: int) -> int:
+        """Return the byte offset of the first data row past the header block."""
+        offset = 0
+        seen = 0
+        with open(self.path, "rb") as handle:
+            while seen < skip_lines:
+                line = handle.readline()
+                if not line:
+                    break
+                offset += len(line)
+                seen += 1
+        return offset
+
+    def _iter_signal_chunks_pandas(
+        self,
+        header_row: int,
+        usecols: list[int],
+        cancel_event: threading.Event | None,
+    ):
+        pd = import_module("pandas")
+        dtypes = {0: "float64"}
+        dtypes.update({index: "float32" for index in usecols[1:]})
+        with pd.read_csv(
+            self.path,
+            skiprows=int(header_row) + 1,
+            header=None,
+            usecols=usecols,
+            dtype=dtypes,
+            chunksize=self.chunk_rows,
+        ) as reader:
+            for chunk in reader:
+                self._check_cancel(cancel_event)
+                times = chunk.iloc[:, 0].to_numpy(dtype="<f8", copy=False)
+                value_columns = {
+                    index: chunk.iloc[:, index].to_numpy(dtype="<f4", copy=False)
+                    for index in range(1, len(usecols))
+                }
+                yield times, value_columns, int(
+                    chunk.memory_usage(deep=True).sum()
+                )
 
     def _build_overview(
         self,
