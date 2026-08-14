@@ -35,6 +35,10 @@ from .peak_display import load_peak_display_samples
 from .source import CacheBuildCancelled
 
 MAX_EXPORT_WAVEFORM_POINTS = 200_000
+# High DPI keeps the on-screen figure crisp.  The dialog rescales the source
+# pixmap only once per resize (not on every paint), so a large image no longer
+# stalls the GUI thread -- see ``_HorizontalPixmapScrollArea`` in
+# ``src/ui/lfp_analysis.py``.
 ANALYSIS_DISPLAY_DPI = 300
 _PROCESS_SPAWN_LOCK = threading.Lock()
 _PEAK_STATISTICS_CACHE = OrderedDict()
@@ -203,7 +207,11 @@ def _render_analysis_file(
                 except EOFError:
                     payload = None
                 break
-        process.join()
+        # The payload (if any) has already been received above, so the child
+        # only needs to run its finalisers and exit.  Bound the wait so a child
+        # that fails to terminate can never hang this worker thread forever --
+        # the ``finally`` block below force-terminates any lingering process.
+        process.join(timeout=10)
         if payload is None and receiver.poll():
             try:
                 payload = receiver.recv()

@@ -12,7 +12,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMessageBox,
-    QProgressDialog,
     QPushButton,
     QScrollArea,
     QVBoxLayout,
@@ -20,6 +19,7 @@ from PySide6.QtWidgets import (
 
 from .. import signal_data as signal_func
 from ..background_requests import widget_is_valid
+from ..smooth_progress import SmoothProgressDialog
 from ..charts.chart_helpers import format_signal_label, resolve_plot_step
 from ..synchronization.time_conversion import relative_time
 
@@ -30,9 +30,14 @@ class _HorizontalPixmapScrollArea(QScrollArea):
     def __init__(self, pixmap, parent=None):
         super().__init__(parent)
         self._source_pixmap = pixmap
+        self._scaled_height = 0
         self.image_label = QLabel()
         self.image_label.setPixmap(pixmap)
-        self.image_label.setScaledContents(True)
+        # Deliberately NOT setScaledContents(True): that rescales the entire
+        # high-resolution source pixmap in native code on *every* paint event,
+        # which stalls the GUI thread for seconds on a large figure (the window
+        # shows "Not Responding").  We instead rescale once whenever the
+        # viewport height changes, and every subsequent paint is a plain blit.
         self.setWidget(self.image_label)
         self.setWidgetResizable(False)
         self.setVerticalScrollBarPolicy(
@@ -50,20 +55,63 @@ class _HorizontalPixmapScrollArea(QScrollArea):
         super().showEvent(event)
         self.fit_pixmap_height()
 
+    def _target_height(self):
+        """Height to scale to, derived only from the scroll area's own size.
+
+        Reading ``viewport().height()`` here would be circular: the label width
+        we set from the height decides whether a horizontal scrollbar appears,
+        the scrollbar changes the viewport height, and that would feed back into
+        the next call -- an endless appear/disappear oscillation that locks the
+        GUI thread.  Instead we compute from ``self.height()`` (stable, set by
+        the dialog layout) and *always* reserve the scrollbar's height once the
+        image is wider than the frame, so the result never depends on the
+        scrollbar's current visibility.
+        """
+        if self._source_pixmap.height() <= 0:
+            return 0
+        aspect_ratio = self._source_pixmap.width() / self._source_pixmap.height()
+        frame = 2 * self.frameWidth()
+        available_height = self.height() - frame
+        available_width = self.width() - frame
+        if available_height <= 0:
+            return 0
+        scrollbar_height = self.horizontalScrollBar().sizeHint().height()
+        if round(available_height * aspect_ratio) > available_width:
+            available_height -= scrollbar_height
+        return max(1, available_height)
+
     def fit_pixmap_height(self):
-        """Scale the label to the viewport height while preserving aspect ratio."""
+        """Rescale the pixmap once to a stable target height, preserving aspect."""
         if self._source_pixmap.isNull():
             return
-        target_height = max(1, self.viewport().height())
-        aspect_ratio = (
-            self._source_pixmap.width() / self._source_pixmap.height()
+        target_height = self._target_height()
+        if target_height <= 0 or target_height == self._scaled_height:
+            return
+        # Scale to *physical* pixels (logical height x devicePixelRatio) and tag
+        # the result with that ratio.  Without this the pixmap only carries as
+        # many pixels as there are logical points, so on a HiDPI display (125% /
+        # 150% Windows scaling) Qt upscales it and the plot looks blurry.
+        # Smooth (bilinear) scaling keeps text and thin lines crisp; the
+        # ``_scaled_height`` guard runs this at most once per height change --
+        # never per paint -- so it cannot stall the GUI.
+        ratio = self.devicePixelRatioF()
+        physical_height = max(1, round(target_height * ratio))
+        scaled = self._source_pixmap.scaledToHeight(
+            physical_height,
+            Qt.TransformationMode.SmoothTransformation,
         )
-        target_width = max(1, round(target_height * aspect_ratio))
-        self.image_label.setFixedSize(target_width, target_height)
+        scaled.setDevicePixelRatio(ratio)
+        self._scaled_height = target_height
+        self.image_label.setPixmap(scaled)
+        self.image_label.setFixedSize(
+            max(1, round(scaled.width() / ratio)),
+            max(1, round(scaled.height() / ratio)),
+        )
 
     def clear_pixmap(self):
         self.image_label.clear()
         self._source_pixmap = QPixmap()
+        self._scaled_height = 0
 
 
 class LfpAnalysisMixin:
@@ -208,7 +256,7 @@ class LfpAnalysisMixin:
         workers = getattr(self, "_lfp_analysis_workers", {})
         self._lfp_analysis_workers = workers
         workers[request_id] = worker
-        progress = QProgressDialog(
+        progress = SmoothProgressDialog(
             "Preparing LFP analysis…",
             "Cancel",
             0,
@@ -428,10 +476,24 @@ class LfpAnalysisMixin:
         dialog._lfp_scroll_area = scroll_area
 
         available = dialog.screen().availableGeometry()
-        dialog.resize(
-            min(size[0], round(available.width() * 0.9)),
-            min(size[1], round(available.height() * 0.9)),
-        )
+        max_width = round(available.width() * 0.9)
+        max_height = round(available.height() * 0.9)
+        window_height = min(size[1], max_height)
+        # Size the window to the rendered image's aspect ratio so a longer
+        # recording opens a wider window instead of hiding the extra time
+        # behind the horizontal scrollbar.  Clamp to the screen; anything wider
+        # than the clamp still scrolls horizontally.
+        if not pixmap.isNull() and pixmap.height() > 0:
+            aspect_ratio = pixmap.width() / pixmap.height()
+            # Approximate the non-image chrome (status line, optional scale
+            # controls, layout margins) so the image itself drives the width.
+            chrome_height = 96 if analysis_type == "spectrogram" else 64
+            content_height = max(1, window_height - chrome_height)
+            image_width = round(content_height * aspect_ratio)
+            window_width = min(max(image_width + 24, size[0]), max_width)
+        else:
+            window_width = min(size[0], max_width)
+        dialog.resize(window_width, window_height)
     
         self.spectrum_dialogs.append(dialog)
         dialog.finished.connect(self.forget_spectrum_dialog)

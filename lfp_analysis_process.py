@@ -78,7 +78,11 @@ def render_lfp_analysis(
         figure.set_dpi(float(dpi))
         canvas = FigureCanvasAgg(figure)
         output = io.BytesIO()
-        figure.savefig(output, format="png", bbox_inches="tight")
+        # Pass ``dpi`` explicitly: with ``bbox_inches="tight"`` a bare
+        # ``savefig`` ignores ``figure.set_dpi`` and falls back to the default
+        # ~100 DPI, so the plot was being rendered at a third of the intended
+        # resolution and looked blurry once shown.
+        figure.savefig(output, format="png", bbox_inches="tight", dpi=float(dpi))
         payload = {
             "ok": True,
             "image_png": output.getvalue(),

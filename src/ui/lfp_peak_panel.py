@@ -14,7 +14,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
-    QProgressDialog,
     QScrollArea,
     QSizePolicy,
     QTableWidget,
@@ -23,6 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..background_requests import widget_is_valid
+from ..smooth_progress import SmoothProgressDialog
 from ..markers import (
     MarkerKind,
     MarkerSource,
@@ -388,7 +388,7 @@ class LfpPeakPanel(MarkerViewPanel):
             min_distance_sec=self.analysis_settings.lfp_peak_min_distance_sec,
         )
         self._peak_workers[request_id] = worker
-        progress = QProgressDialog(
+        progress = SmoothProgressDialog(
             "Detecting LFP peaks…",
             "Cancel",
             0,

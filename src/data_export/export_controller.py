@@ -16,7 +16,6 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QInputDialog,
     QMessageBox,
-    QProgressDialog,
     QVBoxLayout,
 )
 
@@ -25,6 +24,7 @@ from ..background_requests import (
     source_identity_for_info,
     widget_is_valid,
 )
+from ..smooth_progress import SmoothProgressDialog
 from ..markers import (
     MarkerKind,
     VideoPosition,
@@ -535,7 +535,7 @@ class ExportController:
         self._check_request_id = request_id
         worker = data_validation.DataCheckWorker(request_id, info, path)
         self._check_workers[request_id] = worker
-        progress = QProgressDialog(
+        progress = SmoothProgressDialog(
             "Checking signal data…",
             "Cancel",
             0,
@@ -780,7 +780,7 @@ class ExportController:
         )
         self._lfp_export_request_id = request_id
         self._lfp_export_workers[request_id] = worker
-        progress = QProgressDialog(
+        progress = SmoothProgressDialog(
             "Preparing LFP image data...",
             "Cancel",
             0,

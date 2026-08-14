@@ -30,6 +30,13 @@ def main():
     app.setWindowIcon(QIcon(str(bundle_root / "input_data" / "icon.png")))
     app.setStyleSheet(APP_STYLE)
 
+    from src.gui_watchdog import install_gui_stall_watchdog
+
+    install_gui_stall_watchdog(
+        app,
+        log_path=Path.home() / "ncb_gui_stall.log",
+    )
+
     window = MainWindow()
     window.show()
     sys.exit(app.exec())

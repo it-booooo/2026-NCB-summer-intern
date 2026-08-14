@@ -85,7 +85,10 @@ class LfpAnalysisLifecycleTests(unittest.TestCase):
             scroll_area.fit_pixmap_height()
             label_refs.append(weakref.ref(label))
             self.assertFalse(label.pixmap().isNull())
-            self.assertLessEqual(dialog.width(), 820)
+            # The window now sizes toward the image aspect ratio, clamped to the
+            # screen, instead of staying pinned to the default width.
+            available = dialog.screen().availableGeometry()
+            self.assertLessEqual(dialog.width(), available.width())
             self.assertLessEqual(dialog.height(), 560)
             self.assertEqual(
                 scroll_area.verticalScrollBarPolicy(),
@@ -93,7 +96,6 @@ class LfpAnalysisLifecycleTests(unittest.TestCase):
             )
             self.assertEqual(label.height(), scroll_area.viewport().height())
             self.assertEqual(scroll_area.verticalScrollBar().maximum(), 0)
-            self.assertGreater(label.width(), scroll_area.viewport().width())
             dialog.close()
             self.app.processEvents()
             QCoreApplication.sendPostedEvents(
@@ -104,6 +106,39 @@ class LfpAnalysisLifecycleTests(unittest.TestCase):
 
         self.assertEqual(self.host.spectrum_dialogs, [])
         self.assertTrue(all(reference() is None for reference in label_refs))
+
+    def test_dialog_width_grows_with_image_aspect_ratio(self):
+        def open_dialog(figure_width):
+            figure = Figure(figsize=(figure_width, 1))
+            figure.add_subplot(111).plot([0, 1], [0, 1])
+            pixmap = self.host._figure_to_pixmap(figure)
+            self.host._dispose_figure(figure)
+            del figure
+            self.host.open_lfp_analysis_dialog(
+                "Analysis",
+                2,
+                0.0,
+                1.0,
+                101,
+                100.0,
+                None,
+                pixmap,
+                (820, 560),
+            )
+            dialog = self.host.spectrum_dialogs[-1]
+            self.app.processEvents()
+            return dialog
+
+        narrow = open_dialog(2)
+        wide = open_dialog(8)
+        available = wide.screen().availableGeometry()
+        # A longer recording renders a wider image, so its window opens wider
+        # (until both hit the screen clamp, where they stay equal).
+        self.assertGreaterEqual(wide.width(), narrow.width())
+        self.assertLessEqual(wide.width(), available.width())
+        narrow.close()
+        wide.close()
+        self.app.processEvents()
 
     def test_finished_analysis_clears_static_image_payload(self):
         figure = Figure(figsize=(2, 1))

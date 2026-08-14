@@ -10,11 +10,11 @@ from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
     QMessageBox,
-    QProgressDialog,
 )
 
 from .. import signal_data
 from ..background_requests import widget_is_valid
+from ..smooth_progress import SmoothProgressDialog
 from ..markers import (
     MarkerSource,
     marker_from_legacy_ttl,
@@ -167,7 +167,7 @@ class ImportController:
         self._project_signal_request_id = request_id
         worker = ProjectSignalCacheWorker(request_id, staged)
         self._project_signal_worker = worker
-        progress = QProgressDialog(
+        progress = SmoothProgressDialog(
             "Preparing project signal data…",
             "Cancel",
             0,
@@ -661,7 +661,7 @@ class ImportController:
         if previous_progress is not None and widget_is_valid(previous_progress):
             previous_progress.close()
         self._signal_request_id = request_id
-        progress = QProgressDialog(
+        progress = SmoothProgressDialog(
             "Building signal cache…",
             "Cancel",
             0,

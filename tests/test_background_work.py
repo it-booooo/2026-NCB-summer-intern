@@ -24,6 +24,7 @@ from src.signal_data import (
     PeakDetectionWorker,
     parse_signal_csv_info,
 )
+from src.signal_data.background_workers import ANALYSIS_DISPLAY_DPI
 from src.signal_data.source import _SOURCES, CacheBuildCancelled
 
 
@@ -206,7 +207,13 @@ class PureSignalWorkerTests(unittest.TestCase):
         self.assertEqual(result["end_time_s"], 1.9)
         self.assertTrue(result["image_png"].startswith(b"\x89PNG"))
         width, height = struct.unpack(">II", result["image_png"][16:24])
-        self.assertEqual((width, height), (2280, 1320))
+        # The 7.6 x 4.4 inch figure must actually render at ANALYSIS_DISPLAY_DPI
+        # (a bare tight-bbox savefig silently drops to ~100 DPI), so the pixel
+        # size lands near that DPI once the tight padding is included.
+        self.assertGreaterEqual(width, round(7.0 * ANALYSIS_DISPLAY_DPI))
+        self.assertLessEqual(width, round(9.0 * ANALYSIS_DISPLAY_DPI))
+        self.assertGreaterEqual(height, round(4.0 * ANALYSIS_DISPLAY_DPI))
+        self.assertLessEqual(height, round(5.5 * ANALYSIS_DISPLAY_DPI))
         self.assertNotIn("frequencies", result)
         self.assertNotIn("power", result)
         self.assertFalse(
