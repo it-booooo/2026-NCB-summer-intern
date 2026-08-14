@@ -1,6 +1,13 @@
 import multiprocessing
+import os
 import sys
 from pathlib import Path
+
+# Force pyarrow onto the OS-returning "system" allocator before anything can
+# import pyarrow.  Its default mimalloc backend, fixed at pyarrow import time,
+# keeps the multi-hundred-MB CSV-parse peak resident for the whole session.
+# Also set inside src/signal_data/source.py for test/benchmark entry points.
+os.environ.setdefault("ARROW_DEFAULT_MEMORY_POOL", "system")
 
 
 def main():

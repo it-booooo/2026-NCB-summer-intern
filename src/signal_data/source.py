@@ -17,6 +17,19 @@ from pathlib import Path
 
 import numpy as np
 
+# pyarrow defaults to the mimalloc allocator, which keeps freed arenas mapped
+# instead of returning them to the OS.  After a first-time CSV import that peaks
+# at several hundred MB of transient parse buffers, mimalloc leaves that peak
+# resident for the life of the process (release_unused() reclaims almost none of
+# it), so importing a 20-hour recording left ~2 GB stuck in RAM even though the
+# on-disk cache is a fraction of that.  The "system" backend returns freed
+# memory promptly with no measurable parse-speed cost, so the working set falls
+# back to baseline once conversion finishes.  This must be set before pyarrow is
+# first imported (the backend is fixed at pool initialization); pyarrow is only
+# ever imported lazily inside this module, so setting it here at import time
+# always runs first.  setdefault leaves an explicit override in place.
+os.environ.setdefault("ARROW_DEFAULT_MEMORY_POOL", "system")
+
 CACHE_FORMAT_VERSION = 3
 OVERVIEW_ALGORITHM_VERSION = 3
 FILTER_COARSE_ALGORITHM_VERSION = 5
