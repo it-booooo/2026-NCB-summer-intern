@@ -22,10 +22,12 @@ OVERVIEW_ALGORITHM_VERSION = 3
 FILTER_COARSE_ALGORITHM_VERSION = 5
 DEFAULT_CHUNK_ROWS = 250_000
 # Bytes per newline-aligned window handed to pyarrow's multi-threaded CSV
-# parser.  Large enough to keep every core busy, small enough to bound peak
-# memory to roughly one window plus its parsed table and keep cancellation
-# responsive; a whole-file parse would instead hold the entire recording in RAM.
-PYARROW_CSV_BLOCK_BYTES = 256 * 1024 * 1024
+# parser.  Each window is read, concatenated with the previous remainder, and
+# parsed, so a few copies of this size are live at once -- the dominant driver
+# of peak memory during conversion.  32 MiB keeps every core busy while holding
+# the working-set spike of a 20-hour import near ~1 GB instead of ~3 GB; a
+# whole-file parse would instead hold the entire recording (~3 GB) in RAM.
+PYARROW_CSV_BLOCK_BYTES = 32 * 1024 * 1024
 DEFAULT_OVERVIEW_MAX_POINTS = 5_000
 DEFAULT_CACHE_MAX_BYTES = 20 * 1024 * 1024 * 1024
 DEFAULT_CACHE_MAX_AGE_DAYS = 30
