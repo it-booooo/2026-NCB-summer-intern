@@ -255,6 +255,23 @@ def benchmark(args):
         ("opencl_statistics_opencl_candidates", "opencl", "opencl"),
     )
     if args.backend != "cpu" and status["peak_candidates_f32"]:
+        try:
+            cold_opencl = run_pipeline(
+                values,
+                args.sample_rate,
+                args.chunk_samples,
+                "opencl" if status["peak_statistics_f32"] else "cpu",
+                "opencl",
+            )
+            cold_opencl["initialization_plus_execution_sec"] = (
+                cold_start_sec + cold_opencl["elapsed_sec"]
+            )
+            modes["cold_opencl_full_pipeline"] = _public_metrics(cold_opencl)
+        except Exception as error:
+            modes["cold_opencl_full_pipeline"] = {
+                "available": False,
+                "fallback_reason": str(error),
+            }
         for _ in range(args.warmup):
             run_pipeline(values, args.sample_rate, args.chunk_samples, "cpu", "opencl")
         for label, statistics_backend, candidate_backend in opencl_modes:
@@ -297,6 +314,10 @@ def benchmark(args):
                 }
     else:
         reason = status.get("reason") or "OpenCL peak candidates unavailable"
+        modes["cold_opencl_full_pipeline"] = {
+            "available": False,
+            "fallback_reason": reason,
+        }
         for label, _statistics_backend, _candidate_backend in opencl_modes:
             modes[label] = {"available": False, "fallback_reason": reason}
 
@@ -326,11 +347,51 @@ def benchmark(args):
     }
 
 
+def benchmark_grid(args):
+    """Benchmark a sample-size grid and report observed warm crossover points."""
+
+    results = []
+    for sample_count in args.sample_grid:
+        item_args = argparse.Namespace(**vars(args))
+        item_args.samples = int(sample_count)
+        results.append(benchmark(item_args))
+
+    def first_faster(mode):
+        for result in results:
+            cpu = result["modes"]["cpu_full_pipeline"]
+            measured = result["modes"].get(mode, {})
+            if (
+                measured.get("available")
+                and measured["elapsed_sec"] < cpu["elapsed_sec"]
+            ):
+                return result["sample_count"]
+        return None
+
+    return {
+        "sample_grid": [result["sample_count"] for result in results],
+        "observed_warm_crossover_samples": {
+            "opencl_candidates": first_faster(
+                "cpu_statistics_opencl_candidates"
+            ),
+            "opencl_statistics_and_candidates": first_faster(
+                "opencl_statistics_opencl_candidates"
+            ),
+        },
+        "results": results,
+    }
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sample-rate", type=float, default=1000.0)
     parser.add_argument("--duration", type=float, default=300.0)
     parser.add_argument("--samples", type=int)
+    parser.add_argument(
+        "--sample-grid",
+        type=int,
+        nargs="+",
+        help="benchmark several sample counts in one warm OpenCL process",
+    )
     parser.add_argument("--chunk-samples", type=int, default=250_000)
     parser.add_argument("--backend", choices=("all", "cpu", "opencl"), default="all")
     parser.add_argument("--repeats", type=int, default=3)
@@ -341,6 +402,8 @@ def parse_args():
         parser.error("sample rate and duration must be positive")
     if args.samples is not None and args.samples < 3:
         parser.error("samples must be at least 3")
+    if args.sample_grid is not None and any(value < 3 for value in args.sample_grid):
+        parser.error("all sample-grid values must be at least 3")
     if args.chunk_samples < 3 or args.repeats < 1 or args.warmup < 0:
         parser.error("chunk-samples/repeats must be positive and warmup non-negative")
     return args
@@ -348,7 +411,7 @@ def parse_args():
 
 def main():
     args = parse_args()
-    result = benchmark(args)
+    result = benchmark_grid(args) if args.sample_grid else benchmark(args)
     encoded = json.dumps(result, indent=2, sort_keys=True)
     print(encoded)
     if args.result is not None:

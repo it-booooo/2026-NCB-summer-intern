@@ -1,3 +1,4 @@
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -37,6 +38,27 @@ def _fake_peak_runtime(*, fp64=False):
 
 
 class PeakBackendSelectionTests(unittest.TestCase):
+    def test_environment_threshold_dispatches_immediately_below_and_at_boundary(self):
+        runtime = _fake_peak_runtime(fp64=True)
+        with (
+            patch.dict(
+                os.environ,
+                {"PIG_LFP_OPENCL_PEAK_MIN_SAMPLES": "12345"},
+            ),
+            patch(
+                "src.signal_data.gpu_backend._opencl_peak_runtime",
+                return_value=(runtime, None),
+            ),
+        ):
+            self.assertEqual(
+                select_peak_candidate_backend(12_344, np.float32, "auto"),
+                "cpu",
+            )
+            self.assertEqual(
+                select_peak_candidate_backend(12_345, np.float32, "auto"),
+                "opencl",
+            )
+
     def test_cpu_and_small_auto_do_not_initialize_opencl(self):
         with patch(
             "src.signal_data.gpu_backend._opencl_peak_runtime",

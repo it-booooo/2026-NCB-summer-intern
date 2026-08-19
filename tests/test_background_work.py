@@ -358,7 +358,31 @@ class PureSignalWorkerTests(unittest.TestCase):
         self.assertIsInstance(marker.position, RecordPosition)
         self.assertEqual(marker.position.time_sec, 1.25)
         self.assertEqual(marker_video_time(marker, 0.75), 2.0)
-        self.assertEqual(marker.payload, {"channel": 260, "value": 8.5})
+        self.assertEqual(
+            marker.payload,
+            {"channel": 260, "value": 8.5, "negative": False},
+        )
+
+    def test_peak_worker_reserves_100_percent_for_gui_completion(self):
+        worker = PeakDetectionWorker(
+            "peaks-progress",
+            self.dataset,
+            2,
+            0.0,
+            1.9,
+            LfpFilterSettings(show_filtered=False),
+            height_sigma=2.0,
+            prominence_sigma=1.0,
+            min_distance_sec=0.1,
+        )
+        progress = []
+        worker.progress.connect(lambda _request_id, value: progress.append(value))
+
+        worker.execute()
+
+        self.assertTrue(progress)
+        self.assertEqual(progress[-1], 92)
+        self.assertNotIn(100, progress)
 
     def test_export_worker_returns_waveform_and_static_spectral_images(self):
         worker = LfpExportDataWorker(

@@ -1,5 +1,6 @@
-from typing import ClassVar
+import time
 import uuid
+from typing import ClassVar
 
 import numpy as np
 from matplotlib.figure import Figure
@@ -26,17 +27,80 @@ from ..smooth_progress import SmoothProgressDialog
 from ..markers import (
     MarkerKind,
     MarkerSource,
+    RecordPosition,
     marker_video_time,
     peak_records_to_markers,
 )
 from ..signal_data import PeakDetectionWorker
 from ..synchronization import relative_time
-from .marker_table import NoteEditor
 from .marker_view_panel import MarkerViewPanel
 
 
+PEAK_TYPE_ALL = "all"
+PEAK_TYPE_POSITIVE = "positive"
+PEAK_TYPE_NEGATIVE = "negative"
+SORT_BY_TIME = "time"
+SORT_BY_VALUE = "value"
+
+
+def marker_is_negative_peak(marker):
+    """Return persisted polarity, with a value fallback for legacy projects."""
+
+    negative = marker.payload.get("negative")
+    if negative is not None:
+        return bool(negative)
+    try:
+        return float(marker.payload.get("value")) < 0.0
+    except (TypeError, ValueError):
+        return False
+
+
+def filter_sort_peak_markers(
+    markers,
+    *,
+    channel=None,
+    peak_type=PEAK_TYPE_ALL,
+    sort_by=SORT_BY_TIME,
+    descending=False,
+):
+    """Apply the panel's channel, polarity, and ordering pipeline."""
+
+    filtered = [
+        marker
+        for marker in markers
+        if marker.kind == MarkerKind.LFP_PEAK
+        and (channel is None or marker.payload.get("channel") == channel)
+    ]
+    if peak_type != PEAK_TYPE_ALL:
+        want_negative = peak_type == PEAK_TYPE_NEGATIVE
+        filtered = [
+            marker
+            for marker in filtered
+            if marker_is_negative_peak(marker) == want_negative
+        ]
+
+    if sort_by == SORT_BY_VALUE:
+        def sort_key(marker):
+            try:
+                return float(marker.payload.get("value"))
+            except (TypeError, ValueError):
+                return float("inf")
+    else:
+        def sort_key(marker):
+            if isinstance(marker.position, RecordPosition):
+                return float(marker.position.time_sec)
+            return float("inf")
+
+    return tuple(sorted(filtered, key=sort_key, reverse=bool(descending)))
+
+
 class LfpPeakPanel(MarkerViewPanel):
-    DISPLAY_HEADERS: ClassVar[list[str]] = ["marker type", "video time", "note"]
+    DISPLAY_HEADERS: ClassVar[list[str]] = [
+        "Peak Type",
+        "Video Time",
+        "Peak Value",
+        "Note",
+    ]
     video_time_selected = Signal(float)
     VIDEO_TIME_ROLE = Qt.UserRole + 1
     MARKER_ID_ROLE = Qt.UserRole + 2
@@ -62,10 +126,27 @@ class LfpPeakPanel(MarkerViewPanel):
         self._peak_request_id = None
         self._peak_progress = None
         self._peak_message_boxes = set()
+        self._last_table_update_sec = 0.0
 
         self.channel_selector = QComboBox()
         self.channel_selector.setMinimumContentsLength(12)
         self.channel_selector.currentIndexChanged.connect(self.refresh_table)
+        self.peak_type_selector = QComboBox()
+        self.peak_type_selector.addItem("All Peaks", PEAK_TYPE_ALL)
+        self.peak_type_selector.addItem("Positive Peaks", PEAK_TYPE_POSITIVE)
+        self.peak_type_selector.addItem("Negative Peaks", PEAK_TYPE_NEGATIVE)
+        self.sort_by_selector = QComboBox()
+        self.sort_by_selector.addItem("Time", SORT_BY_TIME)
+        self.sort_by_selector.addItem("Peak Value", SORT_BY_VALUE)
+        self.order_selector = QComboBox()
+        self.order_selector.addItem("Ascending", False)
+        self.order_selector.addItem("Descending", True)
+        for selector in (
+            self.peak_type_selector,
+            self.sort_by_selector,
+            self.order_selector,
+        ):
+            selector.currentIndexChanged.connect(self.refresh_table)
         self.detect_lfp_peaks_button = QPushButton("Detect LFP Peaks")
         self.delete_selected_button = QPushButton("Delete Selected")
         self.analysis_button = QPushButton("Analyze Peaks")
@@ -84,14 +165,21 @@ class LfpPeakPanel(MarkerViewPanel):
         self.table.setHorizontalHeaderLabels(self.DISPLAY_HEADERS)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
-        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table.setEditTriggers(
+            QAbstractItemView.DoubleClicked
+            | QAbstractItemView.EditKeyPressed
+            | QAbstractItemView.SelectedClicked
+        )
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.Fixed)
         header.setSectionResizeMode(1, QHeaderView.Fixed)
-        header.setSectionResizeMode(2, QHeaderView.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.Fixed)
+        header.setSectionResizeMode(3, QHeaderView.Stretch)
         self.table.setColumnWidth(0, 110)
         self.table.setColumnWidth(1, 92)
+        self.table.setColumnWidth(2, 100)
         self.table.cellClicked.connect(self.handle_cell_clicked)
+        self.table.itemChanged.connect(self.handle_item_changed)
         self.table.itemSelectionChanged.connect(self.update_selection_state)
 
         layout = QVBoxLayout(self)
@@ -100,6 +188,14 @@ class LfpPeakPanel(MarkerViewPanel):
         channel_layout.addWidget(QLabel("Channel"))
         channel_layout.addWidget(self.channel_selector, stretch=1)
         layout.addLayout(channel_layout)
+        filter_layout = QHBoxLayout()
+        filter_layout.addWidget(QLabel("Peak Type"))
+        filter_layout.addWidget(self.peak_type_selector, stretch=1)
+        filter_layout.addWidget(QLabel("Sort By"))
+        filter_layout.addWidget(self.sort_by_selector, stretch=1)
+        filter_layout.addWidget(QLabel("Order"))
+        filter_layout.addWidget(self.order_selector, stretch=1)
+        layout.addLayout(filter_layout)
         button_layout = QHBoxLayout()
         button_layout.addWidget(self.detect_lfp_peaks_button, stretch=1)
         button_layout.addWidget(self.delete_selected_button, stretch=1)
@@ -115,11 +211,12 @@ class LfpPeakPanel(MarkerViewPanel):
         self.refresh_table()
 
     def peak_markers(self):
-        channel = self.selected_channel()
-        return tuple(
-            marker
-            for marker in self.markers()
-            if channel is None or marker.payload.get("channel") == channel
+        return filter_sort_peak_markers(
+            self.marker_store.all(),
+            channel=self.selected_channel(),
+            peak_type=self.peak_type_selector.currentData() or PEAK_TYPE_ALL,
+            sort_by=self.sort_by_selector.currentData() or SORT_BY_TIME,
+            descending=bool(self.order_selector.currentData()),
         )
 
     def selected_channel(self):
@@ -142,19 +239,23 @@ class LfpPeakPanel(MarkerViewPanel):
         self.channel_selector.blockSignals(False)
 
     def refresh_table(self):
+        started = time.perf_counter()
         self.refresh_channels()
         current_id = self.selected_marker_id()
+        markers = self.peak_markers()
         self._refreshing = True
-        self.table.setRowCount(0)
+        previous_signals = self.table.blockSignals(True)
+        self.table.setUpdatesEnabled(False)
         try:
             offset = self.sync_state.time_offset_sec
             is_synchronized = self.sync_state.video_time_origin_sec is not None
             self.table.setHorizontalHeaderItem(
                 1,
-                QTableWidgetItem("sync time" if is_synchronized else "video time"),
+                QTableWidgetItem("Sync Time" if is_synchronized else "Video Time"),
             )
-            for row, marker in enumerate(self.peak_markers()):
-                self.table.insertRow(row)
+            self.table.setRowCount(len(markers))
+            selected_row = None
+            for row, marker in enumerate(markers):
                 video_time = marker_video_time(marker, offset)
                 display_time = (
                     relative_time(video_time, self.sync_state.video_time_origin_sec)
@@ -162,7 +263,8 @@ class LfpPeakPanel(MarkerViewPanel):
                     else None
                 )
 
-                type_item = QTableWidgetItem(marker.kind.value)
+                negative = marker_is_negative_peak(marker)
+                type_item = QTableWidgetItem("Negative" if negative else "Positive")
                 type_item.setData(self.MARKER_ID_ROLE, marker.marker_id)
                 type_item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
                 type_item.setTextAlignment(Qt.AlignCenter)
@@ -175,23 +277,31 @@ class LfpPeakPanel(MarkerViewPanel):
                 if video_time is not None:
                     time_item.setData(self.VIDEO_TIME_ROLE, video_time)
 
+                value = marker.payload.get("value")
+                value_item = QTableWidgetItem(
+                    f"{float(value):.6g}" if value is not None else "--"
+                )
+                value_item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
+                value_item.setTextAlignment(Qt.AlignCenter)
+
+                note_item = QTableWidgetItem(marker.note)
+                note_item.setFlags(
+                    Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsEditable
+                )
+
                 self.table.setItem(row, 0, type_item)
                 self.table.setItem(row, 1, time_item)
-
-                note_editor = NoteEditor(marker.note)
-                note_editor.selection_requested.connect(
-                    lambda editor=note_editor: self.select_note_editor_row(editor)
-                )
-                note_editor.editingFinished.connect(
-                    lambda editor=note_editor, marker_id=marker.marker_id: (
-                        self.update_note(marker_id, editor.text())
-                    )
-                )
-                self.table.setCellWidget(row, 2, note_editor)
+                self.table.setItem(row, 2, value_item)
+                self.table.setItem(row, 3, note_item)
                 if marker.marker_id == current_id:
-                    self.table.selectRow(row)
+                    selected_row = row
+            if selected_row is not None:
+                self.table.selectRow(selected_row)
         finally:
+            self.table.setUpdatesEnabled(True)
+            self.table.blockSignals(previous_signals)
             self._refreshing = False
+            self._last_table_update_sec = time.perf_counter() - started
         self.update_selection_state()
 
     def handle_cell_clicked(self, row, column):
@@ -206,17 +316,15 @@ class LfpPeakPanel(MarkerViewPanel):
         item = self.table.item(row, 0) if row >= 0 else None
         return item.data(self.MARKER_ID_ROLE) if item is not None else None
 
-    def select_note_editor_row(self, editor):
-        for row in range(self.table.rowCount()):
-            if self.table.cellWidget(row, 2) is editor:
-                self.table.selectRow(row)
-                item = self.table.item(row, 1)
-                video_time = (
-                    item.data(self.VIDEO_TIME_ROLE) if item is not None else None
-                )
-                if video_time is not None:
-                    self.video_time_selected.emit(float(video_time))
-                return
+    def handle_item_changed(self, item):
+        if self._refreshing or item.column() != 3:
+            return
+        marker_item = self.table.item(item.row(), 0)
+        marker_id = (
+            marker_item.data(self.MARKER_ID_ROLE) if marker_item is not None else None
+        )
+        if marker_id is not None:
+            self.update_note(marker_id, item.text())
 
     def update_note(self, marker_id, note):
         if not self._refreshing:
@@ -227,10 +335,6 @@ class LfpPeakPanel(MarkerViewPanel):
             index.row() for index in self.table.selectionModel().selectedRows()
         }
         self.delete_selected_button.setEnabled(bool(selected_rows))
-        for row in range(self.table.rowCount()):
-            editor = self.table.cellWidget(row, 2)
-            if editor is not None:
-                editor.set_row_selected(row in selected_rows)
 
     def create_peak_analysis_figure(self, channel=None):
         """Create the peak analysis figure without attaching it to a Qt canvas."""
@@ -346,10 +450,10 @@ class LfpPeakPanel(MarkerViewPanel):
         selected_rows = self.table.selectionModel().selectedRows()
         if not selected_rows:
             return
-        markers = self.peak_markers()
         row = selected_rows[0].row()
-        if 0 <= row < len(markers):
-            self.marker_store.delete(markers[row].marker_id)
+        marker_id = self.selected_marker_id()
+        if marker_id is not None:
+            self.marker_store.delete(marker_id)
             if self.table.rowCount() > 0:
                 self.table.selectRow(min(row, self.table.rowCount() - 1))
 
@@ -430,8 +534,12 @@ class LfpPeakPanel(MarkerViewPanel):
     def _finish_peak_detection(self, request_id, identity, result):
         if not self._peak_result_is_current(request_id, identity):
             return
+        gui_started = time.perf_counter()
         channel = int(result["channel"])
+        conversion_started = time.perf_counter()
         markers = peak_records_to_markers(channel, result["records"])
+        marker_conversion_sec = time.perf_counter() - conversion_started
+        self._update_peak_progress(request_id, 96)
         retained = [
             marker
             for marker in self.marker_store.all()
@@ -440,9 +548,18 @@ class LfpPeakPanel(MarkerViewPanel):
                 and marker.payload.get("channel") == channel
             )
         ]
-        self._complete_peak_request(request_id)
+        self._update_peak_progress(request_id, 98)
+        store_started = time.perf_counter()
         self.marker_store.replace_all([*retained, *markers])
+        store_and_table_sec = time.perf_counter() - store_started
+        gui_elapsed_sec = time.perf_counter() - gui_started
+        self._update_peak_progress(request_id, 100)
+        self._complete_peak_request(request_id)
         acceleration = result.get("acceleration", {})
+        acceleration["marker_conversion_sec"] = marker_conversion_sec
+        acceleration["table_update_sec"] = self._last_table_update_sec
+        acceleration["store_and_table_sec"] = store_and_table_sec
+        acceleration["gui_completion_sec"] = gui_elapsed_sec
         details = ""
         if acceleration:
             details = (
@@ -454,6 +571,14 @@ class LfpPeakPanel(MarkerViewPanel):
                 f"{acceleration.get('gpu_statistics_chunks', 0)}"
                 f"\nOpenCL candidate chunks: "
                 f"{acceleration.get('gpu_candidate_chunks', 0)}"
+                f"\nSignal preparation: "
+                f"{acceleration.get('processed_indices_sec', 0.0):.3f} s"
+                f"\nStatistics: {acceleration.get('statistics_sec', 0.0):.3f} s"
+                f"\nPeak detection: "
+                f"{acceleration.get('candidate_stage_sec', 0.0):.3f} s"
+                f"\nFinalize: {acceleration.get('finalize_sec', 0.0):.3f} s"
+                f"\nMarker conversion: {marker_conversion_sec:.3f} s"
+                f"\nTable update: {self._last_table_update_sec:.3f} s"
             )
             if acceleration.get("fallback_reason"):
                 fallback = str(acceleration["fallback_reason"])

@@ -624,14 +624,31 @@ class PeakDetectionWorker(SignalWorker):
             "opencl_status": {"checked": False},
             "fallback_reason": None,
             "statistics_cache_hit": False,
+            "segment_lookup_sec": 0.0,
+            "processed_indices_sec": 0.0,
+            "raw_read_sec": 0.0,
+            "filtering_sec": 0.0,
+            "statistics_sec": 0.0,
+            "candidate_stage_sec": 0.0,
+            "candidate_mask_sec": 0.0,
+            "scipy_peak_sec": 0.0,
+            "cpu_peak_finalization_sec": 0.0,
+            "candidate_collection_sec": 0.0,
+            "deduplicate_sec": 0.0,
+            "record_construction_sec": 0.0,
+            "finalize_sec": 0.0,
         }
         self.report(5)
         source = self.dataset.source
+        lookup_started = time.perf_counter()
         left_index, right_index = source.segment_indices(
             self.channel,
             round(self.start_s * 1_000_000.0),
             round(self.end_s * 1_000_000.0),
             self.cancel_event,
+        )
+        self._acceleration["segment_lookup_sec"] = (
+            time.perf_counter() - lookup_started
         )
         if right_index - left_index < 3:
             raise ValueError("Selected time range is too short for peak detection.")
@@ -643,11 +660,15 @@ class PeakDetectionWorker(SignalWorker):
         )
         prominence_wlen = 2 * prominence_context + 1
 
+        statistics_started = time.perf_counter()
         baseline, sigma = self._global_mean_std(
             left_index,
             right_index,
             sample_rate_hz,
             prominence_context,
+        )
+        self._acceleration["statistics_sec"] = (
+            time.perf_counter() - statistics_started
         )
         self.check_cancel()
         if not np.isfinite(sigma) or sigma <= 0.0:
@@ -663,6 +684,7 @@ class PeakDetectionWorker(SignalWorker):
                 and total >= peak_opencl_minimum_samples()
             )
         )
+        candidate_stage_started = time.perf_counter()
         for core_left in range(left_index, right_index, self.chunk_samples):
             self.check_cancel()
             core_right = min(core_left + self.chunk_samples, right_index)
@@ -678,11 +700,15 @@ class PeakDetectionWorker(SignalWorker):
             masks = None
             if use_opencl_candidates:
                 try:
+                    mask_started = time.perf_counter()
                     masks = peak_candidate_masks_opencl(
                         values,
                         positive_threshold,
                         negative_threshold,
                         requested="opencl",
+                    )
+                    self._acceleration["candidate_mask_sec"] += (
+                        time.perf_counter() - mask_started
                     )
                     self.check_cancel()
                 except Exception as error:
@@ -692,6 +718,7 @@ class PeakDetectionWorker(SignalWorker):
                     use_opencl_candidates = False
             if masks is None:
                 self.check_cancel()
+                scipy_started = time.perf_counter()
                 positive, positive_properties = find_peaks(
                     values,
                     height=positive_threshold,
@@ -707,11 +734,15 @@ class PeakDetectionWorker(SignalWorker):
                     distance=distance,
                     wlen=prominence_wlen,
                 )
+                self._acceleration["scipy_peak_sec"] += (
+                    time.perf_counter() - scipy_started
+                )
                 self.check_cancel()
                 positive_prominences = positive_properties["prominences"]
                 negative_prominences = negative_properties["prominences"]
                 self._acceleration["cpu_candidate_chunks"] += 1
             else:
+                finalization_started = time.perf_counter()
                 positive, positive_prominences = _finalize_peak_mask(
                     values,
                     masks[0],
@@ -730,7 +761,11 @@ class PeakDetectionWorker(SignalWorker):
                     wlen=prominence_wlen,
                     cancel_check=self.check_cancel,
                 )
+                self._acceleration["cpu_peak_finalization_sec"] += (
+                    time.perf_counter() - finalization_started
+                )
                 self._acceleration["gpu_candidate_chunks"] += 1
+            collection_started = time.perf_counter()
             self._append_owned_candidates(
                 candidates,
                 positive,
@@ -753,12 +788,24 @@ class PeakDetectionWorker(SignalWorker):
                 core_right,
                 True,
             )
+            self._acceleration["candidate_collection_sec"] += (
+                time.perf_counter() - collection_started
+            )
             completed = core_right - left_index
-            self.report(50 + round(45 * completed / total))
+            self.report(40 + round(45 * completed / total))
 
         self.check_cancel()
+        self._acceleration["candidate_stage_sec"] = (
+            time.perf_counter() - candidate_stage_started
+        )
+        deduplicate_started = time.perf_counter()
         accepted = self._deduplicate_candidates(candidates, distance)
+        self._acceleration["deduplicate_sec"] = (
+            time.perf_counter() - deduplicate_started
+        )
+        self.report(88)
         self.check_cancel()
+        records_started = time.perf_counter()
         records = [
             {
                 "record_time_s": candidate["record_time_s"],
@@ -767,8 +814,15 @@ class PeakDetectionWorker(SignalWorker):
             }
             for candidate in accepted
         ]
+        self._acceleration["record_construction_sec"] = (
+            time.perf_counter() - records_started
+        )
+        self._acceleration["finalize_sec"] = (
+            self._acceleration["deduplicate_sec"]
+            + self._acceleration["record_construction_sec"]
+        )
         self._finalize_acceleration(started)
-        self.report(100)
+        self.report(92)
         return {
             "channel": self.channel,
             "records": records,
@@ -858,7 +912,7 @@ class PeakDetectionWorker(SignalWorker):
                 chunk_m2,
             )
             completed = core_right - left_index
-            self.report(5 + round(40 * completed / total))
+            self.report(5 + round(35 * completed / total))
         if count == 0:
             raise ValueError("Selected signal contains no finite samples.")
         result = mean, float(np.sqrt(m2 / count))
@@ -910,6 +964,7 @@ class PeakDetectionWorker(SignalWorker):
             metadata["opencl_status"] = opencl_peak_status()
 
     def _processed_indices(self, left_index, right_index, sample_rate_hz):
+        processed_started = time.perf_counter()
         effective_settings = (
             self.settings
             if self.settings is not None and self.settings.show_filtered
@@ -922,24 +977,34 @@ class PeakDetectionWorker(SignalWorker):
         source_count = self.dataset.source.sample_count(self.channel)
         loaded_left = max(left_index - filter_padding, 0)
         loaded_right = min(right_index + filter_padding, source_count)
+        read_started = time.perf_counter()
         raw = self.dataset.source.indexed_segment(
             self.channel,
             loaded_left,
             loaded_right,
             self.cancel_event,
         )
+        self._acceleration["raw_read_sec"] += time.perf_counter() - read_started
+        filtering_started = time.perf_counter()
         values = prepare_lfp_signal(
             raw.values,
             sample_rate_hz,
             effective_settings,
             sample_offset=loaded_left,
         )
+        self._acceleration["filtering_sec"] += (
+            time.perf_counter() - filtering_started
+        )
         crop_left = left_index - loaded_left
         crop_right = crop_left + (right_index - left_index)
-        return (
+        result = (
             np.asarray(raw.time_us[crop_left:crop_right]),
             np.asarray(values[crop_left:crop_right]),
         )
+        self._acceleration["processed_indices_sec"] += (
+            time.perf_counter() - processed_started
+        )
+        return result
 
     @staticmethod
     def _append_owned_candidates(

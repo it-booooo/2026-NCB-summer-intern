@@ -26,6 +26,25 @@ FP64、chunk 數與 speedup。若電腦沒有可用 OpenCL GPU，CPU 結果仍�
 可用 `--samples` 覆蓋 duration 換算出的 sample 數，`--backend cpu` 只執行 CPU
 基準；其他參數可用 `python -m benchmarks.run_peak_benchmark --help` 查看。
 
+要在同一個 process 中量測 cold initialization、第一次 OpenCL execution、後續
+warm execution 與 crossover，可使用 sample grid：
+
+```powershell
+python -m benchmarks.run_peak_benchmark `
+  --sample-grid 10000 50000 100000 250000 500000 1000000 2000000 5000000 10000000 `
+  --sample-rate 1000 `
+  --chunk-samples 250000 `
+  --backend all `
+  --warmup 1 `
+  --repeats 3 `
+  --result benchmark-results\lfp-peak-crossover.json
+```
+
+Grid 輸出中的 `cold_opencl_full_pipeline` 包含第一次 execution，
+`opencl_cold_start_sec` 記錄 kernel/runtime 初始化；兩者相加的實際 cold 成本會寫在
+`initialization_plus_execution_sec`。`observed_warm_crossover_samples` 只表示這次固定
+fixture 上首次快過 CPU 的測量點，仍應搭配每個 stage 與不同 peak density 判讀。
+
 ## CSV benchmark
 
 請在專案根目錄使用專案的 Python 環境執行：

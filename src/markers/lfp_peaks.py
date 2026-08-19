@@ -19,7 +19,11 @@ def peak_records_to_markers(channel, records):
                 f"channel={channel}, value={record['value']:.6g}, "
                 f"{'negative' if record['negative'] else 'positive'} peak"
             ),
-            payload={"channel": channel, "value": record["value"]},
+            payload={
+                "channel": channel,
+                "value": record["value"],
+                "negative": bool(record["negative"]),
+            },
         )
         for record in records
     ]
