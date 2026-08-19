@@ -8,7 +8,12 @@ from src.signal_data.gpu_backend import (
     periodic_noise_regression_opencl,
     select_backend,
 )
-from src.signal_data.lfp_processing import remove_periodic_noise
+from src.lfp_settings import LfpFilterSettings
+from src.signal_data.lfp_processing import (
+    filter_backend,
+    filter_description,
+    remove_periodic_noise,
+)
 
 
 class GpuBackendTests(unittest.TestCase):
@@ -16,6 +21,47 @@ class GpuBackendTests(unittest.TestCase):
         status = opencl_status()
         self.assertIn("available", status)
         self.assertIn("backend", status)
+
+    def test_backend_label_uses_the_real_job_size(self):
+        settings = LfpFilterSettings(
+            show_filtered=True,
+            line_noise_method="regression",
+            line_noise_frequencies_hz=(60.0,),
+        )
+        # Automatic selection keeps small jobs on the CPU, so a description
+        # built from a guessed size would name the wrong backend.
+        with patch(
+            "src.signal_data.gpu_backend._opencl_runtime",
+            return_value=({"device_name": "test"}, None),
+        ):
+            self.assertEqual(filter_backend(settings, 50_000_000), "opencl")
+            self.assertEqual(filter_backend(settings, 1_000), "cpu")
+            self.assertIn("OpenCL GPU", filter_description(settings, 50_000_000))
+            self.assertIn(
+                "NumPy CPU fallback", filter_description(settings, 1_000)
+            )
+
+    def test_description_omits_the_backend_when_the_size_is_unknown(self):
+        settings = LfpFilterSettings(
+            show_filtered=True,
+            line_noise_method="regression",
+            line_noise_frequencies_hz=(60.0,),
+        )
+        description = filter_description(settings)
+
+        self.assertIn("sinusoidal regression", description)
+        self.assertNotIn("OpenCL", description)
+        self.assertNotIn("CPU", description)
+
+    def test_backend_question_does_not_apply_without_regression(self):
+        notch = LfpFilterSettings(
+            show_filtered=True,
+            line_noise_method="notch",
+            line_noise_frequencies_hz=(60.0,),
+        )
+
+        self.assertIsNone(filter_backend(notch, 50_000_000))
+        self.assertIsNone(filter_backend(None, 50_000_000))
 
     def test_cpu_backend_can_be_forced(self):
         self.assertEqual(select_backend(1_000_000, requested="cpu"), "cpu")

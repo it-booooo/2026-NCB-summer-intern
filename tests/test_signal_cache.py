@@ -47,6 +47,8 @@ class SignalCacheTests(unittest.TestCase):
             self.info["metadata"],
             overview_max_points=max_points,
             chunk_rows=17,
+            # Force several filtered batches out of this tiny fixture.
+            coarse_batch_bytes=8 * 17,
             cache_root=self.cache_root,
         )
 
@@ -115,9 +117,15 @@ class SignalCacheTests(unittest.TestCase):
             len(range(0, self.config.sample_count, step)),
         )
 
-    def test_cancelled_coarse_build_removes_temporary_directory(self):
+    def test_cancelled_coarse_build_keeps_finished_channels(self):
         source = self.source()
         source.ensure_cache(2)
+        settings = LfpFilterSettings(
+            show_filtered=True,
+            bandpass_enabled=True,
+            bandpass_low_hz=5.0,
+            bandpass_high_hz=40.0,
+        )
         cancel = threading.Event()
 
         def cancel_after_first_channel(_progress):
@@ -127,12 +135,53 @@ class SignalCacheTests(unittest.TestCase):
             source.coarse(
                 2,
                 3,
+                settings,
                 cancel_event=cancel,
                 progress_callback=cancel_after_first_channel,
             )
 
-        self.assertFalse(any(self.cache_root.glob("coarse-*")))
         self.assertFalse(any(self.cache_root.glob("*.tmp")))
+        self.assertTrue(source.coarse_is_ready(3, settings, 2))
+        self.assertFalse(source.coarse_is_ready(3, settings))
+        self.assertFalse(source.coarse_is_ready(3, settings, 5))
+
+    def test_resumed_coarse_build_only_computes_missing_channels(self):
+        source = self.source()
+        source.ensure_cache(2)
+        settings = LfpFilterSettings(
+            show_filtered=True,
+            bandpass_enabled=True,
+            bandpass_low_hz=5.0,
+            bandpass_high_hz=40.0,
+        )
+        cancel = threading.Event()
+
+        with self.assertRaises(CacheBuildCancelled):
+            source.coarse(
+                2,
+                3,
+                settings,
+                cancel_event=cancel,
+                progress_callback=lambda _progress: cancel.set(),
+            )
+
+        expected = source.coarse(2, 3, settings)
+        filtered_channels = []
+        with patch.object(
+            SignalDataSource,
+            "_publish_coarse_channel",
+            autospec=True,
+            side_effect=SignalDataSource._publish_coarse_channel,
+        ) as publish:
+            source.coarse(5, 3, settings)
+            filtered_channels = [call.args[2] for call in publish.call_args_list]
+
+        self.assertNotIn(2, filtered_channels)
+        self.assertEqual(sorted(filtered_channels), [5, 260])
+        self.assertTrue(source.coarse_is_ready(3, settings))
+        np.testing.assert_array_equal(
+            source.coarse(2, 3, settings).values, expected.values
+        )
 
     def test_filtered_coarse_reports_priority_range_first(self):
         source = self.source()
@@ -143,20 +192,139 @@ class SignalCacheTests(unittest.TestCase):
             5,
             3,
             settings,
-            range_callback=lambda start, end, times, values: callbacks.append(
-                (start, end, np.asarray(times).copy(), np.asarray(values).copy())
+            range_callback=lambda channel, start, end, times, values: callbacks.append(
+                (
+                    channel,
+                    start,
+                    end,
+                    np.asarray(times).copy(),
+                    np.asarray(values).copy(),
+                )
             ),
             priority_sample_index=100,
         )
 
         self.assertGreater(len(callbacks), 1)
         priority_point = 100 // 3
-        self.assertLessEqual(callbacks[0][0], priority_point)
-        self.assertGreater(callbacks[0][1], priority_point)
+        self.assertEqual({channel for channel, *_rest in callbacks}, {5})
+        self.assertLessEqual(callbacks[0][1], priority_point)
+        self.assertGreater(callbacks[0][2], priority_point)
         reconstructed = np.empty_like(result.values)
-        for start, end, _times, values in callbacks:
+        for _channel, start, end, _times, values in callbacks:
             reconstructed[start:end] = values
         np.testing.assert_allclose(reconstructed, result.values)
+
+    def test_grouped_channels_match_single_channel_filtering(self):
+        source = self.source()
+        settings = LfpFilterSettings(
+            show_filtered=True,
+            bandpass_enabled=True,
+            bandpass_low_hz=5.0,
+            bandpass_high_hz=40.0,
+            line_noise_hz=20.0,
+            line_noise_method="regression",
+            regression_all_harmonics=True,
+            line_noise_frequencies_hz=(20.0,),
+        )
+        step = 3
+        # Channel 2 is the priority channel and is filtered on its own, so 5
+        # and 260 are the ones that go through the multi-channel call.
+        source.coarse(2, step, settings)
+        grouped = source.coarse(260, step, settings)
+
+        legacy = read_signal_csv(
+            self.path, [260], metadata=self.info["metadata"]
+        )
+        reference = prepare_lfp_signal(
+            legacy["channel_260"].to_numpy(),
+            self.config.sample_rate_hz,
+            settings,
+        )
+
+        self.assertTrue(source.coarse_is_ready(step, settings))
+        np.testing.assert_allclose(
+            grouped.values[5:-5],
+            reference[::step][5:-5],
+            rtol=3e-2,
+            atol=3e-2,
+        )
+
+    def test_channel_groups_never_mix_sample_rates(self):
+        source = self.source()
+        rates = {2: 100.0, 5: 100.0, 260: 250.0}
+        with patch.object(
+            SignalDataSource,
+            "_sample_rate",
+            autospec=True,
+            side_effect=lambda _self, channel: rates[int(channel)],
+        ):
+            groups = source._coarse_channel_groups([2, 5, 260], 2)
+
+        self.assertEqual(groups[0], [2])
+        self.assertNotIn(260, groups[1])
+        self.assertEqual(sorted(sum(groups, [])), [2, 5, 260])
+
+    def test_running_build_moves_to_the_channel_the_user_switched_to(self):
+        source = self.source()
+        settings = LfpFilterSettings(
+            show_filtered=True,
+            bandpass_enabled=True,
+            bandpass_low_hz=5.0,
+            bandpass_high_hz=40.0,
+        )
+        published = []
+        selected = {"channel": 2}
+
+        def on_published(channels):
+            published.append(sorted(channels))
+            # Stand in for the user picking a channel from a later group.
+            selected["channel"] = 260
+
+        with patch("src.signal_data.source.COARSE_CHANNEL_GROUP", 1):
+            source.coarse(
+                2,
+                3,
+                settings,
+                published_callback=on_published,
+                priority_channel_provider=lambda: selected["channel"],
+            )
+
+        self.assertEqual(published, [[2], [260], [5]])
+        self.assertTrue(source.coarse_is_ready(3, settings))
+
+    def test_browsing_channels_never_filters_one_twice(self):
+        source = self.source()
+        settings = LfpFilterSettings(
+            show_filtered=True,
+            bandpass_enabled=True,
+            bandpass_low_hz=5.0,
+            bandpass_high_hz=40.0,
+        )
+        filtered = []
+        original = SignalDataSource._publish_coarse_channel
+
+        def record(instance, final_path, channel, values):
+            filtered.append(int(channel))
+            return original(instance, final_path, channel, values)
+
+        selected = {"channel": 2}
+        with (
+            patch.object(SignalDataSource, "_publish_coarse_channel", record),
+            patch("src.signal_data.source.COARSE_CHANNEL_GROUP", 1),
+        ):
+            source.coarse(
+                2,
+                3,
+                settings,
+                published_callback=lambda channels: selected.__setitem__(
+                    "channel", 5
+                ),
+                priority_channel_provider=lambda: selected["channel"],
+            )
+            for channel in (5, 260, 2):
+                source.coarse(channel, 3, settings)
+
+        self.assertEqual(sorted(filtered), [2, 5, 260])
 
     def test_clear_cache_closes_handles_and_removes_source_entries(self):
         source = self.source()

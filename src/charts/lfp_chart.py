@@ -136,13 +136,21 @@ def LFP(
     filter_label = fig.text(
         0.97,
         0.88,
-        signal_func.filter_description(filter_settings),
+        "",
         fontsize=7,
         ha="right",
         va="bottom",
     )
     ax.grid(True, linewidth=0.4, alpha=0.35)
     ax.tick_params(axis="both", labelsize=7, pad=1)
+
+    def describe_filter(settings) -> str:
+        """Label the filter with the backend the whole-record build will use."""
+        try:
+            sample_count = dataset.source.sample_count(selected_channel)
+        except (AttributeError, KeyError, OSError, ValueError):
+            sample_count = None
+        return signal_func.filter_description(settings, sample_count)
 
     full_xlim = dataset.record_bounds_s(selected_channel)
     if full_xlim[0] == full_xlim[1]:
@@ -169,6 +177,7 @@ def LFP(
         times = coarse_times / 1_000_000.0
         if step is None:
             resolved_auto_stride = actual_stride
+        filter_label.set_text(signal_func.filter_description(settings, sample_count))
         base_times = np.asarray(times, dtype=float)
         base_values = np.asarray(values, dtype=float)
         line.set_data(base_times, base_values)
@@ -201,7 +210,7 @@ def LFP(
         show_filtered = bool(filtered)
         refresh_lfp_plot()
         label_settings = _filter_settings_for_view(filter_settings, show_filtered)
-        filter_label.set_text(signal_func.filter_description(label_settings))
+        filter_label.set_text(describe_filter(label_settings))
         fig.canvas.draw_idle()
 
     def set_lfp_filter_settings(settings) -> None:
@@ -209,7 +218,7 @@ def LFP(
         nonlocal filter_settings
         filter_settings = settings
         label_settings = _filter_settings_for_view(filter_settings, show_filtered)
-        filter_label.set_text(signal_func.filter_description(label_settings))
+        filter_label.set_text(describe_filter(label_settings))
 
     def begin_lfp_partial_filtered() -> None:
         """Clear the line so completed filtered chunks can be drawn incrementally."""
@@ -220,12 +229,37 @@ def LFP(
         base_values = np.asarray([], dtype=float)
         line.set_data([], [])
         fig.current_view = "filtered"
-        filter_label.set_text(signal_func.filter_description(filter_settings))
+        filter_label.set_text(describe_filter(filter_settings))
+        fig.canvas.draw_idle()
+
+    def draw_partial_filtered() -> None:
+        """Show every chunk the running filter build has produced so far."""
+        nonlocal base_times, base_values
+        ordered = [(key, *partial_chunks[key]) for key in sorted(partial_chunks)]
+        display_times = []
+        display_values = []
+        previous_end = None
+        for start, end, chunk_times, chunk_values in ordered:
+            if previous_end is not None and start > previous_end:
+                display_times.append(np.asarray([np.nan]))
+                display_values.append(np.asarray([np.nan]))
+            display_times.append(chunk_times)
+            display_values.append(chunk_values)
+            previous_end = end
+        if display_times:
+            base_times = np.concatenate(display_times)
+            base_values = np.concatenate(display_values)
+        else:
+            base_times = np.asarray([], dtype=float)
+            base_values = np.asarray([], dtype=float)
+        line.set_data(base_times, base_values)
+        ax.relim()
+        ax.autoscale_view(scalex=False, scaley=True)
         fig.canvas.draw_idle()
 
     def append_lfp_partial_filtered(point_start, times, values) -> None:
         """Add one completed filtered overview chunk to the visible line."""
-        nonlocal partial_chunks, base_times, base_values
+        nonlocal partial_chunks
         if not show_filtered:
             return
         start = int(point_start)
@@ -234,24 +268,15 @@ def LFP(
             np.asarray(times, dtype=float) / 1_000_000.0,
             np.asarray(values, dtype=float),
         )
-        ordered = [(key, *partial_chunks[key]) for key in sorted(partial_chunks)]
-        if ordered:
-            display_times = []
-            display_values = []
-            previous_end = None
-            for start, end, chunk_times, chunk_values in ordered:
-                if previous_end is not None and start > previous_end:
-                    display_times.append(np.asarray([np.nan]))
-                    display_values.append(np.asarray([np.nan]))
-                display_times.append(chunk_times)
-                display_values.append(chunk_values)
-                previous_end = end
-            base_times = np.concatenate(display_times)
-            base_values = np.concatenate(display_values)
-            line.set_data(base_times, base_values)
-            ax.relim()
-            ax.autoscale_view(scalex=False, scaley=True)
-        fig.canvas.draw_idle()
+        draw_partial_filtered()
+
+    def restore_lfp_partial_filtered() -> None:
+        """Return to a build still running for the newly reselected channel."""
+        nonlocal show_filtered
+        show_filtered = True
+        fig.current_view = "filtered"
+        filter_label.set_text(describe_filter(filter_settings))
+        draw_partial_filtered()
 
     def set_lfp_peak_samples(
         channel: int,
@@ -289,6 +314,9 @@ def LFP(
         ax.autoscale_view(scalex=False, scaley=True)
         fig.canvas.draw_idle()
 
+    filter_label.set_text(
+        describe_filter(_filter_settings_for_view(filter_settings, show_filtered))
+    )
     refresh_lfp_plot(recalculate_auto=True)
 
     fig.set_lfp_channel = set_lfp_channel
@@ -296,6 +324,7 @@ def LFP(
     fig.set_lfp_filter_settings = set_lfp_filter_settings
     fig.begin_lfp_partial_filtered = begin_lfp_partial_filtered
     fig.append_lfp_partial_filtered = append_lfp_partial_filtered
+    fig.restore_lfp_partial_filtered = restore_lfp_partial_filtered
     fig.set_lfp_peak_samples = set_lfp_peak_samples
     fig.set_lfp_xlim = navigation.set_xlim
     fig.reset_lfp_x_zoom = navigation.reset_x_zoom

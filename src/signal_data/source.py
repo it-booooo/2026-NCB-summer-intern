@@ -41,6 +41,19 @@ DEFAULT_CHUNK_ROWS = 250_000
 # the working-set spike of a 20-hour import near ~1 GB instead of ~3 GB; a
 # whole-file parse would instead hold the entire recording (~3 GB) in RAM.
 PYARROW_CSV_BLOCK_BYTES = 32 * 1024 * 1024
+# One filtered coarse batch is sized by its working set instead of by row
+# count.  A 20-hour recording resolves to a plot step near 9000, so the old
+# ``chunk_rows // step`` rule produced 27-point batches and thousands of tiny
+# dispatches, costing 28 ns per sample against 18 ns at a megabyte-scale batch.
+# Throughput flattens right about here, so a larger batch would only coarsen
+# the incremental repaint and hold more memory for nothing.
+COARSE_FILTER_BATCH_SAMPLES = 1024 * 1024
+COARSE_FILTER_BATCH_BYTES = 64 * 1024 * 1024
+# Channels filtered in one call share the regression design matrix, which is
+# where the multi-channel speedup comes from: eight channels of a megabyte each
+# reach 12 ns per sample.  Grouping rather than taking every channel at once
+# bounds the working set and limits how much a cancelled build throws away.
+COARSE_CHANNEL_GROUP = 8
 DEFAULT_OVERVIEW_MAX_POINTS = 5_000
 DEFAULT_CACHE_MAX_BYTES = 20 * 1024 * 1024 * 1024
 DEFAULT_CACHE_MAX_AGE_DAYS = 30
@@ -177,12 +190,14 @@ class SignalDataSource:
         *,
         overview_max_points: int = DEFAULT_OVERVIEW_MAX_POINTS,
         chunk_rows: int = DEFAULT_CHUNK_ROWS,
+        coarse_batch_bytes: int = COARSE_FILTER_BATCH_BYTES,
         cache_root: str | Path | None = None,
     ):
         self.path = str(Path(path).resolve())
         self.metadata = metadata
         self.overview_max_points = max(int(overview_max_points), 2)
         self.chunk_rows = max(int(chunk_rows), 1)
+        self.coarse_batch_bytes = max(int(coarse_batch_bytes), 8)
         self.cache_root = (
             Path(cache_root)
             if cache_root is not None
@@ -736,6 +751,8 @@ class SignalDataSource:
         progress_callback=None,
         range_callback=None,
         priority_sample_index: int | None = None,
+        published_callback=None,
+        priority_channel_provider=None,
     ) -> SignalOverview:
         """Return an atomically cached full-range coarse for one global step."""
         channel_id = int(channel_id)
@@ -744,22 +761,30 @@ class SignalDataSource:
         step = max(int(step), 1)
         identity = self._coarse_identity(step, settings)
         coarse_path = self.cache_root / f"coarse-{self._digest(identity)}"
-        with self.cache_build_lock(coarse_path):
-            self._check_cancel(cancel_event)
-            if not self._valid_coarse(coarse_path, identity):
-                self._build_coarse_directory(
-                    coarse_path,
-                    identity,
-                    step,
-                    settings,
-                    cancel_event=cancel_event,
-                    progress_callback=progress_callback,
-                    range_callback=range_callback,
-                    priority_channel=channel_id,
-                    priority_sample_index=priority_sample_index,
-                )
-            else:
-                self._touch_cache(coarse_path)
+        if self._valid_coarse_channel(coarse_path, identity, channel_id):
+            # Reading an already published channel must never wait behind the
+            # build lock: a background build of the remaining channels holds it
+            # for minutes, and the GUI reads this path when switching channels.
+            self._touch_cache(coarse_path)
+        else:
+            with self.cache_build_lock(coarse_path):
+                self._check_cancel(cancel_event)
+                if not self._valid_coarse_channel(coarse_path, identity, channel_id):
+                    self._build_coarse_directory(
+                        coarse_path,
+                        identity,
+                        step,
+                        settings,
+                        cancel_event=cancel_event,
+                        progress_callback=progress_callback,
+                        range_callback=range_callback,
+                        priority_channel=channel_id,
+                        priority_sample_index=priority_sample_index,
+                        published_callback=published_callback,
+                        priority_channel_provider=priority_channel_provider,
+                    )
+                else:
+                    self._touch_cache(coarse_path)
         metadata = json.loads((coarse_path / "metadata.json").read_text("utf-8"))
         count = int(metadata["coarse_count"])
         times = np.memmap(
@@ -781,11 +806,34 @@ class SignalDataSource:
             del times
             del values
 
-    def coarse_is_ready(self, step: int, settings=None) -> bool:
-        """Check cache validity without starting conversion."""
+    def coarse_is_ready(self, step: int, settings=None, channel_id=None) -> bool:
+        """Check cache validity without starting conversion.
+
+        Args:
+            channel_id: Only require this channel; ``None`` requires every one.
+        """
         identity = self._coarse_identity(max(int(step), 1), settings)
         path = self.cache_root / f"coarse-{self._digest(identity)}"
-        return self._valid_coarse(path, identity)
+        if channel_id is None:
+            return self._valid_coarse(path, identity)
+        return self._valid_coarse_channel(path, identity, int(channel_id))
+
+    def coarse_ready_channels(self, step: int, settings=None) -> list[int]:
+        """List every channel already published for this step and settings.
+
+        The shared header is parsed once, so a caller refreshing a per-channel
+        readiness display does not pay for one parse per channel.
+        """
+        identity = self._coarse_identity(max(int(step), 1), settings)
+        path = self.cache_root / f"coarse-{self._digest(identity)}"
+        metadata = self._coarse_metadata(path, identity)
+        if metadata is None:
+            return []
+        return [
+            channel
+            for channel in self.channels
+            if self._published_coarse_channel(path, metadata, channel)
+        ]
 
     def _coarse_identity(self, step: int, settings) -> dict:
         filter_settings = asdict(settings) if settings is not None else None
@@ -800,22 +848,111 @@ class SignalDataSource:
             "filter_settings": filter_settings,
         }
 
-    def _valid_coarse(self, path: Path, identity: dict) -> bool:
+    @staticmethod
+    def _coarse_channel_marker(channel: int) -> str:
+        return f"channel_{int(channel)}.complete"
+
+    def _coarse_metadata(self, path: Path, identity: dict) -> dict | None:
+        """Return the shared coarse header when its timestamps are usable."""
         try:
             metadata = json.loads((path / "metadata.json").read_text("utf-8"))
             count = int(metadata["coarse_count"])
-            return (
-                metadata.get("identity") == identity
-                and metadata.get("complete") is True
-                and (path / "COMPLETE").is_file()
-                and (path / "time_us.bin").stat().st_size == count * 8
-                and all(
-                    (path / self._value_name(channel)).stat().st_size == count * 4
-                    for channel in self.channels
-                )
-            )
+            if metadata.get("identity") != identity:
+                return None
+            if (path / "time_us.bin").stat().st_size != count * 8:
+                return None
+            return metadata
         except (KeyError, OSError, ValueError, json.JSONDecodeError):
+            return None
+
+    def _published_coarse_channel(
+        self, path: Path, metadata: dict, channel: int
+    ) -> bool:
+        """Check one channel against an already parsed coarse header."""
+        try:
+            count = int(metadata["coarse_count"])
+            if (path / self._value_name(channel)).stat().st_size != count * 4:
+                return False
+            if (path / self._coarse_channel_marker(channel)).is_file():
+                return True
+            # Caches written before per-channel publishing only carry the shared
+            # marker, and those are complete for every channel.
+            return (
+                metadata.get("complete") is True
+                and (path / "COMPLETE").is_file()
+            )
+        except (KeyError, OSError, ValueError):
             return False
+
+    def _valid_coarse_channel(
+        self, path: Path, identity: dict, channel: int
+    ) -> bool:
+        """Check one published channel so other channels can still be missing."""
+        metadata = self._coarse_metadata(path, identity)
+        if metadata is None:
+            return False
+        return self._published_coarse_channel(path, metadata, channel)
+
+    def _valid_coarse(self, path: Path, identity: dict) -> bool:
+        return all(
+            self._valid_coarse_channel(path, identity, channel)
+            for channel in self.channels
+        )
+
+    def _prepare_coarse_directory(
+        self,
+        final_path: Path,
+        identity: dict,
+        source_path: Path,
+        sample_count: int,
+        indices: np.ndarray,
+        cancel_event: threading.Event | None,
+    ) -> np.ndarray:
+        """Publish the shared coarse header once and return its timestamps."""
+        metadata = self._coarse_metadata(final_path, identity)
+        if metadata is not None:
+            count = int(metadata["coarse_count"])
+            return np.fromfile(
+                final_path / "time_us.bin", dtype="<f8", count=count
+            )
+
+        if final_path.exists():
+            _remove_cache_directory(final_path)
+        final_path.mkdir(parents=True, exist_ok=True)
+        source_times = np.memmap(
+            source_path / "time_us.bin",
+            dtype="<f8",
+            mode="r",
+            shape=(sample_count,),
+        )
+        try:
+            coarse_times = np.asarray(source_times[indices], dtype="<f8").copy()
+        finally:
+            del source_times
+        self._check_cancel(cancel_event)
+        self._publish_cache_file(
+            final_path, "time_us.bin", coarse_times.tobytes()
+        )
+        self._publish_cache_file(
+            final_path,
+            "metadata.json",
+            (
+                json.dumps(
+                    {
+                        "identity": identity,
+                        "sample_count": int(sample_count),
+                        "coarse_count": int(indices.size),
+                    },
+                    indent=2,
+                    sort_keys=True,
+                )
+                + "\n"
+            ).encode("utf-8"),
+        )
+        # Publish the shared marker straight away so the cache sweeper treats a
+        # partially built directory as live instead of abandoned.
+        (final_path / "COMPLETE").write_text("complete\n", encoding="ascii")
+        return coarse_times
 
     def _build_coarse_directory(
         self,
@@ -829,129 +966,234 @@ class SignalDataSource:
         range_callback=None,
         priority_channel: int | None = None,
         priority_sample_index: int | None = None,
+        published_callback=None,
+        priority_channel_provider=None,
     ) -> None:
-        from .lfp_processing import filter_padding_samples, prepare_lfp_signal
-
         source_path, metadata = self._cache_metadata(self.channels[0])
         sample_count = int(metadata["sample_count"])
         indices = np.arange(0, sample_count, step, dtype=np.int64)
-        temporary = self.cache_root / f".{final_path.name}.{uuid.uuid4().hex}.tmp"
-        temporary.mkdir(parents=True)
-        try:
+        self._check_cancel(cancel_event)
+        source_times_for_coarse = self._prepare_coarse_directory(
+            final_path, identity, source_path, sample_count, indices, cancel_event
+        )
+        pending = [
+            channel
+            for channel in self.channels
+            if not self._valid_coarse_channel(final_path, identity, channel)
+        ]
+        remaining = self._coarse_channel_groups(pending, priority_channel)
+        finished = 0
+        first_group = True
+        while remaining:
             self._check_cancel(cancel_event)
-            source_times = np.memmap(
-                source_path / "time_us.bin",
-                dtype="<f8",
-                mode="r",
-                shape=(sample_count,),
+            current_priority = priority_channel
+            if priority_channel_provider is not None:
+                selected = priority_channel_provider()
+                if selected is not None:
+                    current_priority = int(selected)
+            # The caller can move to another channel while this runs, so the
+            # group holding the newly displayed channel is taken next instead
+            # of restarting the whole job around it.
+            index = next(
+                (
+                    position
+                    for position, group in enumerate(remaining)
+                    if current_priority in group
+                ),
+                0,
             )
-            try:
-                source_times_for_coarse = np.asarray(
-                    source_times[indices], dtype="<f8"
-                ).copy()
-                self._write_array_atomic(
-                    temporary / "time_us.bin",
-                    source_times_for_coarse,
+            group = remaining.pop(index)
+            values = self._filtered_coarse_group(
+                source_path,
+                sample_count,
+                indices,
+                step,
+                settings,
+                group,
+                source_times_for_coarse,
+                cancel_event=cancel_event,
+                range_callback=(
+                    range_callback if current_priority in group else None
+                ),
+                range_channel=current_priority,
+                priority_sample_index=(
+                    priority_sample_index
+                    if first_group and current_priority in group
+                    else None
+                ),
+            )
+            first_group = False
+            self._check_cancel(cancel_event)
+            # Publishing a whole group at once keeps a cancelled build from
+            # discarding it.
+            for row, channel in enumerate(group):
+                self._publish_coarse_channel(final_path, channel, values[row])
+            finished += len(group)
+            if published_callback is not None:
+                published_callback(list(group))
+            if progress_callback is not None:
+                progress_callback(finished / max(len(pending), 1))
+        self._check_cancel(cancel_event)
+        # Every channel carries its own marker, so nothing else has to be
+        # rewritten here.  Keeping metadata.json immutable means a reader can
+        # never collide with a replacement of the file it is parsing.
+        self._touch_cache(final_path)
+        self._prune_cache({source_path, final_path})
+
+    def _coarse_channel_groups(
+        self, pending: list[int], priority_channel: int | None
+    ) -> list[list[int]]:
+        """Order the work as the visible channel first, then filtered together.
+
+        The visible channel runs alone so its waveform appears after a fraction
+        of the job.  Every other channel is filtered in one multi-channel call
+        per group, which lets the regression share one design matrix across the
+        whole group instead of rebuilding it per channel.  A group is confined
+        to one sample rate because padding and every filter coefficient are
+        derived from it.
+        """
+        remaining = list(pending)
+        groups: list[list[int]] = []
+        if priority_channel in remaining:
+            remaining.remove(priority_channel)
+            groups.append([priority_channel])
+        by_sample_rate: dict[float, list[int]] = {}
+        for channel in remaining:
+            by_sample_rate.setdefault(self._sample_rate(channel), []).append(
+                channel
+            )
+        for channels in by_sample_rate.values():
+            for start in range(0, len(channels), COARSE_CHANNEL_GROUP):
+                groups.append(channels[start : start + COARSE_CHANNEL_GROUP])
+        return groups
+
+    def _coarse_points_per_batch(self, step: int, group_size: int) -> int:
+        """Size one filter call by working-set bytes, not by row count.
+
+        ``chunk_rows // step`` used to decide this, which collapsed to a few
+        dozen points on a long recording and turned the build into thousands of
+        tiny dispatches.
+        """
+        budget_samples = self.coarse_batch_bytes // (8 * max(group_size, 1))
+        samples_per_batch = min(
+            COARSE_FILTER_BATCH_SAMPLES, max(budget_samples, step)
+        )
+        return max(int(samples_per_batch) // max(int(step), 1), 1)
+
+    def _filtered_coarse_group(
+        self,
+        source_path: Path,
+        sample_count: int,
+        indices: np.ndarray,
+        step: int,
+        settings,
+        group: list[int],
+        source_times_for_coarse: np.ndarray,
+        *,
+        cancel_event: threading.Event | None,
+        range_callback,
+        range_channel: int | None,
+        priority_sample_index: int | None,
+    ) -> np.ndarray:
+        """Return ``(len(group), indices.size)`` coarse values for one group."""
+        from .lfp_processing import filter_padding_samples, prepare_lfp_signal
+
+        output = np.empty((len(group), indices.size), dtype="<f4")
+        with ExitStack() as stack:
+            sources = [
+                stack.enter_context(
+                    self._channel_memmap(source_path, channel, sample_count)
                 )
-            finally:
-                del source_times
-            channel_order = list(self.channels)
-            if priority_channel in channel_order:
-                channel_order.remove(priority_channel)
-                channel_order.insert(0, priority_channel)
-            channel_count = max(len(channel_order), 1)
-            for channel_index, channel in enumerate(channel_order):
-                self._check_cancel(cancel_event)
-                source_values = np.memmap(
-                    source_path / self._value_name(channel),
-                    dtype="<f4",
-                    mode="r",
-                    shape=(sample_count,),
+                for channel in group
+            ]
+            if settings is None or not settings.show_filtered:
+                for row, source_values in enumerate(sources):
+                    self._check_cancel(cancel_event)
+                    output[row] = np.asarray(source_values[indices], dtype="<f4")
+                return output
+
+            sample_rate = self._sample_rate(group[0])
+            padding = filter_padding_samples(settings, sample_rate)
+            points_per_batch = self._coarse_points_per_batch(step, len(group))
+            point_starts = list(range(0, indices.size, points_per_batch))
+            if priority_sample_index is not None:
+                priority_point = max(
+                    min(int(priority_sample_index) // step, indices.size - 1), 0
                 )
-                try:
-                    if settings is None or not settings.show_filtered:
-                        coarse_values = np.asarray(
-                            source_values[indices], dtype="<f4"
-                        )
-                    else:
-                        sample_rate = self._sample_rate(channel)
-                        padding = filter_padding_samples(settings, sample_rate)
-                        output = np.empty(indices.size, dtype="<f4")
-                        # Keep filtering batches large.  The range callback already
-                        # provides incremental display updates; limiting every batch
-                        # to ten seconds made long notch jobs spend most of their
-                        # time repeatedly padding, filtering, copying, and repainting.
-                        points_per_batch = max(self.chunk_rows // step, 1)
-                        point_starts = list(
-                            range(0, indices.size, points_per_batch)
-                        )
-                        if channel == priority_channel and priority_sample_index is not None:
-                            priority_point = max(
-                                min(int(priority_sample_index) // step, indices.size - 1),
-                                0,
-                            )
-                            point_starts.sort(
-                                key=lambda start: abs(
-                                    start
-                                    + min(points_per_batch, indices.size - start) / 2
-                                    - priority_point
-                                )
-                            )
-                        for point_start in point_starts:
-                            self._check_cancel(cancel_event)
-                            point_end = min(
-                                point_start + points_per_batch, indices.size
-                            )
-                            requested = indices[point_start:point_end]
-                            left = int(requested[0])
-                            right = min(int(requested[-1]) + 1, sample_count)
-                            loaded_left = max(left - padding, 0)
-                            loaded_right = min(right + padding, sample_count)
-                            filtered = prepare_lfp_signal(
-                                np.asarray(
-                                    source_values[loaded_left:loaded_right]
-                                ),
-                                sample_rate,
-                                settings,
-                                sample_offset=loaded_left,
-                                dispatch_sample_count=sample_count,
-                            )
-                            relative = requested - loaded_left
-                            selected = filtered[relative]
-                            output[point_start:point_end] = selected
-                            if range_callback is not None and channel == priority_channel:
-                                range_callback(
-                                    point_start,
-                                    point_end,
-                                    np.asarray(source_times_for_coarse[point_start:point_end]),
-                                    np.asarray(selected, dtype="<f4").copy(),
-                                )
-                        coarse_values = output
-                    self._write_array_atomic(
-                        temporary / self._value_name(channel), coarse_values
+                point_starts.sort(
+                    key=lambda start: abs(
+                        start
+                        + min(points_per_batch, indices.size - start) / 2
+                        - priority_point
                     )
-                    if progress_callback is not None:
-                        progress_callback((channel_index + 1) / channel_count)
-                finally:
-                    del source_values
-            self._check_cancel(cancel_event)
-            coarse_metadata = {
-                "complete": True,
-                "identity": identity,
-                "sample_count": sample_count,
-                "coarse_count": int(indices.size),
-            }
-            (temporary / "metadata.json").write_text(
-                json.dumps(coarse_metadata, indent=2, sort_keys=True) + "\n",
-                encoding="utf-8",
+                )
+            range_row = (
+                group.index(range_channel)
+                if range_callback is not None and range_channel in group
+                else None
             )
-            (temporary / "COMPLETE").write_text("complete\n", encoding="ascii")
-            self._flush_directory_files(temporary)
-            self._atomic_replace_directory(temporary, final_path)
-            self._prune_cache({source_path, final_path})
-        except Exception:
-            shutil.rmtree(temporary, ignore_errors=True)
-            raise
+            for point_start in point_starts:
+                self._check_cancel(cancel_event)
+                point_end = min(point_start + points_per_batch, indices.size)
+                requested = indices[point_start:point_end]
+                left = int(requested[0])
+                right = min(int(requested[-1]) + 1, sample_count)
+                loaded_left = max(left - padding, 0)
+                loaded_right = min(right + padding, sample_count)
+                block = np.stack(
+                    [
+                        np.asarray(source_values[loaded_left:loaded_right])
+                        for source_values in sources
+                    ],
+                    axis=0,
+                )
+                filtered = prepare_lfp_signal(
+                    block,
+                    sample_rate,
+                    settings,
+                    sample_offset=loaded_left,
+                    dispatch_sample_count=sample_count,
+                )
+                selected = np.atleast_2d(filtered)[:, requested - loaded_left]
+                output[:, point_start:point_end] = selected
+                if range_row is not None:
+                    range_callback(
+                        group[range_row],
+                        point_start,
+                        point_end,
+                        np.asarray(
+                            source_times_for_coarse[point_start:point_end]
+                        ),
+                        np.asarray(selected[range_row], dtype="<f4").copy(),
+                    )
+        return output
+
+    @contextmanager
+    def _channel_memmap(self, source_path: Path, channel: int, sample_count: int):
+        """Open one channel's full-resolution values and release it on exit."""
+        values = np.memmap(
+            source_path / self._value_name(channel),
+            dtype="<f4",
+            mode="r",
+            shape=(sample_count,),
+        )
+        try:
+            yield values
+        finally:
+            del values
+
+    def _publish_coarse_channel(
+        self, final_path: Path, channel: int, values: np.ndarray
+    ) -> None:
+        """Make one finished channel readable before the others are computed."""
+        self._publish_cache_file(
+            final_path,
+            self._value_name(channel),
+            np.asarray(values, dtype="<f4").tobytes(),
+        )
+        (final_path / self._coarse_channel_marker(channel)).write_text(
+            "complete\n", encoding="ascii"
+        )
 
     def _sample_rate(self, channel: int) -> float:
         channels = self.channels
@@ -1081,6 +1323,19 @@ class SignalDataSource:
             stream.write(np.asarray(values).tobytes())
             stream.flush()
             os.fsync(stream.fileno())
+
+    @staticmethod
+    def _publish_cache_file(directory: Path, name: str, payload: bytes) -> None:
+        """Replace one file inside a live cache directory in a single step."""
+        temporary = directory / f".{name}.{uuid.uuid4().hex}.tmp"
+        try:
+            with temporary.open("wb") as stream:
+                stream.write(payload)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, directory / name)
+        finally:
+            temporary.unlink(missing_ok=True)
 
     @staticmethod
     def _flush_directory_files(directory: Path) -> None:

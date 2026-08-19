@@ -1000,6 +1000,7 @@ class LfpCoarseWorker(SignalWorker):
     """Build an all-channel coarse cache without blocking the GUI."""
 
     range_completed = Signal(object, object)
+    channels_published = Signal(object, object)
 
     def __init__(
         self, request_id, dataset, channel, step, settings, current_time_s=None
@@ -1009,6 +1010,15 @@ class LfpCoarseWorker(SignalWorker):
         self.step = max(int(step), 1)
         self.settings = settings
         self.current_time_s = current_time_s
+        self._priority_channel = int(channel)
+
+    def set_priority_channel(self, channel) -> None:
+        """Point the remaining groups at whichever channel is on screen now.
+
+        Called from the GUI thread while the build runs, so this only assigns
+        one integer that the worker reads between groups.
+        """
+        self._priority_channel = int(channel)
 
     def execute(self):
         priority_index = None
@@ -1021,15 +1031,21 @@ class LfpCoarseWorker(SignalWorker):
                 self.cancel_event,
             )[0]
 
-        def report_range(point_start, point_end, time_us, values):
+        def report_range(channel, point_start, point_end, time_us, values):
             self.range_completed.emit(
                 self.request_id,
                 {
+                    "channel": int(channel),
                     "point_start": int(point_start),
                     "point_end": int(point_end),
                     "time_us": np.asarray(time_us),
                     "values": np.asarray(values),
                 },
+            )
+
+        def report_published(channels):
+            self.channels_published.emit(
+                self.request_id, [int(channel) for channel in channels]
             )
 
         result = self.dataset.source.coarse(
@@ -1040,6 +1056,8 @@ class LfpCoarseWorker(SignalWorker):
             progress_callback=lambda value: self.report(round(value * 100)),
             range_callback=report_range,
             priority_sample_index=priority_index,
+            published_callback=report_published,
+            priority_channel_provider=lambda: self._priority_channel,
         )
         return {
             "channel": self.channel,

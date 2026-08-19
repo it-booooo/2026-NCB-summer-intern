@@ -500,7 +500,43 @@ def prepare_lfp_segment(
     )
 
 
-def filter_description(settings: LfpFilterSettings | None) -> str:
+def filter_backend(
+    settings: LfpFilterSettings | None,
+    sample_count: int | None = None,
+) -> str | None:
+    """Return the backend a filtered run of ``sample_count`` samples will use.
+
+    ``None`` means the question does not apply: either nothing is filtered, or
+    no configured stage has a GPU implementation.  ``sample_count`` must be the
+    size of the whole dispatched job, because automatic selection keeps small
+    jobs on the CPU.
+    """
+    if settings is None or not settings.show_filtered:
+        return None
+    if settings.line_noise_method != "regression":
+        return None
+    if not line_noise_frequencies(settings):
+        return None
+
+    from .gpu_backend import select_backend
+
+    try:
+        return select_backend(int(sample_count))
+    except (RuntimeError, TypeError, ValueError):
+        return "cpu"
+
+
+def filter_backend_label(backend: str | None) -> str:
+    """Name a backend the way it is shown next to the waveform."""
+    if backend is None:
+        return ""
+    return "OpenCL GPU" if backend == "opencl" else "NumPy CPU fallback"
+
+
+def filter_description(
+    settings: LfpFilterSettings | None,
+    sample_count: int | None = None,
+) -> str:
     if settings is None or not settings.show_filtered:
         return "Raw"
 
@@ -520,28 +556,24 @@ def filter_description(settings: LfpFilterSettings | None) -> str:
             f"notch {frequency_label} Hz (Q={settings.notch_quality:g})"
         )
     elif settings.line_noise_method == "regression" and frequencies:
-        from .gpu_backend import select_backend
-
         harmonic_label = (
             "all harmonics below Nyquist"
             if _uses_all_regression_harmonics(settings)
             else "fundamental only"
         )
-        try:
-            selected_backend = select_backend(100_000)
-        except RuntimeError:
-            selected_backend = "cpu"
-        backend_label = (
-            "OpenCL GPU"
-            if selected_backend == "opencl"
-            else "NumPy CPU fallback"
-        )
         line_noise_description = (
             f"sinusoidal regression {frequency_label} Hz, "
             f"{settings.regression_window_seconds:g} s, "
-            f"{settings.regression_overlap * 100:g}% overlap, {harmonic_label}, "
-            f"{backend_label}"
+            f"{settings.regression_overlap * 100:g}% overlap, {harmonic_label}"
         )
+        # Naming a backend without the real job size used to be actively
+        # misleading: automatic selection keeps anything below the OpenCL
+        # threshold on the CPU, so a fixed probe size always reported the CPU
+        # fallback even while the whole-record build ran on the GPU.
+        if sample_count is not None:
+            backend = filter_backend(settings, sample_count)
+            if backend is not None:
+                line_noise_description += f", {filter_backend_label(backend)}"
     else:
         line_noise_description = "line-noise removal off"
 
@@ -549,10 +581,15 @@ def filter_description(settings: LfpFilterSettings | None) -> str:
 
 
 def _finite_signal(values) -> np.ndarray:
+    """Replace gaps by interpolation, for ``(samples,)`` or ``(channels, samples)``.
+
+    The sample axis is last, so a multi-channel block is repaired one row at a
+    time; every other shape is flattened to a single channel as before.
+    """
     signal_values = np.asarray(values)
     if not np.issubdtype(signal_values.dtype, np.floating):
         signal_values = signal_values.astype(float)
-    if signal_values.ndim != 1:
+    if signal_values.ndim > 2:
         signal_values = signal_values.reshape(-1)
 
     if signal_values.size == 0:
@@ -561,6 +598,12 @@ def _finite_signal(values) -> np.ndarray:
     finite_mask = np.isfinite(signal_values)
     if finite_mask.all():
         return signal_values.copy()
+
+    if signal_values.ndim == 2:
+        return np.stack(
+            [_finite_signal(row) for row in signal_values],
+            axis=0,
+        ).astype(signal_values.dtype, copy=False)
 
     if not finite_mask.any():
         return np.zeros(signal_values.shape, dtype=signal_values.dtype)
@@ -729,10 +772,13 @@ def _apply_filter(
     zero_phase_filter,
 ) -> np.ndarray:
     """Use zero-phase filtering when possible and a causal short-signal fallback."""
-    if values.size < 2:
+    # SciPy filters the last axis, so the length test must use the sample axis
+    # and not the total element count of a multi-channel block.
+    sample_count = values.shape[-1] if values.ndim else values.size
+    if sample_count < 2:
         return values.copy()
 
-    if values.size <= padlen:
+    if sample_count <= padlen:
         return causal_filter(values)
 
     return zero_phase_filter(values)

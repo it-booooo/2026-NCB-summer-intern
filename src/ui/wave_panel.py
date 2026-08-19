@@ -83,6 +83,8 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self._lfp_peak_display_request_id = None
         self._lfp_peak_display_request_key = None
         self._lfp_peak_display_key = None
+        self._lfp_cpu_fallback_warned = set()
+        self._lfp_partial_channel = None
 
         self.lfp_file_label = QLabel("LFP CSV: Not imported")
         self.three_axis_file_label = QLabel("3-axis CSV: Not imported")
@@ -90,12 +92,18 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self.lfp_channel_selector = PlaybackAwareComboBox()
         self.lfp_channel_selector.addItem("No LFP channel")
         self.lfp_channel_selector.setEnabled(False)
-        self.lfp_channel_selector.setMinimumContentsLength(12)
+        # Wide enough for "Channel 260 ..." so the pending marker never
+        # changes the control's width.
+        self.lfp_channel_selector.setMinimumContentsLength(16)
         self.lfp_channel_selector.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToContents
         )
         self.lfp_channel_selector.setMaxVisibleItems(20)
         self.lfp_channel_selector.currentIndexChanged.connect(self.plot_lfp)
+
+        self.lfp_channel_status_label = QLabel("")
+        self.lfp_channel_status_label.setStyleSheet("color: #666666;")
+        self.lfp_channel_status_label.setVisible(False)
 
         self.signal_view_selector = PlaybackAwareComboBox()
         self.signal_view_selector.addItem("Raw", False)
@@ -239,6 +247,7 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         channel_layout.addWidget(self.lfp_channel_selector)
         channel_layout.addWidget(QLabel("Signal"))
         channel_layout.addWidget(self.signal_view_selector)
+        channel_layout.addWidget(self.lfp_channel_status_label)
         channel_layout.addStretch()
         channel_layout.addWidget(self.follow_video_checkbox)
         layout.addLayout(channel_layout)
@@ -1084,6 +1093,7 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self.update_current_time_marker()
         self.update_lfp_peak_artist()
         self.invalidate_current_time_backgrounds("lfp")
+        self.refresh_lfp_channel_readiness()
 
     def update_lfp_peak_artist(self) -> None:
         """Prepare peak neighborhoods in the background and draw the latest result."""
@@ -1333,6 +1343,7 @@ class WavePanel(LfpAnalysisMixin, QWidget):
                     QMessageBox.warning(self, "LFP plot failed", str(error))
                     return
             self._start_filtered_coarse(settings, self.plot_lfp, channel)
+            self.refresh_lfp_channel_readiness()
             return
         if settings.show_filtered:
             self._mark_lfp_filter_complete(channel)
@@ -1370,6 +1381,7 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self.update_event_interval_artists()
         self.update_lfp_peak_artist()
         self.update_current_time_marker()
+        self.refresh_lfp_channel_readiness()
 
     def plot_three_axis(self):
         """Plot the three-axis signal.
@@ -1474,7 +1486,7 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         if channel is None:
             return False
         step = self._lfp_coarse_step(channel)
-        return dataset.source.coarse_is_ready(step, settings)
+        return dataset.source.coarse_is_ready(step, settings, channel)
 
     def _start_filtered_coarse(self, settings, callback, channel=None):
         dataset = self.ensure_lfp_dataset()
@@ -1484,11 +1496,54 @@ class WavePanel(LfpAnalysisMixin, QWidget):
             return
         self._start_incremental_filtered_display(dataset, channel, settings)
 
+    def _warn_once_about_cpu_filter_fallback(self, dataset, channel, settings):
+        """Say so when a whole-record filter build silently lands on the CPU.
+
+        Automatic backend selection falls back without any signal, and the
+        sinusoidal regression is orders of magnitude slower there, so the same
+        build turns from seconds into hours with nothing on screen to explain
+        it.
+        """
+        try:
+            sample_count = int(dataset.source.sample_count(channel))
+        except (AttributeError, KeyError, OSError, ValueError):
+            return
+        if signal_func.filter_backend(settings, sample_count) != "cpu":
+            return
+        warning_key = (dataset.source.identity_token(), settings)
+        if warning_key in self._lfp_cpu_fallback_warned:
+            return
+        self._lfp_cpu_fallback_warned.add(warning_key)
+        status = signal_func.opencl_status()
+        reason = status.get("reason") or "no compatible OpenCL GPU was selected"
+        QMessageBox.warning(
+            self,
+            "Filtering without GPU acceleration",
+            "Sinusoidal regression will run on the CPU for this recording, "
+            "which is far slower than the OpenCL path.\n\n"
+            f"Reason: {reason}\n\n"
+            "The waveform still appears channel by channel, but preparing "
+            "every channel can take a long time. Switching to notch "
+            "line-noise removal, or turning off automatic harmonics, keeps "
+            "this workable without a GPU.",
+        )
+
     def _start_incremental_filtered_display(self, dataset, channel, settings):
         step = self._lfp_coarse_step(channel)
-        key = (dataset.source.identity_token(), channel, step, settings)
+        # The channel is deliberately absent from the key.  One build prepares
+        # every channel, so restarting it for a channel switch used to throw the
+        # unfinished group away and filter the newly selected channel on its
+        # own, which meant browsing channels never reached a fully cached state.
+        key = (dataset.source.identity_token(), step, settings)
         if key == self._lfp_coarse_key and self._lfp_coarse_workers:
+            self._retarget_lfp_coarse_workers(channel)
+            self._lfp_coarse_channel = channel
+            if channel == self._lfp_partial_channel and self.lfp_fig is not None:
+                self.lfp_fig.restore_lfp_partial_filtered()
+            else:
+                self._show_raw_until_filter_is_ready(channel, settings)
             return
+        self._warn_once_about_cpu_filter_fallback(dataset, channel, settings)
         self._cancel_lfp_coarse_workers()
         request_id = uuid.uuid4().hex
         self._lfp_coarse_request_id = request_id
@@ -1497,11 +1552,7 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self._lfp_coarse_channel = channel
         self._lfp_coarse_step_value = step
         self._lfp_coarse_settings = settings
-        self._lfp_filter_completed_ranges = []
-        self._set_lfp_filter_status(True)
-        if self.lfp_fig is not None:
-            self.lfp_fig.set_lfp_filter_settings(settings)
-            self.lfp_fig.begin_lfp_partial_filtered()
+        self._begin_lfp_partial_channel(channel, settings)
         worker = signal_func.LfpCoarseWorker(
             request_id,
             dataset,
@@ -1512,6 +1563,7 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         )
         self._lfp_coarse_workers[request_id] = worker
         worker.range_completed.connect(self._update_lfp_coarse_range)
+        worker.channels_published.connect(self._lfp_coarse_channels_published)
         worker.completed.connect(
             self._finish_lfp_coarse
         )
@@ -1533,12 +1585,14 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         channel = int(result["channel"])
         self._lfp_coarse_request_id = None
         self._lfp_coarse_key = None
+        self._lfp_partial_channel = None
         self._mark_lfp_filter_complete(channel)
         if self.lfp_fig is not None:
             self.lfp_fig.set_lfp_filter_settings(result["settings"])
             self.lfp_fig.set_lfp_signal_view(True)
         self.update_current_time_marker()
         self.update_lfp_peak_artist()
+        self.refresh_lfp_channel_readiness()
 
     def _cancelled_lfp_coarse(self, request_id, identity):
         if self._lfp_coarse_result_is_current(request_id, identity):
@@ -1582,9 +1636,141 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self._lfp_filter_completed_ranges = [] if bounds is None else [bounds]
         self._set_lfp_filter_status(True)
 
+    def _begin_lfp_partial_channel(self, channel, settings):
+        """Start collecting incremental filtered chunks for one channel."""
+        self._lfp_partial_channel = channel
+        self._lfp_filter_completed_ranges = []
+        self._set_lfp_filter_status(True)
+        if self.lfp_fig is not None:
+            self.lfp_fig.set_lfp_filter_settings(settings)
+            self.lfp_fig.begin_lfp_partial_filtered()
+
+    def _filtered_ready_channels(self, settings):
+        """Return the channels whose filtered overview is already on disk."""
+        dataset = self.data_state.lfp_dataset
+        channels = self.available_lfp_channels()
+        if dataset is None or not channels or not settings.show_filtered:
+            return []
+        try:
+            step = self._lfp_coarse_step(channels[0])
+            return dataset.source.coarse_ready_channels(step, settings)
+        except (OSError, ValueError):
+            return []
+
+    def refresh_lfp_channel_readiness(self):
+        """Say which channels are prepared, and what the plot is showing now.
+
+        Preparing every channel takes far longer than drawing the first one, so
+        without this the window looks idle while most channels are still
+        missing, and nothing distinguishes an instant switch from a slow one.
+        """
+        settings = self.current_lfp_filter_settings()
+        channels = self.available_lfp_channels()
+        ready = set(self._filtered_ready_channels(settings))
+        self._mark_ready_channels_in_selector(channels, ready, settings)
+
+        if not channels or not settings.show_filtered:
+            self.lfp_channel_status_label.setVisible(False)
+            return
+
+        selected = self.selected_channel(self.lfp_channel_selector)
+        total = len(channels)
+        if len(ready) >= total:
+            message = f"All {total} channels filtered"
+        elif not self._lfp_coarse_workers:
+            message = f"{len(ready)}/{total} channels filtered"
+        elif selected is not None and selected not in ready:
+            showing = (
+                "filtering now"
+                if selected == self._lfp_partial_channel
+                else "showing raw"
+            )
+            message = (
+                f"Preparing channels {len(ready)}/{total} "
+                f"- channel {selected} {showing}"
+            )
+        else:
+            message = f"Preparing channels {len(ready)}/{total} in background"
+        self.lfp_channel_status_label.setText(message)
+        self.lfp_channel_status_label.setVisible(True)
+
+    def _mark_ready_channels_in_selector(self, channels, ready, settings):
+        """Flag the pending channels so a slow switch is visible in advance."""
+        if not channels or self.lfp_channel_selector.count() != len(channels):
+            return
+        pending_marker = settings.show_filtered and len(ready) < len(channels)
+        self.lfp_channel_selector.blockSignals(True)
+        try:
+            for index, channel in enumerate(channels):
+                label = f"Channel {channel}"
+                if pending_marker and channel not in ready:
+                    label = f"{label} ..."
+                if self.lfp_channel_selector.itemText(index) != label:
+                    self.lfp_channel_selector.setItemText(index, label)
+        finally:
+            self.lfp_channel_selector.blockSignals(False)
+
+    def _retarget_lfp_coarse_workers(self, channel):
+        """Send the running build to the channel that is now on screen."""
+        for worker in self._lfp_coarse_workers.values():
+            worker.set_priority_channel(channel)
+
+    def _show_raw_until_filter_is_ready(self, channel, settings):
+        """Draw the unfiltered channel rather than an empty plot while waiting.
+
+        The raw overview for this step is already on disk, so this costs a read
+        instead of a filter run.  It is skipped when that is not true, because
+        building it here would block the GUI thread.
+        """
+        if self.lfp_fig is None:
+            return
+        dataset = self.data_state.lfp_dataset
+        if dataset is None:
+            return
+        try:
+            if not dataset.source.coarse_is_ready(
+                self._lfp_coarse_step(channel), None, channel
+            ):
+                return
+        except (OSError, ValueError):
+            return
+        self._lfp_partial_channel = None
+        self.lfp_fig.set_lfp_channel(channel)
+        self.lfp_fig.set_lfp_signal_view(False)
+        self.invalidate_current_time_backgrounds("lfp")
+        self.update_current_time_marker()
+
+    def _lfp_coarse_channels_published(self, request_id, channels):
+        """Swap to the filtered line as soon as this channel becomes available."""
+        if request_id != self._lfp_coarse_request_id:
+            return
+        channel = self.selected_channel(self.lfp_channel_selector)
+        if channel is None or int(channel) not in set(channels):
+            return
+        if not self.current_lfp_filter_settings().show_filtered:
+            return
+        self._mark_lfp_filter_complete(channel)
+        if self.lfp_fig is not None:
+            self.lfp_fig.set_lfp_signal_view(True)
+        self.invalidate_current_time_backgrounds("lfp")
+        self.update_current_time_marker()
+        self.update_lfp_peak_artist()
+        self.refresh_lfp_channel_readiness()
+
     def _update_lfp_coarse_range(self, request_id, payload):
         if request_id != self._lfp_coarse_request_id:
             return
+        # The build moves on to other channels while the user browses, so a
+        # chunk only belongs on the plot when it is for the displayed channel.
+        channel = payload.get("channel")
+        if channel != self.selected_channel(self.lfp_channel_selector):
+            return
+        if channel != self._lfp_partial_channel:
+            # First chunk after the build was retargeted here, so the raw line
+            # standing in for this channel has to give way to filtered chunks.
+            self._begin_lfp_partial_channel(
+                channel, self.current_lfp_filter_settings()
+            )
         times = np.asarray(payload.get("time_us", ()), dtype=float)
         values = np.asarray(payload.get("values", ()), dtype=float)
         if times.size == 0 or times.shape != values.shape:
@@ -1615,6 +1801,8 @@ class WavePanel(LfpAnalysisMixin, QWidget):
         self._lfp_coarse_request_id = None
         self._lfp_coarse_queue = []
         self._lfp_coarse_key = None
+        self._lfp_partial_channel = None
+        self.refresh_lfp_channel_readiness()
         QMessageBox.warning(self, "Filtered LFP failed", message)
 
     def _cancel_lfp_coarse_workers(self, wait=False):
