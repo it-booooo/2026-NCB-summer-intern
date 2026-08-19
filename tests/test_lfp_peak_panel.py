@@ -1,10 +1,19 @@
 import os
+import sys
+import types
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication, QProgressDialog
+
+# Loading this focused module must not import every optional UI feature (notably
+# OpenCV) through src.ui.__init__.
+ui_package = types.ModuleType("src.ui")
+ui_package.__path__ = [str(Path(__file__).parents[1] / "src" / "ui")]
+sys.modules.setdefault("src.ui", ui_package)
 
 from src.markers import MarkerStore, peak_records_to_markers
 from src.ui.lfp_peak_panel import (
