@@ -11,7 +11,8 @@ from PySide6.QtWidgets import (
 class WorkspaceView(QWidget):
     """Lay out the application's already-constructed feature panels."""
 
-    WAVEFORM_AREA_HEIGHT = 320
+    WAVEFORM_DEFAULT_HEIGHT = 320
+    WAVEFORM_MIN_HEIGHT = 270
 
     def __init__(self, wave_panel, sync_panel, video_player, parent=None):
         super().__init__(parent)
@@ -20,10 +21,10 @@ class WorkspaceView(QWidget):
             wave_panel,
             margins=(6, 6, 6, 4),
         )
-        lfp_group.setMinimumHeight(self.WAVEFORM_AREA_HEIGHT)
+        lfp_group.setMinimumHeight(self.WAVEFORM_MIN_HEIGHT)
         lfp_group.setSizePolicy(
             QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Minimum,
+            QSizePolicy.Policy.Expanding,
         )
         sync_group = self._create_group("Sync Area", sync_panel)
 
@@ -41,11 +42,18 @@ class WorkspaceView(QWidget):
         lower_splitter.setStretchFactor(1, 1)
         lower_splitter.setSizes([640, 640])
 
+        main_splitter = QSplitter(Qt.Orientation.Vertical)
+        main_splitter.addWidget(lfp_group)
+        main_splitter.addWidget(lower_splitter)
+        main_splitter.setChildrenCollapsible(False)
+        main_splitter.setStretchFactor(0, 0)
+        main_splitter.setStretchFactor(1, 1)
+        main_splitter.setSizes([self.WAVEFORM_DEFAULT_HEIGHT, 640])
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
-        layout.addWidget(lfp_group)
-        layout.addWidget(lower_splitter, stretch=1)
+        layout.setSpacing(0)
+        layout.addWidget(main_splitter, stretch=1)
 
     @staticmethod
     def _create_group(title, widget, margins=(6, 6, 6, 6)):
