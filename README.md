@@ -33,7 +33,7 @@ Pig Behavior Sync 是一套 Windows 桌面程式，主要用途是把動物行�
 
 程式是單一執行檔，不需執行安裝程序，也不需要下載額外的 Python 套件。第一次啟動或第一次分析大型影片時，Windows 防毒軟體可能需要較長時間檢查檔案。
 
-> **GPU 加速說明：** 電腦若有相容的 GPU 與 OpenCL 驅動，程式會用它加速 LED 偵測；沒有可用 GPU 時會自動改用 CPU，不影響其他功能。
+> **GPU 加速說明：** 電腦若有相容的 GPU 與 OpenCL 驅動，程式會用它加速 LED 偵測及部分大型 LFP 處理；沒有可用 GPU 時會自動改用 CPU，不影響分析功能與結果，但處理時間可能較長。
 
 ## 肆、輸入資料格式
 
@@ -85,10 +85,6 @@ TTL CSV 建議包含：
 - 「File > Export」：匯出標記、檢查結果及圖表。
 - 「Settings」：調整波形在畫面上的顯示密度、電源雜訊頻率、LFP 峰值偵測條件、檢查 GPU，以及清除訊號暫存資料。
 
-![介面概覽](docs/images/user-manual/interface-overview.png)
-
-*圖一、介面概覽*
-
 ## 陸、第一次使用：請照順序操作
 
 最基本的同步流程是：匯入影片與訊號、建立 TTL、找出影片中的 LED On，最後確認同步結果。若只想查看影片或波形，可只匯入需要的檔案，不必完成全部步驟。
@@ -121,19 +117,17 @@ TTL CSV 建議包含：
 
 匯入 LFP 後，先選擇 channel，再選擇 Raw（原始訊號）或 Filtered（濾波後訊號）。勾選「Bandpass」後可設定 Low／High；「Line noise」可選 None、Notch filter 或 Sinusoidal regression。Frequencies 可輸入一個或多個以逗號或空白分隔的頻率，例如 60, 90。使用 Notch filter 時可設定 Q；使用 Sinusoidal regression 時可設定 Window、Overlap，並可勾選「All harmonics」自動處理倍頻。完成後按「confirm」套用；波形、Power spectrum、Spectrogram 與 LFP 圖片匯出會使用同一組設定。
 
-![Q、Window、Overlap 參數說明](docs/images/user-manual/filter-parameters.png)
-
-*圖二、Q、Window、Overlap 參數說明*
-
 第一次切換到 Filtered 或變更濾波設定時，程式會分段準備波形。時間範圍列上方的紅色表示尚未完成，綠色表示已完成；波形會隨處理進度逐步更新。大型資料可能需要較長時間，程式會依電腦環境自動使用 GPU 或 CPU。
 
-![分段繪製波形示意圖](docs/images/user-manual/segmented-waveform.png)
+套用 Filtered 後，程式會在背景依序準備所有 LFP channel。畫面會顯示已完成的 channel 數量；尚未完成的 channel 名稱後方會出現「...」。切換到尚未完成的 channel 時，可能會暫時顯示 Raw，待處理完成後再自動換成 Filtered，並不代表濾波設定失效。
 
-*圖三、分段繪製波形之示意圖*
+若 Sinusoidal regression 無法使用 GPU，程式會顯示警告。此時仍可使用 CPU 處理，但大型資料可能需要很長時間；可考慮改用 Notch filter，或取消「All harmonics」以縮短等待時間。
 
 「Power spectrum」與「Spectrogram」會分析目前選擇的 channel 和畫面時間範圍。分析時會使用原始 CSV 在這段時間內的所有取樣點，不會因為畫面波形顯示得比較稀疏而漏掉資料；選擇的時間越長，等待時間通常也越久。
 
 使用 Filtered 並啟用 Bandpass 時，Spectrogram 只會顯示 Low 到 High 之間的頻率；使用 Raw 時則顯示完整頻率範圍。如果圖表很寬，可拖曳視窗下方的水平捲軸查看。處理期間會顯示進度，需要時可按「Cancel」中止。
+
+Spectrogram 視窗中的「PSD color scale」預設使用 Auto，會依目前可見頻率範圍自動調整顏色。若要固定不同圖表的顏色範圍，可取消 Auto，輸入 Min／Max（dB）後按「Apply」重新繪製；Min 必須小於 Max。
 
 「Follow video playback」開啟時，完成同步後的波形視窗會跟隨影片播放位置。
 
@@ -175,10 +169,6 @@ TTL CSV 建議包含：
 
 **提醒：LED 偵測結果相當仰賴人工框選的精確度。請盡量貼合 LED 範圍，避免包含會移動、反光或明暗變化明顯的背景；框選過大或偏離 LED 都可能造成誤判或漏判。**
 
-![LED Analysis 範例](docs/images/user-manual/led-analysis-example.jpg)
-
-*圖四、LED Analysis 範例示意圖*
-
 目前偵測會配對 LED On 與 LED Off，尋找亮起時間約為 0.6 至 1.5 秒的區間。若掃描完成後沒有找到事件，請重新精確框選 ROI、調整掃描範圍，或改用 Video 頁面手動新增 LED 標記。
 
 可在「Settings > Check OpenCL GPU」確認 GPU 加速狀態；沒有可用裝置時會自動使用 CPU，處理時間可能較長。
@@ -186,10 +176,6 @@ TTL CSV 建議包含：
 變更 ROI、影片旋轉角度或掃描範圍後，應重新執行偵測。再次執行會以新結果取代先前由 LED 自動偵測建立的標記；使用者手動新增的標記不會被刪除。
 
 圖表中的標記會以顏色區分：綠色代表 LED On 或 LED 區段，紅色代表 LED Off，橘色色塊代表 Action Start 至 Action End，紅色標線代表 Seizure-like 或目前影片位置，TTL 則以綠色標線顯示；目前採用的影片同步事件也會在表格中以淡綠色標示。
-
-![Waveform 標記說明](docs/images/user-manual/waveform-markers.png)
-
-*圖五、Waveform 標記說明示意圖*
 
 ### 六、時間同步
 
@@ -215,15 +201,13 @@ TTL CSV 建議包含：
 
 程式會使用原始 CSV 中的所有 LFP 取樣點，在影片和訊號都有資料的時間範圍內尋找峰值。高於訊號基準線的是正向峰值，低於基準線的是負向峰值，表格的 note 會分別顯示 positive peak 或 negative peak。偵測期間會顯示進度，需要時可按「Cancel」中止。
 
-同一個 channel 再次偵測時，會取代該 channel 上一次自動找到的峰值；其他 channel 的結果不會被刪除。表格內可修改 note、點選峰值跳到影片位置，或刪除選定峰值。
+同一個 channel 再次偵測時，會取代該 channel 上一次自動找到的峰值；其他 channel 的結果不會被刪除。表格會顯示 Peak Type、Video Time／Sync Time、Peak Value 與 Note；其中 Note 可以修改，也可點選峰值跳到影片位置，或刪除選定峰值。
+
+「Peak Type」可選擇顯示全部、正向或負向峰值；「Sort By」可依 Time 或 Peak Value 排序；「Order」可選擇 Ascending 或 Descending。這些設定只會改變表格的顯示方式，不會重新執行峰值偵測，也不會改變「Analyze Peaks」的統計結果。
 
 偵測完成後，上方 LFP 波形會補充顯示峰值附近的波形細節；切換 channel 或 Raw／Filtered 時會自動更新。大型資料會依電腦環境自動使用 GPU 或 CPU，沒有可用 GPU 時不影響偵測結果，只是處理時間可能較長。
 
 完成峰值偵測後，可按「Analyze Peaks」查看所選 channel 每分鐘的 LFP peak 數量長條圖。圖表會合併統計正向與負向峰值，不會分開顯示。此功能必須先有完成同步的 LFP peak 才能使用。
-
-![Find Peak 說明](docs/images/user-manual/find-peak-example.jpg)
-
-*圖六、Find Peak 說明示意圖*
 
 ## 柒、LFP Filter 詳細操作
 
@@ -252,6 +236,8 @@ LFP 與三軸波形共用下方的時間範圍列，調整其中一個圖的範�
 - All harmonics：只在 Sinusoidal regression 使用。勾選後，會從輸入頻率開始，自動處理所有低於取樣率一半的整數倍頻。
 
 第一次切換到 Filtered 或套用新設定時，時間範圍列上方會顯示處理狀態：紅色表示尚未完成，綠色表示已完成。處理期間波形會逐步更新。
+
+程式會在背景準備所有 channel，並顯示目前已完成的數量。尚未準備完成的 channel 會以「...」標示；切換至該 channel 時可能先顯示 Raw，完成後會自動換成 Filtered。
 
 ### 三、Step 與峰值顯示
 
@@ -289,6 +275,7 @@ LFP 與三軸波形共用下方的時間範圍列，調整其中一個圖的範�
 - 要輸出的 channel 和時間範圍；
 - Raw 原始訊號或 Processed 處理後訊號，以及 Bandpass／Notch 設定；
 - 波形圖、Power spectrum、Spectrogram，可同時選擇多種；
+- Spectrogram 的 Auto PSD color scale，或自行輸入 Min／Max（dB）；
 - 目的資料夾。
 
 圖片固定以 300 DPI 輸出。檔名會自動包含原始檔名、channel、Raw／Processed 及圖表類型。準備大量資料或多張圖片時會顯示進度，需要時可按「Cancel」中止。使用 Processed＋Bandpass 匯出 Spectrogram 時，圖表只會顯示設定的頻率範圍。
@@ -308,3 +295,18 @@ LFP 與三軸波形共用下方的時間範圍列，調整其中一個圖的範�
 - 重新指定時必須選擇原本的檔案；內容修改過的副本可能不會被接受。
 - 開啟含大型訊號資料的專案時會顯示準備進度，需要時可按「Cancel」中止開啟。
 - 關閉程式或開啟其他專案前，如有未保存變更，程式會要求確認。
+
+## 拾、使用 build.py 打包程式（維護者）
+
+一般使用者不需要執行此步驟；正式交付時，只需提供打包完成的 PigBehaviorSync.exe。
+
+打包前請先準備 Windows 開發環境，並安裝 requirements.txt 中的套件。若使用目前的 Conda 環境，可先執行「conda activate pig_gui」；第一次建立環境時，再執行「python -m pip install -r requirements.txt」。
+
+打包方式：
+
+1. 關閉正在執行的 PigBehaviorSync.exe，包括工作管理員中的背景程序，否則舊檔案可能無法取代。
+2. 在專案根目錄執行「python build.py」。
+3. 等待 PyInstaller 完成；正式執行檔會輸出至 dist\PigBehaviorSync.exe。
+4. 在交付前，請實際開啟 dist\PigBehaviorSync.exe，確認程式可啟動、匯入檔案，並能執行需要使用的 GPU／CPU 功能。
+
+build.py 會建立單一執行檔，並一併打包程式圖示、PyOpenCL 與必要的 Conda DLL。若畫面提示缺少 PyInstaller、PyOpenCL，或 NumPy／PyOpenCL 原生模組無法載入，請先修正打包環境後再重新執行。
